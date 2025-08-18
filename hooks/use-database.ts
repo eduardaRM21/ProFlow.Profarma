@@ -148,43 +148,64 @@ export const useSession = () => {
   const { isFullyConnected } = useConnectivity()
 
   const getSession = useCallback(async (sessionId: string): Promise<any> => {
+    console.log('🔍 getSession chamado com sessionId:', sessionId)
     const now = Date.now()
     
     // Usar cache se ainda válido
     if (sessionCache && now - lastSessionFetch < SESSION_CACHE_TTL) {
+      console.log('📋 Usando cache de sessão:', sessionCache)
       return sessionCache
     }
 
     try {
+      console.log('🌐 Status da conectividade:', { isFullyConnected })
+      
       // Tentar buscar do banco se conectado
       if (isFullyConnected) {
+        console.log('🔍 Tentando buscar sessão do banco...')
         const session = await SessionService.getSession(sessionId)
+        console.log('📊 Sessão do banco:', session)
+        
         if (session) {
+          console.log('✅ Sessão encontrada no banco, salvando no cache')
           sessionCache = session
           lastSessionFetch = now
           return session
+        } else {
+          console.log('⚠️ Nenhuma sessão encontrada no banco')
         }
+      } else {
+        console.log('⚠️ Não conectado ao banco, pulando busca remota')
       }
 
       // Fallback para localStorage
+      console.log('🔍 Tentando fallback para localStorage...')
       const sessionLocal = localStorage.getItem("sistema_session")
       if (sessionLocal) {
         const sessionObj = JSON.parse(sessionLocal)
+        console.log('📋 Sessão local encontrada:', sessionObj)
         sessionCache = sessionObj
         lastSessionFetch = now
         return sessionObj
+      } else {
+        console.log('⚠️ Nenhuma sessão local encontrada')
       }
 
+      console.log('❌ Nenhuma sessão encontrada em nenhum lugar')
       return null
     } catch (error) {
       console.error('❌ Erro ao carregar sessão:', error)
       
       // Fallback para localStorage em caso de erro
+      console.log('🔍 Fallback para localStorage em caso de erro...')
       const sessionLocal = localStorage.getItem("sistema_session")
       if (sessionLocal) {
-        return JSON.parse(sessionLocal)
+        const sessionObj = JSON.parse(sessionLocal)
+        console.log('📋 Sessão local de fallback:', sessionObj)
+        return sessionObj
       }
       
+      console.log('❌ Nenhuma sessão disponível no fallback')
       return null
     }
   }, [isFullyConnected])
@@ -343,84 +364,117 @@ export const useRelatorios = () => {
   }, [isFullyConnected])
 
   const getRelatorios = useCallback(async (): Promise<any[]> => {
-    const now = Date.now()
-    
-    // Usar cache se ainda válido
-    if (relatoriosCache && now - lastRelatoriosFetch < RELATORIOS_CACHE_TTL) {
-      console.log('📋 Usando cache de relatórios:', relatoriosCache.length)
-      return relatoriosCache
-    }
-    
-    // Evitar múltiplas requisições simultâneas
-    if (relatoriosFetchPromise) {
-      console.log('📋 Aguardando requisição em andamento...')
-      return relatoriosFetchPromise
-    }
+    try {
+      console.log('📋 Tentando carregar relatórios do banco...')
+      
+      // FORÇAR busca direta do banco, ignorando cache
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      const { data, error } = await supabase
+        .from('relatorios')
+        .select('*')
+        .order('created_at', { ascending: false })
 
-    relatoriosFetchPromise = (async () => {
-      try {
-        let dbRelatorios: any[] = []
+      if (error) {
+        console.error('❌ Erro ao buscar relatórios:', error)
         
-        // Tentar carregar do banco se conectado
-        if (isFullyConnected) {
-          try {
-            console.log('🌐 Tentando carregar relatórios do banco...')
-            dbRelatorios = await RelatoriosService.getRelatorios()
-            console.log('✅ Relatórios carregados do banco:', dbRelatorios.length)
-            console.log('🔍 Estrutura dos dados do banco:', dbRelatorios.length > 0 ? Object.keys(dbRelatorios[0]) : 'Nenhum dado')
-          } catch (error) {
-            console.warn('⚠️ Erro ao carregar relatórios do banco:', error)
-          }
-        } else {
-          console.log('⚠️ Não conectado ao banco, pulando busca remota')
+        // Se for erro de recursos insuficientes, retornar array vazio
+        if (error.message?.includes('insufficient') || error.message?.includes('resources')) {
+          console.log('⚠️ Recursos insuficientes no banco, retornando array vazio')
+          return []
         }
-
-        // Carregar do localStorage
-        const localRelatoriosData = localStorage.getItem('relatorios_local')
-        const localRelatorios: any[] = localRelatoriosData ? JSON.parse(localRelatoriosData) : []
-        console.log('✅ Relatórios carregados localmente:', localRelatorios.length)
-
-        // Mesclar e deduplicar
-        const merged = [...dbRelatorios, ...localRelatorios]
-        const uniqueById = Array.from(new Map(merged.map(r => [r.id, r])).values()) as any[]
-
-        console.log('📊 Total de relatórios únicos:', uniqueById.length)
-        console.log('📊 Relatórios do banco:', dbRelatorios.length)
-        console.log('📊 Relatórios locais:', localRelatorios.length)
-
-        relatoriosCache = uniqueById
-        lastRelatoriosFetch = Date.now()
-        return uniqueById
-      } catch (error) {
-        console.error('❌ Erro ao carregar relatórios:', error)
-        return relatoriosCache || []
-      } finally {
-        relatoriosFetchPromise = null
+        
+        // Se for erro de tabela não encontrada, retornar array vazio
+        if (error.message?.includes('relation "relatorios" does not exist')) {
+          console.log('❌ Tabela relatorios não existe no banco')
+          return []
+        }
+        
+        throw error
       }
-    })()
 
-    return relatoriosFetchPromise
-  }, [isFullyConnected])
+      if (data) {
+        console.log('✅ Relatórios carregados do banco:', data.length, 'relatórios')
+        console.log('🔍 Dados brutos do banco:', data)
+        
+        if (data.length > 0) {
+          console.log('🔍 Primeiro item bruto:', data[0])
+          console.log('🔍 Campos disponíveis:', Object.keys(data[0]))
+        }
+        
+        const relatorios: Relatorio[] = (data ?? []).map((item: any) => ({
+          id: item.id,
+          nome: item.nome ?? 'Relatório sem nome',
+          colaboradores: [], // Campo não existe mais na tabela
+          data: item.data,
+          turno: item.turno,
+          area: item.area ?? 'custos',
+          quantidadeNotas: item.quantidade_notas ?? 0,
+          somaVolumes: item.soma_volumes ?? 0,
+          notas: [], // Campo não existe mais na tabela
+          dataFinalizacao: item.data_finalizacao ?? new Date().toISOString(),
+          status: item.status ?? 'finalizado',
+        }))
+        
+        console.log('✅ Relatórios carregados do banco:', relatorios.length)
+        return relatorios
+      } else {
+        console.log('ℹ️ Nenhum relatório encontrado no banco')
+        return []
+      }
+    } catch (error) {
+      console.error('❌ Erro ao carregar relatórios:', error)
+      return []
+    }
+  }, [])
 
   const getRelatoriosRecebimento = useCallback(async (): Promise<any[]> => {
-    const now = Date.now()
-    
-    // Usar cache específico se ainda válido
-    if (recebimentoCache && now - lastRecebimentoFetch < RECEBIMENTO_CACHE_TTL) {
-      return recebimentoCache
-    }
-
     try {
-      const todos = await getRelatorios()
-      const recebimento = todos.filter((rel: any) => rel.area === 'recebimento')
-      recebimentoCache = recebimento
-      lastRecebimentoFetch = Date.now()
-      return recebimento
+      console.log('📋 Tentando carregar relatórios de recebimento do banco...')
+      
+      // FORÇAR busca direta do banco, ignorando cache
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      const { data, error } = await supabase
+        .from('relatorios')
+        .select('*')
+        .eq('area', 'recebimento')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('❌ Erro ao buscar relatórios de recebimento:', error)
+        return []
+      }
+
+      if (data) {
+        console.log('✅ Relatórios de recebimento carregados do banco:', data.length, 'relatórios')
+        
+        const relatorios: Relatorio[] = (data ?? []).map((item: any) => ({
+          id: item.id,
+          nome: item.nome ?? 'Relatório sem nome',
+          colaboradores: [], // Campo não existe mais na tabela
+          data: item.data,
+          turno: item.turno,
+          area: item.area ?? 'recebimento',
+          quantidadeNotas: item.quantidade_notas ?? 0,
+          somaVolumes: item.soma_volumes ?? 0,
+          notas: [], // Campo não existe mais na tabela
+          dataFinalizacao: item.data_finalizacao ?? new Date().toISOString(),
+          status: item.status ?? 'finalizado',
+        }))
+        
+        return relatorios
+      } else {
+        console.log('ℹ️ Nenhum relatório de recebimento encontrado no banco')
+        return []
+      }
     } catch (error) {
       console.error('❌ Erro ao carregar relatórios de recebimento:', error)
-      return recebimentoCache || []
+      return []
     }
-  }, [getRelatorios])
+  }, [])
 
   return {
     saveRelatorio,

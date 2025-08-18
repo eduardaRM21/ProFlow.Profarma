@@ -96,11 +96,13 @@ export default function CustosPage() {
   const { isMigrating, migrationComplete } = useDatabase();
 
   // Estados para filtros e ordenação
-  const [filtroTexto, setFiltroTexto] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState("todos");
-  const [filtroColaborador, setFiltroColaborador] = useState("todos");
-  const [filtroDataInicio, setFiltroDataInicio] = useState("");
-  const [filtroDataFim, setFiltroDataFim] = useState("");
+  const [modalRelatorios, setModalRelatorios] = useState(false)
+  const [filtroTexto, setFiltroTexto] = useState("")
+  const [filtroNF, setFiltroNF] = useState("")
+  const [filtroStatus, setFiltroStatus] = useState("todos")
+  const [filtroColaborador, setFiltroColaborador] = useState("todos")
+  const [filtroDataInicio, setFiltroDataInicio] = useState("")
+  const [filtroDataFim, setFiltroDataFim] = useState("")
   const [ordenacao, setOrdenacao] = useState("data_desc");
   const [notasFiltradas, setNotasFiltradas] = useState<NotaFiscal[]>([]);
   const [relatorioSelecionado, setRelatorioSelecionado] =
@@ -110,55 +112,43 @@ export default function CustosPage() {
   const debugDatabaseState = async () => {
     try {
       console.log('🔍 Debug: Verificando estado do banco...')
-      
-      // Verificar conectividade
-      const { testSupabaseConnection } = await import('@/lib/supabase-client')
-      const isConnected = await testSupabaseConnection()
-      console.log('🌐 Conectividade com Supabase:', isConnected)
-      
-      if (isConnected) {
-        // Tentar buscar todas as sessões para debug
+
+      // Teste para verificar conectividade e dados
+      try {
+        console.log('🔍 Testando conectividade com o banco...')
+        const { getSupabase } = await import('@/lib/supabase-client')
         const supabase = getSupabase()
-        const { data, error } = await supabase
-          .from('sessions')
-          .select('*')
-          .limit(5)
-        
-        if (error) {
-          console.log('❌ Erro ao buscar sessões:', error)
-        } else {
-          console.log('📊 Sessões no banco:', data?.length || 0)
-          if (data && data.length > 0) {
-            console.log('📋 Primeira sessão:', data[0])
-          }
-        }
-        
-        // Tentar buscar relatórios para debug
-        const { data: relatoriosData, error: relatoriosError } = await supabase
+
+        // Teste de conectividade básica
+        const { data: testData, error: testError } = await supabase
           .from('relatorios')
-          .select('*')
-          .eq('status', 'finalizado')
-        
-        if (relatoriosError) {
-          console.log('❌ Erro ao buscar relatórios:', relatoriosError)
+          .select('count')
+          .limit(1)
+
+        if (testError) {
+          console.log('❌ Erro de conectividade:', testError)
         } else {
-          console.log('📊 Relatórios no banco:', relatoriosData?.length || 0)
-          if (relatoriosData && relatoriosData.length > 0) {
-            console.log('📋 Primeiro relatório:', relatoriosData[0])
-          }
+          console.log('✅ Conectividade OK')
         }
+      } catch (error) {
+        console.log('❌ Erro no teste de conectividade:', error)
       }
-      
+
       // Verificar localStorage
       console.log('📁 Debug localStorage:')
       console.log('📁 relatorios_custos:', localStorage.getItem('relatorios_custos'))
       console.log('📁 relatorios_local:', localStorage.getItem('relatorios_local'))
       console.log('📁 sistema_session:', localStorage.getItem('sistema_session'))
-      
+
       // Verificar estado atual
       console.log('📊 Estado atual dos relatórios:', relatorios)
       console.log('📊 Quantidade de relatórios:', relatorios.length)
-      
+
+      // Forçar nova busca de relatórios
+      console.log('🔄 Forçando nova busca de relatórios...')
+      await carregarRelatorios()
+      console.log('✅ Nova busca concluída')
+
     } catch (error) {
       console.error('❌ Erro no debug do banco:', error)
     }
@@ -168,16 +158,16 @@ export default function CustosPage() {
     const verificarSessao = async () => {
       try {
         console.log('🔍 Verificando sessão para área custos...')
-        
+
         // Debug do estado do banco
         await debugDatabaseState()
-        
+
         // Obter sessão do banco de dados (específica para custos)
         const session = await getSession("custos")
-        
+
         if (!session) {
           console.log('⚠️ Nenhuma sessão encontrada no banco, verificando localStorage...')
-          
+
           // Fallback para localStorage
           const sessionLocal = localStorage.getItem("sistema_session")
           if (!sessionLocal) {
@@ -185,16 +175,16 @@ export default function CustosPage() {
             router.push("/")
             return
           }
-          
+
           const sessionObj = JSON.parse(sessionLocal)
           console.log('📋 Sessão local encontrada:', sessionObj.area)
-          
+
           if (sessionObj.area !== "custos") {
             console.log('❌ Sessão local não é de custos, redirecionando...')
             router.push("/")
             return
           }
-          
+
           console.log('✅ Usando sessão local de custos')
           setSessionData(sessionObj)
           await carregarRelatorios()
@@ -210,7 +200,7 @@ export default function CustosPage() {
       } catch (error) {
         console.error("❌ Erro ao verificar sessão:", error)
         console.log("⚠️ Usando fallback para localStorage")
-        
+
         // Fallback temporário
         const sessionLocal = localStorage.getItem("sistema_session")
         if (!sessionLocal) {
@@ -218,16 +208,16 @@ export default function CustosPage() {
           router.push("/")
           return
         }
-        
+
         const sessionObj = JSON.parse(sessionLocal)
         console.log('📋 Sessão local de fallback:', sessionObj.area)
-        
+
         if (sessionObj.area !== "custos") {
           console.log('❌ Sessão local não é de custos, redirecionando...')
           router.push("/")
           return
         }
-        
+
         console.log('✅ Usando sessão local de fallback para custos')
         setSessionData(sessionObj)
         await carregarRelatorios()
@@ -240,79 +230,218 @@ export default function CustosPage() {
   const carregarRelatorios = async () => {
     try {
       console.log("🔄 Iniciando carregamento de relatórios do banco de dados...")
-      
-      // Tentar carregar do banco de dados primeiro
-      const relatoriosCarregados = await getRelatorios()
-      console.log("📊 Relatórios carregados do banco:", relatoriosCarregados)
-      console.log("📊 Quantidade de relatórios:", relatoriosCarregados.length)
-      
-      // Debug: verificar estrutura dos dados
-      if (relatoriosCarregados && relatoriosCarregados.length > 0) {
-        console.log("🔍 Estrutura do primeiro relatório:", JSON.stringify(relatoriosCarregados[0], null, 2))
-        
-        // Verificar se os dados têm a estrutura esperada
-        const primeiroRelatorio = relatoriosCarregados[0]
-        if (primeiroRelatorio && typeof primeiroRelatorio === 'object') {
-          console.log("🔍 Campos disponíveis:", Object.keys(primeiroRelatorio))
-          console.log("🔍 Tipo de colaboradores:", typeof primeiroRelatorio.colaboradores)
-          console.log("🔍 Tipo de notas:", typeof primeiroRelatorio.notas)
-        }
-      }
-      
-      if (Array.isArray(relatoriosCarregados) && relatoriosCarregados.length > 0) {
-        console.log("✅ Relatórios carregados com sucesso do banco de dados")
-        
-        // Mapear os dados para garantir compatibilidade
-        const relatoriosMapeados = relatoriosCarregados.map((relatorio: any) => {
-          // Se os dados vierem do banco com estrutura diferente, mapear corretamente
-          return {
-            id: relatorio.id || relatorio.id,
-            nome: relatorio.nome || relatorio.nome,
-            colaboradores: Array.isArray(relatorio.colaboradores) 
-              ? relatorio.colaboradores 
-              : (typeof relatorio.colaboradores === 'string' 
-                  ? JSON.parse(relatorio.colaboradores || '[]') 
-                  : []),
-            data: relatorio.data || relatorio.data,
-            turno: relatorio.turno || relatorio.turno,
-            area: relatorio.area || relatorio.area,
-            quantidadeNotas: relatorio.quantidadeNotas || relatorio.quantidade_notas || 0,
-            somaVolumes: relatorio.somaVolumes || relatorio.soma_volumes || 0,
-            notas: Array.isArray(relatorio.notas) 
-              ? relatorio.notas 
-              : (typeof relatorio.notas === 'string' 
-                  ? JSON.parse(relatorio.notas || '[]') 
-                  : []),
-            dataFinalizacao: relatorio.dataFinalizacao || relatorio.data_finalizacao || new Date().toISOString(),
-            status: relatorio.status || 'finalizado'
-          }
-        })
-        
-        console.log("✅ Relatórios mapeados com sucesso:", relatoriosMapeados.length)
-        setRelatorios(relatoriosMapeados)
-        setFonteDados('banco')
+
+      // FORÇAR busca direta do banco, ignorando cache
+      console.log("🔍 Buscando diretamente do banco...")
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+
+      const { data: relatoriosDiretos, error: erroDireto } = await supabase
+        .from('relatorios')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (erroDireto) {
+        console.log("❌ Erro na busca direta:", erroDireto)
         return
       }
-      
-      // Se não há relatórios no banco, verificar se é um problema de conexão
-      if (Array.isArray(relatoriosCarregados) && relatoriosCarregados.length === 0) {
-        console.log("⚠️ Nenhum relatório encontrado no banco de dados")
+
+      console.log("📊 Relatórios encontrados diretamente:", relatoriosDiretos?.length || 0)
+
+      if (relatoriosDiretos && relatoriosDiretos.length > 0) {
+        console.log("✅ Relatórios carregados com sucesso do banco de dados")
+        console.log("🔍 Primeiro relatório:", relatoriosDiretos[0])
+
+        // Para cada relatório, buscar colaboradores e notas relacionadas
+        const relatoriosCompletos = await Promise.all(
+          relatoriosDiretos.map(async (relatorio: any) => {
+            let colaboradores: string[] = []
+            let notas: any[] = []
+
+            console.log(`🔍 Processando relatório: ${relatorio.id} - ${relatorio.nome}`)
+
+            try {
+              // 1. Buscar colaboradores do relatório
+              console.log(`🔍 Buscando colaboradores para relatório ${relatorio.id}...`)
+              const { data: colaboradoresData, error: colaboradoresError } = await supabase
+                .from('relatorio_colaboradores')
+                .select(`
+                  user_id,
+                  users!inner(nome)
+                `)
+                .eq('relatorio_id', relatorio.id)
+
+              console.log(`🔍 Resultado busca colaboradores:`, { colaboradoresData, colaboradoresError })
+
+              if (!colaboradoresError && colaboradoresData && colaboradoresData.length > 0) {
+                colaboradores = colaboradoresData.map((col: any) => col.users?.nome || 'Colaborador sem nome')
+                console.log(`✅ Relatório ${relatorio.id} tem ${colaboradores.length} colaboradores:`, colaboradores)
+              } else {
+                console.log(`⚠️ Relatório ${relatorio.id} não tem colaboradores ou erro:`, colaboradoresError)
+
+                // Tentar busca alternativa sem inner join
+                console.log(`🔍 Tentando busca alternativa de colaboradores...`)
+                const { data: colaboradoresAlt, error: colaboradoresAltError } = await supabase
+                  .from('relatorio_colaboradores')
+                  .select('user_id')
+                  .eq('relatorio_id', relatorio.id)
+
+                if (!colaboradoresAltError && colaboradoresAlt && colaboradoresAlt.length > 0) {
+                  console.log(`🔍 IDs de colaboradores encontrados:`, colaboradoresAlt.map(c => c.user_id))
+
+                  // Buscar nomes dos usuários individualmente
+                  const nomesColaboradores = await Promise.all(
+                    colaboradoresAlt.map(async (col: any) => {
+                      const { data: userData, error: userError } = await supabase
+                        .from('users')
+                        .select('nome')
+                        .eq('id', col.user_id)
+                        .single()
+
+                      if (!userError && userData) {
+                        return userData.nome
+                      } else {
+                        console.log(`⚠️ Erro ao buscar usuário ${col.user_id}:`, userError)
+                        return 'Colaborador sem nome'
+                      }
+                    })
+                  )
+
+                  colaboradores = nomesColaboradores.filter((nome): nome is string => typeof nome === 'string')
+                  console.log(`✅ Colaboradores encontrados via busca alternativa:`, colaboradores)
+                } else {
+                  // Se não encontrar colaboradores na tabela relatorio_colaboradores, 
+                  // tentar usar os colaboradores armazenados diretamente no relatório
+                  console.log(`🔍 Tentando usar colaboradores armazenados no relatório...`)
+                  if (relatorio.colaboradores && Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0) {
+                    colaboradores = relatorio.colaboradores
+                    console.log(`✅ Colaboradores encontrados no relatório:`, colaboradores)
+                  } else {
+                    console.log(`⚠️ Nenhum colaborador encontrado para relatório ${relatorio.id}`)
+                    colaboradores = []
+                  }
+                }
+              }
+
+              // 2. Buscar as notas relacionadas ao relatório
+              console.log(`🔍 Buscando notas para relatório ${relatorio.id}...`)
+              const { data: relatorioNotasData, error: relatorioNotasError } = await supabase
+                .from('relatorio_notas')
+                .select('nota_fiscal_id')
+                .eq('relatorio_id', relatorio.id)
+
+              console.log(`🔍 Resultado busca relatorio_notas:`, { relatorioNotasData, relatorioNotasError })
+
+              if (!relatorioNotasError && relatorioNotasData && relatorioNotasData.length > 0) {
+                const notaIds = relatorioNotasData.map((rn: any) => rn.nota_fiscal_id)
+                console.log(`✅ Relatório ${relatorio.id} tem ${notaIds.length} notas relacionadas:`, notaIds)
+
+                if (notaIds.length > 0) {
+                  // 3. Buscar os detalhes das notas fiscais
+                  console.log(`🔍 Buscando detalhes das notas fiscais...`)
+                  const { data: notasData, error: notasError } = await supabase
+                    .from('notas_fiscais')
+                    .select('*')
+                    .in('id', notaIds)
+
+                  console.log(`🔍 Resultado busca notas_fiscais:`, { notasData, notasError })
+
+                  if (!notasError && notasData) {
+                    console.log(`✅ Notas fiscais carregadas para relatório ${relatorio.id}:`, notasData.length)
+                    console.log(`🔍 Dados das notas:`, notasData)
+
+                    // 4. Para cada nota, buscar divergências se houver
+                    const notasComDivergencias = await Promise.all(
+                      notasData.map(async (nota: any) => {
+                        let divergencia = null
+
+                        // Buscar divergência da nota
+                        const { data: divergenciaData, error: divergenciaError } = await supabase
+                          .from('divergencias')
+                          .select('*')
+                          .eq('nota_fiscal_id', nota.id)
+                          .single()
+
+                        if (!divergenciaError && divergenciaData) {
+                          divergencia = {
+                            volumesInformados: divergenciaData.volumes_informados,
+                            observacoes: divergenciaData.observacoes
+                          }
+                        }
+
+                        return {
+                          id: nota.id,
+                          numeroNF: nota.numero_nf || nota.codigo_completo,
+                          volumes: nota.volumes || 0,
+                          destino: nota.destino || 'Não informado',
+                          fornecedor: nota.fornecedor || 'Não informado',
+                          clienteDestino: nota.cliente_destino || 'Não informado',
+                          status: divergencia ? 'divergencia' : 'ok',
+                          divergencia: divergencia
+                        }
+                      })
+                    )
+
+                    notas = notasComDivergencias
+                    console.log(`✅ Notas processadas para relatório ${relatorio.id}:`, notas.length)
+                  } else {
+                    console.log(`⚠️ Erro ao buscar notas fiscais:`, notasError)
+                    notas = []
+                  }
+                } else {
+                  console.log(`⚠️ Nenhum ID de nota válido encontrado`)
+                  notas = []
+                }
+              } else {
+                console.log(`⚠️ Relatório ${relatorio.id} não tem notas relacionadas ou erro:`, relatorioNotasError)
+                notas = []
+              }
+
+            } catch (error) {
+              console.error(`❌ Erro ao processar relatório ${relatorio.id}:`, error)
+              colaboradores = []
+              notas = []
+            }
+
+            // Mapear os dados para garantir compatibilidade
+            const relatorioCompleto = {
+              id: relatorio.id,
+              nome: relatorio.nome || 'Relatório sem nome',
+              colaboradores: colaboradores,
+              data: relatorio.data,
+              turno: relatorio.turno || 'Não informado',
+              area: relatorio.area || 'custos',
+              quantidadeNotas: relatorio.quantidade_notas || 0,
+              somaVolumes: relatorio.soma_volumes || 0,
+              notas: notas,
+              dataFinalizacao: relatorio.data_finalizacao || new Date().toISOString(),
+              status: relatorio.status || 'liberado',
+            }
+
+            console.log(`✅ Relatório completo processado:`, relatorioCompleto)
+            console.log(`🔍 Colaboradores no relatório completo:`, relatorioCompleto.colaboradores)
+            console.log(`🔍 Notas no relatório completo:`, relatorioCompleto.notas)
+            return relatorioCompleto
+          })
+        )
+
+        console.log("✅ Relatórios completos carregados com sucesso:", relatoriosCompletos.length)
+        console.log("🔍 Primeiro relatório completo:", relatoriosCompletos[0])
+        setRelatorios(relatoriosCompletos)
+        setFonteDados('banco')
+        return
+      } else {
+        console.log("⚠️ Nenhum relatório encontrado no banco")
         setRelatorios([])
         setFonteDados('banco')
-        return
       }
-      
-      // Se não é um array, algo deu errado
-      console.warn("⚠️ Relatórios não são um array:", typeof relatoriosCarregados)
-      setRelatorios([])
-      setFonteDados('nenhuma')
-      
+
     } catch (error) {
       console.error("❌ Erro ao carregar relatórios do banco:", error)
-      
+
       // Tentar carregar do localStorage como último recurso
       console.log("⚠️ Tentando carregar do localStorage como fallback...")
-      
+
       try {
         const relatoriosLocal = await carregarRelatoriosLocalStorage()
         if (relatoriosLocal.length > 0) {
@@ -336,13 +465,13 @@ export default function CustosPage() {
   const carregarRelatoriosLocalStorage = async (): Promise<any[]> => {
     const chaveRelatorios = "relatorios_custos"
     const chaveRelatoriosLocal = "relatorios_local"
-    
+
     console.log("📁 Verificando localStorage...")
     console.log("📁 Chave localStorage (custos):", chaveRelatorios)
     console.log("📁 Chave localStorage (local):", chaveRelatoriosLocal)
-    
+
     let relatoriosParaUsar: any[] = []
-    
+
     try {
       const relatoriosSalvos = localStorage.getItem(chaveRelatorios)
       if (relatoriosSalvos) {
@@ -355,7 +484,7 @@ export default function CustosPage() {
     } catch (error) {
       console.error("❌ Erro ao parsear relatórios custos:", error)
     }
-    
+
     try {
       const relatoriosLocal = localStorage.getItem(chaveRelatoriosLocal)
       if (relatoriosLocal) {
@@ -368,12 +497,12 @@ export default function CustosPage() {
     } catch (error) {
       console.error("❌ Erro ao parsear relatórios local:", error)
     }
-    
+
     // Remover duplicatas por ID
     const relatoriosUnicos = Array.from(
       new Map(relatoriosParaUsar.map(r => [r.id, r])).values()
     )
-    
+
     console.log("📊 Total de relatórios únicos do localStorage:", relatoriosUnicos.length)
     return relatoriosUnicos
   }
@@ -432,15 +561,16 @@ export default function CustosPage() {
 
   const copiarRelatorioCompleto = (relatorio: Relatorio) => {
     const cabecalho = `RELATÓRIO: ${relatorio.nome}
-COLABORADOR: ${relatorio.colaboradores}
-DATA: ${relatorio.data} - TURNO: ${relatorio.turno}
+COLABORADOR: ${Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
+        ? relatorio.colaboradores.join(', ')
+        : 'Não informado'}
+DATA: ${relatorio.data}
 TOTAL NOTAS: ${relatorio.quantidadeNotas}
 TOTAL VOLUMES: ${relatorio.somaVolumes}
-FINALIZADO EM: ${new Date(relatorio.dataFinalizacao).toLocaleString("pt-BR")}
+STATUS: ${relatorio.status}
+LIBERADO EM: ${new Date(relatorio.dataFinalizacao).toLocaleString("pt-BR")}
 
-DETALHAMENTO:
-NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
-`;
+NOTAS FISCAIS:`
 
     const detalhes = relatorio.notas
       .map((nota) => {
@@ -544,8 +674,9 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
   const colaboradoresUnicos = [
     ...new Set(
       (relatorios || [])
-        .filter(rel => rel && rel.colaboradores && Array.isArray(rel.colaboradores))
-        .map((rel) => rel.colaboradores.join(', '))
+        .filter(rel => rel && rel.colaboradores && Array.isArray(rel.colaboradores) && rel.colaboradores.length > 0)
+        .flatMap((rel) => rel.colaboradores)
+        .filter(colab => colab && colab.trim() !== '') // Filtrar valores vazios
     ),
   ];
 
@@ -558,13 +689,11 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
       "Destino",
       "Fornecedor",
       "Cliente Destino",
-      "Tipo Carga",
       "Status",
       "Divergência Tipo",
       "Divergência Descrição",
       "Volumes Informados",
       "Data",
-      "Turno",
       "Colaborador",
     ].join(",");
 
@@ -572,8 +701,8 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
     const linhas = relatorio.notas.map((nota) => {
       const volumes = nota.divergencia?.volumesInformados || nota.volumes;
       const status = nota.status === "ok" ? "OK" : "DIVERGÊNCIA";
-              const divergenciaTipo = nota.divergencia?.observacoes || "";
-        const divergenciaDescricao = nota.divergencia?.observacoes || "";
+      const divergenciaTipo = nota.divergencia?.observacoes || "";
+      const divergenciaDescricao = nota.divergencia?.observacoes || "";
       const volumesInformados = nota.divergencia?.volumesInformados || "";
 
       return [
@@ -582,14 +711,14 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
         nota.destino,
         nota.fornecedor,
         nota.clienteDestino,
-        nota.tipoCarga,
         status,
         divergenciaTipo,
         divergenciaDescricao,
         volumesInformados,
         relatorio.data,
-        relatorio.turno,
-        Array.isArray(relatorio.colaboradores) ? relatorio.colaboradores.join(', ') : relatorio.colaboradores,
+        Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
+          ? relatorio.colaboradores.join(', ')
+          : 'Não informado',
       ].join(",");
     });
 
@@ -611,7 +740,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
   // Função para exportar todos os relatórios filtrados
   const exportarTodosRelatoriosExcel = () => {
     const relatoriosParaExportar = relatoriosFiltradosPorData;
-    
+
     if (relatoriosParaExportar.length === 0) {
       alert("Nenhum relatório encontrado para exportar.");
       return;
@@ -622,13 +751,11 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
       "Relatório",
       "Colaborador",
       "Data",
-      "Turno",
       "NF",
       "Volumes",
       "Destino",
       "Fornecedor",
       "Cliente Destino",
-      "Tipo Carga",
       "Status",
       "Divergência Tipo",
       "Divergência Descrição",
@@ -647,15 +774,15 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
 
         return [
           relatorio.nome,
-          Array.isArray(relatorio.colaboradores) ? relatorio.colaboradores.join(', ') : relatorio.colaboradores,
+          Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
+            ? relatorio.colaboradores.join(', ')
+            : relatorio.colaboradores,
           relatorio.data,
-          relatorio.turno,
           nota.numeroNF,
           volumes,
           nota.destino,
           nota.fornecedor,
           nota.clienteDestino,
-          nota.tipoCarga,
           status,
           divergenciaTipo,
           divergenciaDescricao,
@@ -683,34 +810,61 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
   // Filtrar relatórios por texto
   const relatoriosFiltradosPorTexto = (relatorios || []).filter((relatorio) => {
     if (!filtroTexto || !relatorio) return true;
-    
+
     const texto = filtroTexto.toLowerCase();
-    
+
     // Verificar nome
     const nomeMatch = relatorio.nome && relatorio.nome.toLowerCase().includes(texto);
-    
+
     // Verificar colaboradores (sempre é array conforme interface)
-    const colaboradoresMatch = relatorio.colaboradores && Array.isArray(relatorio.colaboradores) && 
+    const colaboradoresMatch = relatorio.colaboradores && Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0 &&
       relatorio.colaboradores.some(col => col && col.toLowerCase().includes(texto));
-    
+
     // Verificar área
     const areaMatch = relatorio.area && relatorio.area.toLowerCase().includes(texto);
-    
+
     // Verificar status
     const statusMatch = relatorio.status && relatorio.status.toLowerCase().includes(texto);
-    
+
     return nomeMatch || colaboradoresMatch || areaMatch || statusMatch;
   });
 
-  // Filtrar relatórios por data
-  const relatoriosFiltradosPorData = relatoriosFiltradosPorTexto.filter((relatorio) => {
-    if (!filtroDataInicio && !filtroDataFim || !relatorio) return true;
+  // Filtrar relatórios por colaborador e NF
+  const relatoriosFiltradosPorColaboradorENF = relatoriosFiltradosPorTexto.filter((relatorio) => {
+    if (filtroColaborador === "todos" || !relatorio) return true;
+
+    const termo = filtroColaborador.toLowerCase().trim();
     
+    // Verificar se é um número (possivelmente NF)
+    const isNumero = /^\d+$/.test(termo);
+    
+    if (isNumero) {
+      // Buscar por NF
+      if (Array.isArray(relatorio.notas) && relatorio.notas.length > 0) {
+        return relatorio.notas.some(nota => 
+          nota.numeroNF && nota.numeroNF.includes(termo)
+        );
+      }
+      return false;
+    } else {
+      // Buscar por colaborador
+      if (relatorio.colaboradores && Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0) {
+        const relColaboradores = relatorio.colaboradores.join(', ');
+        return relColaboradores === filtroColaborador;
+      }
+      return false;
+    }
+  });
+
+  // Filtrar relatórios por data
+  const relatoriosFiltradosPorData = relatoriosFiltradosPorColaboradorENF.filter((relatorio) => {
+    if (!filtroDataInicio && !filtroDataFim || !relatorio) return true;
+
     try {
       const dataRelatorio = new Date(relatorio.data);
       const dataInicio = filtroDataInicio ? new Date(filtroDataInicio) : null;
       const dataFim = filtroDataFim ? new Date(filtroDataFim) : null;
-      
+
       if (dataInicio && dataFim) {
         return dataRelatorio >= dataInicio && dataRelatorio <= dataFim;
       } else if (dataInicio) {
@@ -722,7 +876,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
       console.error("❌ Erro ao processar data do relatório:", error)
       return true; // Em caso de erro, incluir o relatório
     }
-    
+
     return true;
   });
 
@@ -731,10 +885,10 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
     filtroColaborador === "todos"
       ? relatoriosFiltradosPorData
       : relatoriosFiltradosPorData.filter((rel) => {
-          if (!rel || !rel.colaboradores || !Array.isArray(rel.colaboradores)) return false;
-          const relColaboradores = rel.colaboradores.join(', ');
-          return relColaboradores === filtroColaborador;
-        });
+        if (!rel || !rel.colaboradores || !Array.isArray(rel.colaboradores) || rel.colaboradores.length === 0) return false;
+        const relColaboradores = rel.colaboradores.join(', ');
+        return relColaboradores === filtroColaborador;
+      });
 
   const alterarStatusRelatorio = async (relatorioId: string, novoStatus: string) => {
     const relatoriosAtualizados = relatorios.map((rel) =>
@@ -742,13 +896,13 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
     )
 
     setRelatorios(relatoriosAtualizados)
-    
+
     try {
       // Salvar no banco de dados
       const relatorioAtualizado = relatoriosAtualizados.find(rel => rel.id === relatorioId)
       if (relatorioAtualizado) {
         await saveRelatorio(relatorioAtualizado)
-        
+
         // Disparar evento em tempo real
         addRealtimeEvent({
           id: Date.now().toString(),
@@ -803,9 +957,11 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
             <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
               <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600 sm:flex-none">
                 <div className="flex items-center gap-1 text-gray-600">
-                  <User className="h-3 w-3 sm:h-4 sm:w-4 text-orange-600" />
+                  <User className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
                   <span className="font-medium truncate text-xs sm:text-sm">
-                    {sessionData.usuarioCustos || (sessionData.colaboradores && Array.isArray(sessionData.colaboradores) ? sessionData.colaboradores[0] : sessionData.colaboradores) || "Usuário"}
+                    {Array.isArray(sessionData.colaboradores) && sessionData.colaboradores.length > 0
+                      ? sessionData.colaboradores.join(', ')
+                      : 'Não informado'}
                   </span>
                 </div>
                 <div className="flex items-center space-x-4 text-xs text-gray-500">
@@ -815,23 +971,12 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                   </div>
                 </div>
               </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={recarregarRelatoriosBanco}
-                className="flex items-center space-x-2 bg-transparent hover:bg-orange-50 border-orange-200 mr-2"
-                title="Recarregar relatórios do banco de dados"
-              >
-                <RefreshCw className="h-4 w-4" />
-                <span>Recarregar</span>
-              </Button>
-              
+              <ConnectionStatus/>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleLogout}
-                className="flex items-center space-x-2 bg-transparent hover:bg-orange-50 border-orange-200"
+                className="flex items-center space-x-2 bg-transparent hover:bg-blue-50 border-blue-200"
               >
                 <LogOut className="h-4 w-4" />
                 <span>Sair</span>
@@ -843,16 +988,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Status do Banco de Dados */}
-        <div className="mb-6">
-          <Alert className="bg-blue-50 border-blue-200">
-            <Database className="h-4 w-4 text-blue-600" />
-            <AlertDescription className="text-blue-800 flex items-center justify-between">
-              <span><strong>Status da conexão com o banco de dados</strong></span>
-              <ConnectionStatus />
-            </AlertDescription>
-          </Alert>
-        </div>
+       
         {/* Estatísticas */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
           <Card className="border-orange-200">
@@ -906,8 +1042,8 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-900">
-            Relatórios Finalizados
-          </h2>
+              Relatórios Liberados
+            </h2>
 
             {/* Botão de Exportar Todos */}
             {relatoriosFiltrados.length > 0 && (
@@ -931,27 +1067,16 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Filtro de colaborador */}
+              {/* Filtro de texto geral */}
               <div>
-                <Label className="text-sm">Colaborador</Label>
-            <Select
-              value={filtroColaborador}
-              onValueChange={setFiltroColaborador}
-            >
-                  <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os Colaboradores</SelectItem>
-                {colaboradoresUnicos.map((colaborador) => (
-                  <SelectItem key={colaborador} value={colaborador}>
-                    {colaborador}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
+                <Label className="text-sm">Buscar por texto</Label>
+                <Input
+                  placeholder="Transportadora, colaborador, área..."
+                  value={filtroTexto}
+                  onChange={(e) => setFiltroTexto(e.target.value)}
+                  className="w-full"
+                />
+              </div>
               {/* Filtro de data início */}
               <div>
                 <Label className="text-sm">Data Início</Label>
@@ -978,6 +1103,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
               <div className="flex items-end">
                 <Button
                   onClick={() => {
+                    setFiltroTexto("");
                     setFiltroColaborador("todos");
                     setFiltroDataInicio("");
                     setFiltroDataFim("");
@@ -992,10 +1118,11 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
             </div>
 
             {/* Resumo dos filtros aplicados */}
-            {(filtroColaborador !== "todos" || filtroDataInicio || filtroDataFim) && (
+            {(filtroTexto || filtroColaborador !== "todos" || filtroDataInicio || filtroDataFim) && (
               <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
                 <span className="font-medium">Filtros ativos:</span>
-                {filtroColaborador !== "todos" && ` Colaborador: ${filtroColaborador}`}
+                {filtroTexto && ` Texto: "${filtroTexto}"`}
+                {filtroColaborador !== "todos" && ` Colaborador/NF: "${filtroColaborador}"`}
                 {filtroDataInicio && ` Data início: ${filtroDataInicio}`}
                 {filtroDataFim && ` Data fim: ${filtroDataFim}`}
                 <span className="ml-2">({relatoriosFiltrados.length} relatórios encontrados)</span>
@@ -1011,12 +1138,12 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                   Nenhum relatório encontrado
                 </h3>
                 <p className="mb-4">
-                  {relatorios.length === 0 
-                    ? fonteDados === 'banco' 
+                  {relatorios.length === 0
+                    ? fonteDados === 'banco'
                       ? "Nenhum relatório encontrado no banco de dados."
                       : fonteDados === 'localStorage'
-                      ? "Nenhum relatório encontrado no localStorage."
-                      : "Nenhum relatório disponível. Verifique a conexão com o banco."
+                        ? "Nenhum relatório encontrado no localStorage."
+                        : "Nenhum relatório disponível. Verifique a conexão com o banco."
                     : "Tente ajustar os filtros aplicados."
                   }
                 </p>
@@ -1053,19 +1180,18 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                         </span>
                       </div>
                       <Badge
-                        className={`text-xs ${
-                          relatorio.status === "lancado"
+                        className={`text-xs ${relatorio.status === "lancado"
                             ? "bg-green-100 text-green-800"
                             : relatorio.status === "em_lancamento"
-                            ? "bg-blue-100 text-blue-800"
-                            : "bg-orange-100 text-orange-800"
-                        }`}
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-orange-100 text-orange-800"
+                          }`}
                       >
                         {relatorio.status === "lancado"
                           ? "Lançado"
                           : relatorio.status === "em_lancamento"
-                          ? "Em Lançamento"
-                          : "Finalizado"}
+                            ? "Em Lançamento"
+                            : "Liberado"}
                       </Badge>
                     </div>
                   </CardHeader>
@@ -1075,13 +1201,13 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                       <div>
                         <div className="text-gray-600">Colaborador</div>
                         <div className="font-medium">
-                          {Array.isArray(relatorio.colaboradores) 
-                            ? relatorio.colaboradores.join(', ') 
-                            : relatorio.colaboradores}
+                          {Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
+                            ? relatorio.colaboradores.join(', ')
+                            : 'Não informado'}
                         </div>
                       </div>
                       <div>
-                        <div className="text-gray-600">Data/Turno</div>
+                        <div className="text-gray-600">Data</div>
                         <div className="font-medium">
                           {relatorio.data} - {relatorio.turno}
                         </div>
@@ -1104,9 +1230,9 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                       <div className="text-center">
                         <div className="text-lg font-bold text-red-600">
                           {
-                            relatorio.notas.filter(
-                              (n) => n.status === "divergencia"
-                            ).length
+                            Array.isArray(relatorio.notas)
+                              ? relatorio.notas.filter((n) => n.status === "divergencia").length
+                              : 0
                           }
                         </div>
                         <div className="text-xs text-gray-500">
@@ -1116,7 +1242,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                     </div>
 
                     <div className="text-xs text-gray-500">
-                      Finalizado em:{" "}
+                      Liberado em:{" "}
                       {new Date(relatorio.dataFinalizacao).toLocaleString(
                         "pt-BR"
                       )}
@@ -1165,12 +1291,14 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                                   Colaborador
                                 </div>
                                 <div className="font-medium">
-                                  {relatorio.colaboradores}
+                                  {Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
+                                    ? relatorio.colaboradores.join(', ') 
+                                    : 'Não informado'}
                                 </div>
                               </div>
                               <div>
                                 <div className="text-sm text-gray-600">
-                                  Data/Turno
+                                  Data
                                 </div>
                                 <div className="font-medium">
                                   {relatorio.data} - {relatorio.turno}
@@ -1178,7 +1306,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                               </div>
                               <div>
                                 <div className="text-sm text-gray-600">
-                                  Finalizado em
+                                  Liberado em
                                 </div>
                                 <div className="font-medium text-xs">
                                   {new Date(
@@ -1219,24 +1347,24 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                               {notasFiltradas.some(
                                 (n) => n.status === "divergencia"
                               ) && (
-                                <Button
-                                  onClick={() =>
-                                    copiarDivergencias(notasFiltradas)
-                                  }
-                                  variant="outline"
-                                  className="bg-red-50 hover:bg-red-100 border-red-200 text-red-700"
-                                  size="sm"
-                                >
-                                  <Copy className="h-4 w-4 mr-2" />
-                                  Copiar Divergências (
-                                  {
-                                    notasFiltradas.filter(
-                                      (n) => n.status === "divergencia"
-                                    ).length
-                                  }
-                                  )
-                                </Button>
-                              )}
+                                  <Button
+                                    onClick={() =>
+                                      copiarDivergencias(notasFiltradas)
+                                    }
+                                    variant="outline"
+                                    className="bg-red-50 hover:bg-red-100 border-red-200 text-red-700"
+                                    size="sm"
+                                  >
+                                    <Copy className="h-4 w-4 mr-2" />
+                                    Copiar Divergências (
+                                    {
+                                      notasFiltradas.filter(
+                                        (n) => n.status === "divergencia"
+                                      ).length
+                                    }
+                                    )
+                                  </Button>
+                                )}
                               <Button
                                 onClick={() =>
                                   copiarRelatorioCompleto(relatorio)
@@ -1248,7 +1376,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                                 <Copy className="h-4 w-4 mr-2" />
                                 Copiar Relatório Completo
                               </Button>
-                              
+
                               {/* Novo botão de exportar Excel */}
                               <Button
                                 onClick={() => exportarRelatorioExcel(relatorio)}
@@ -1359,7 +1487,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
 
                               <div className="text-sm text-gray-600">
                                 Mostrando {notasFiltradas.length} de{" "}
-                                {relatorio.notas.length} notas
+                                {Array.isArray(relatorio.notas) ? relatorio.notas.length : 0} notas
                               </div>
                             </div>
 
@@ -1379,11 +1507,10 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                                 {notasFiltradas.map((nota, index) => (
                                   <div
                                     key={nota.id}
-                                    className={`px-4 py-2 grid grid-cols-8 gap-4 text-sm ${
-                                      index % 2 === 0
+                                    className={`px-4 py-2 grid grid-cols-7 gap-4 text-sm ${index % 2 === 0
                                         ? "bg-white"
                                         : "bg-gray-50"
-                                    }`}
+                                      }`}
                                   >
                                     <div className="font-medium">
                                       {nota.numeroNF}
@@ -1393,10 +1520,10 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                                         nota.volumes}
                                       {nota.divergencia?.volumesInformados !==
                                         nota.volumes && (
-                                        <span className="text-orange-600 text-xs ml-1">
-                                          (era {nota.volumes})
-                                        </span>
-                                      )}
+                                          <span className="text-orange-600 text-xs ml-1">
+                                            (era {nota.volumes})
+                                          </span>
+                                        )}
                                     </div>
                                     <div className="text-xs">
                                       {nota.destino}
@@ -1412,9 +1539,6 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                                       title={nota.clienteDestino}
                                     >
                                       {nota.clienteDestino}
-                                    </div>
-                                    <div className="text-xs">
-                                      {nota.tipoCarga}
                                     </div>
                                     <div className="flex items-center">
                                       {nota.status === "ok" ? (
@@ -1441,7 +1565,7 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                                     </div>
                                   </div>
                                 ))}
-                                <div className="bg-orange-50 px-4 py-2 grid grid-cols-8 gap-4 text-sm font-bold text-orange-800">
+                                <div className="bg-orange-50 px-4 py-2 grid grid-cols-7 gap-4 text-sm font-bold text-orange-800">
                                   <div className="col-span-1">Total:</div>
                                   <div className="text-center">
                                     {notasFiltradas.reduce(
@@ -1450,12 +1574,9 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                                         (nota.divergencia?.volumesInformados ||
                                           nota.volumes),
                                       0
-                                    )} volumes
+                                    )}
                                   </div>
-                                  <div className="col-span-2 text-center text-xs">
-                                    ({notasFiltradas.length} notas)
-                                  </div>
-                                  <div className="col-span-4"></div>
+                                  <div className="col-span-5"></div>
                                 </div>
                               </div>
                             </ScrollArea>
@@ -1466,9 +1587,10 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
                       {/* Adicionar botões de status */}
                       <Button
                         onClick={() =>
-                          alterarStatusRelatorio(relatorio.id, "em_lancamento")
+                          relatorio.id && alterarStatusRelatorio(relatorio.id, "em_lancamento")
                         }
                         disabled={
+                          !relatorio.id ||
                           relatorio.status === "em_lancamento" ||
                           relatorio.status === "lancado"
                         }
@@ -1481,9 +1603,9 @@ NF|VOLUMES|DESTINO|FORNECEDOR|STATUS|DIVERGÊNCIA
 
                       <Button
                         onClick={() =>
-                          alterarStatusRelatorio(relatorio.id, "lancado")
+                          relatorio.id && alterarStatusRelatorio(relatorio.id, "lancado")
                         }
-                        disabled={relatorio.status === "lancado"}
+                        disabled={!relatorio.id || relatorio.status === "lancado"}
                         variant="outline"
                         className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
                         size="sm"

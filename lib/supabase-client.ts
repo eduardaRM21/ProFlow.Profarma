@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
 // Verificar variáveis de ambiente
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://auiidcxarcjjxvyswwhf.supabase.co'
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1aWlkY3hhcmNqanh2eXN3d2hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMjcxNjAsImV4cCI6MjA2ODkwMzE2MH0.KCMuEq5p1UHtZp-mJc5RKozEyWhpZg8J023lODrr3rY'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vzqibndtoitnppvgkekc.supabase.co'
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6cWlibmR0b2l0bnBwdmdrZWtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3NzE1NjEsImV4cCI6MjA3MDM0NzU2MX0.-AJddOkbqLzOYY4x5CJjYb9N4TQFk2_67Z8ARVu9AbI'
 
 console.log('🔧 Configuração do Supabase:', { url: supabaseUrl, key: supabaseKey ? '***' : 'undefined' })
 

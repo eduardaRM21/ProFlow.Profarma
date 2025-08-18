@@ -1,4 +1,5 @@
 import { getSupabase, retryWithBackoff, testSupabaseConnection } from './supabase-client'
+import { convertDateToISO } from './utils'
 
 // Tipos de dados
 export interface SessionData {
@@ -40,7 +41,7 @@ export interface Carro {
 }
 
 export interface Relatorio {
-  id: string
+  id?: string
   nome: string
   colaboradores: string[]
   data: string
@@ -108,11 +109,18 @@ export const SessionService = {
       // Gerar ID único para a sessão baseado na área, data, turno e timestamp
       const sessionId = `session_${sessionData.area}_${sessionData.data.replace(/\//g, '-')}_${sessionData.turno}_${Date.now()}`
       
+      // Converter data para formato ISO se estiver no formato brasileiro
+      let dataFormatada = sessionData.data
+      if (sessionData.data && sessionData.data.includes('/')) {
+        dataFormatada = convertDateToISO(sessionData.data)
+        console.log('📅 Data da sessão convertida de', sessionData.data, 'para', dataFormatada)
+      }
+      
       // Preparar dados para o banco
       const sessionPayload = {
         id: sessionId,
         colaboradores: sessionData.colaboradores,
-        data: sessionData.data,
+        data: dataFormatada,
         turno: sessionData.turno,
         area: sessionData.area,
         login_time: sessionData.loginTime,
@@ -144,8 +152,12 @@ export const SessionService = {
   // Carregar sessão
   async getSession(sessionId: string): Promise<SessionData | null> {
     try {
+      console.log('🔍 SessionService.getSession chamado com sessionId:', sessionId)
       console.log('🔍 Tentando buscar sessão no banco...')
+      
       const isConnected = await testSupabaseConnection()
+      console.log('🌐 Status da conectividade:', { isConnected })
+      
       if (!isConnected) {
         console.log('⚠️ Sem conectividade com Supabase, usando fallback')
         return null
@@ -153,6 +165,7 @@ export const SessionService = {
       
       const knownAreas = ['recebimento', 'embalagem', 'inventario', 'custos']
       const filterByArea = knownAreas.includes(sessionId) // Check if sessionId is a known area
+      console.log('🔍 Filtro por área:', { sessionId, filterByArea, knownAreas })
 
       const { data, error } = await retryWithBackoff(async () => {
         let query = getSupabase()
@@ -162,9 +175,14 @@ export const SessionService = {
           .limit(1)
 
         if (filterByArea) { // Apply filter if it's a known area
+          console.log('🔍 Aplicando filtro por área:', sessionId)
           query = query.eq('area', sessionId)
         }
-        return await query.maybeSingle()
+        
+        console.log('🔍 Executando query...')
+        const result = await query.maybeSingle()
+        console.log('📊 Resultado da query:', result)
+        return result
       })
 
       if (error) {
@@ -177,14 +195,19 @@ export const SessionService = {
         return null
       }
 
-             console.log('✅ Sessão encontrada no banco:', data.area)
-       return {
-         colaboradores: data.colaboradores as string[],
-         data: data.data as string,
-         turno: data.turno as string,
-         area: data.area as string,
-         loginTime: data.login_time as string
-       }
+      console.log('✅ Sessão encontrada no banco:', data.area)
+      console.log('📊 Dados completos da sessão:', data)
+      
+      const sessionData = {
+        colaboradores: data.colaboradores as string[],
+        data: data.data as string,
+        turno: data.turno as string,
+        area: data.area as string,
+        loginTime: data.login_time as string
+      }
+      
+      console.log('📋 Sessão mapeada:', sessionData)
+      return sessionData
     } catch (error) {
       console.error('❌ Erro ao carregar sessão:', error)
       return null
@@ -476,60 +499,246 @@ export const RelatoriosService = {
   async saveRelatorio(relatorio: Relatorio): Promise<void> {
     try {
       console.log('💾 Tentando salvar relatório no banco...')
-      const { error } = await retryWithBackoff(async () => {
-        return await getSupabase()
-          .from('relatorios')
-          .upsert({ // Changed from .insert to .upsert
-            id: relatorio.id,
-            nome: relatorio.nome,
-            colaboradores: relatorio.colaboradores,
-            data: relatorio.data,
-            turno: relatorio.turno,
-            area: relatorio.area,
-            quantidade_notas: relatorio.quantidadeNotas,
-            soma_volumes: relatorio.somaVolumes,
-            notas: relatorio.notas,
-            data_finalizacao: relatorio.dataFinalizacao,
-            status: relatorio.status,
-            created_at: new Date().toISOString()
-          })
-      })
+      console.log('🔍 Dados do relatório recebido:', relatorio)
       
-      if (error) {
-        console.error('❌ Erro ao salvar relatório:', error)
-        
-        // Se for erro de recursos insuficientes, tentar novamente
-        if (error.message?.includes('insufficient') || error.message?.includes('resources')) {
-          console.log('⚠️ Recursos insuficientes, tentando novamente em 2 segundos...')
-          await new Promise(resolve => setTimeout(resolve, 2000))
-          
-          const { error: retryError } = await getSupabase()
-            .from('relatorios')
-            .upsert({
-              id: relatorio.id,
-              nome: relatorio.nome,
-              colaboradores: relatorio.colaboradores,
-              data: relatorio.data,
-              turno: relatorio.turno,
-              area: relatorio.area,
-              quantidade_notas: relatorio.quantidadeNotas,
-              soma_volumes: relatorio.somaVolumes,
-              notas: relatorio.notas,
-              data_finalizacao: relatorio.dataFinalizacao,
-              status: relatorio.status,
-              created_at: new Date().toISOString()
-            })
-          
-          if (retryError) {
-            console.error('❌ Erro na segunda tentativa:', retryError)
-            throw retryError
-          }
-        } else {
-          throw error
-        }
+      // Converter data para formato ISO se estiver no formato brasileiro
+      let dataFormatada = relatorio.data
+      if (relatorio.data && relatorio.data.includes('/')) {
+        dataFormatada = convertDateToISO(relatorio.data)
+        console.log('📅 Data convertida de', relatorio.data, 'para', dataFormatada)
       }
       
-      console.log('✅ Relatório salvo/atualizado com sucesso no banco')
+      const supabase = getSupabase()
+      console.log('🔍 Cliente Supabase obtido:', !!supabase)
+      
+      // 1. Salvar o relatório principal
+      console.log('🔍 Salvando relatório principal...')
+      const { data: relatorioData, error: relatorioError } = await retryWithBackoff(async () => {
+        const payload = {
+          nome: relatorio.nome,
+          data: dataFormatada,
+          turno: relatorio.turno,
+          area: relatorio.area,
+          quantidade_notas: relatorio.quantidadeNotas,
+          soma_volumes: relatorio.somaVolumes,
+          data_finalizacao: relatorio.dataFinalizacao,
+          status: relatorio.status,
+          created_at: new Date().toISOString()
+        }
+        
+        console.log('🔍 Payload do relatório:', payload)
+
+        if (relatorio.id) {
+          // Atualização - incluir ID e usar upsert
+          console.log('🔍 Atualizando relatório existente...')
+          return await supabase
+            .from('relatorios')
+            .upsert({ ...payload, id: relatorio.id })
+            .select()
+        } else {
+          // Novo relatório - não incluir ID, usar insert
+          console.log('🔍 Criando novo relatório...')
+          return await supabase
+            .from('relatorios')
+            .insert(payload)
+            .select()
+        }
+      })
+      
+      if (relatorioError) {
+        console.error('❌ Erro ao salvar relatório:', relatorioError)
+        throw relatorioError
+      }
+      
+      console.log('🔍 Relatório salvo, resposta:', relatorioData)
+      
+      // Obter o ID do relatório salvo
+      const relatorioId = relatorio.id || relatorioData?.[0]?.id
+      if (!relatorioId) {
+        throw new Error('Não foi possível obter o ID do relatório salvo')
+      }
+      
+      console.log('✅ Relatório principal salvo com ID:', relatorioId)
+      
+      // 2. Salvar colaboradores na tabela relatorio_colaboradores
+      if (relatorio.colaboradores && Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0) {
+        console.log('💾 Salvando colaboradores...')
+        console.log('🔍 Colaboradores recebidos:', relatorio.colaboradores)
+        
+        // Primeiro, buscar os IDs dos usuários pelos nomes
+        const colaboradoresIds = await Promise.all(
+          relatorio.colaboradores.map(async (nomeColaborador: string) => {
+            console.log(`🔍 Buscando usuário: ${nomeColaborador}`)
+            
+            // Buscar usuário pelo nome
+            const { data: userData, error: userError } = await supabase
+              .from('users')
+              .select('id')
+              .eq('nome', nomeColaborador)
+              .eq('area', 'recebimento')
+              .single()
+            
+            console.log(`🔍 Resultado busca usuário ${nomeColaborador}:`, { userData, userError })
+            
+            if (userError || !userData) {
+              console.log(`⚠️ Usuário não encontrado: ${nomeColaborador}, criando...`)
+              
+              // Criar usuário se não existir
+              const { data: newUser, error: createUserError } = await supabase
+                .from('users')
+                .insert({
+                  nome: nomeColaborador,
+                  area: 'recebimento',
+                  email: `${nomeColaborador.toLowerCase().replace(/\s+/g, '.')}@profarma.com`
+                })
+                .select()
+                .single()
+              
+              if (createUserError) {
+                console.error(`❌ Erro ao criar usuário ${nomeColaborador}:`, createUserError)
+                return null
+              }
+              
+              console.log(`✅ Usuário criado: ${nomeColaborador} com ID: ${newUser.id}`)
+              return newUser.id
+            }
+            
+            console.log(`✅ Usuário encontrado: ${nomeColaborador} com ID: ${userData.id}`)
+            return userData.id
+          })
+        )
+        
+        console.log('🔍 IDs dos colaboradores obtidos:', colaboradoresIds)
+        
+        // Filtrar IDs válidos
+        const idsValidos = colaboradoresIds.filter(id => id !== null)
+        console.log('🔍 IDs válidos filtrados:', idsValidos)
+        
+        if (idsValidos.length > 0) {
+          // Salvar relacionamentos na tabela relatorio_colaboradores
+          const colaboradoresRelacionamentos = idsValidos.map(userId => ({
+            relatorio_id: relatorioId,
+            user_id: userId
+          }))
+          
+          console.log('🔍 Relacionamentos a serem salvos:', colaboradoresRelacionamentos)
+          
+          const { error: colaboradoresError } = await supabase
+            .from('relatorio_colaboradores')
+            .insert(colaboradoresRelacionamentos)
+          
+          if (colaboradoresError) {
+            console.error('❌ Erro ao salvar colaboradores:', colaboradoresError)
+          } else {
+            console.log('✅ Colaboradores salvos:', colaboradoresRelacionamentos.length)
+          }
+        } else {
+          console.log('⚠️ Nenhum ID válido de colaborador encontrado')
+        }
+      } else {
+        console.log('⚠️ Nenhum colaborador para salvar ou formato inválido:', relatorio.colaboradores)
+      }
+      
+      // 3. Salvar notas na tabela relatorio_notas
+      if (relatorio.notas && Array.isArray(relatorio.notas) && relatorio.notas.length > 0) {
+        console.log('💾 Salvando notas...')
+        console.log('🔍 Notas recebidas:', relatorio.notas)
+        
+        // Salvar todas as notas na tabela notas_fiscais
+        const notasSalvas = await Promise.all(
+          relatorio.notas.map(async (nota: any, index: number) => {
+            console.log(`🔍 Processando nota ${index + 1}:`, nota)
+            
+            try {
+              // Sempre salvar a nota na tabela notas_fiscais
+              const { data: notaSalva, error: notaError } = await supabase
+                .from('notas_fiscais')
+                .insert({
+                  codigo_completo: nota.codigoCompleto || '',
+                  numero_nf: nota.numeroNF,
+                  data: dataFormatada,
+                  volumes: nota.volumes,
+                  destino: nota.destino,
+                  fornecedor: nota.fornecedor,
+                  cliente_destino: nota.clienteDestino,
+                  tipo_carga: nota.tipoCarga,
+                  status: nota.status || 'ok'
+                })
+                .select()
+                .single()
+              
+              if (notaError) {
+                console.error(`❌ Erro ao salvar nota fiscal ${index + 1}:`, notaError)
+                return null
+              }
+              
+              console.log(`✅ Nota fiscal ${index + 1} salva com ID: ${notaSalva.id}`)
+              return { ...nota, id: notaSalva.id }
+            } catch (error) {
+              console.error(`❌ Erro ao processar nota ${index + 1}:`, error)
+              return null
+            }
+          })
+        )
+        
+        console.log('🔍 Notas salvas na tabela notas_fiscais:', notasSalvas)
+        
+        // Filtrar notas válidas
+        const notasValidas = notasSalvas.filter(nota => nota !== null)
+        console.log('🔍 Notas válidas filtradas:', notasValidas)
+        
+        if (notasValidas.length > 0) {
+          // Salvar relacionamentos na tabela relatorio_notas
+          const notasRelacionamentos = notasValidas.map(nota => ({
+            relatorio_id: relatorioId,
+            nota_fiscal_id: nota.id
+          }))
+          
+          console.log('🔍 Relacionamentos de notas a serem salvos:', notasRelacionamentos)
+          
+          const { error: notasError } = await supabase
+            .from('relatorio_notas')
+            .insert(notasRelacionamentos)
+          
+          if (notasError) {
+            console.error('❌ Erro ao salvar relacionamentos de notas:', notasError)
+          } else {
+            console.log('✅ Relacionamentos de notas salvos:', notasRelacionamentos.length)
+          }
+          
+          // Salvar divergências se houver
+          const divergencias = notasValidas
+            .filter(nota => nota.divergencia)
+            .map(nota => ({
+              nota_fiscal_id: nota.id,
+              tipo: 'volumes',
+              descricao: 'Divergência de volumes',
+              volumes_informados: nota.divergencia.volumesInformados,
+              volumes_reais: nota.volumes,
+              observacoes: nota.divergencia.observacoes
+            }))
+          
+          if (divergencias.length > 0) {
+            console.log('🔍 Salvando divergências:', divergencias)
+            
+            const { error: divergenciasError } = await supabase
+              .from('divergencias')
+              .insert(divergencias)
+            
+            if (divergenciasError) {
+              console.error('❌ Erro ao salvar divergências:', divergenciasError)
+            } else {
+              console.log('✅ Divergências salvas:', divergencias.length)
+            }
+          }
+        } else {
+          console.log('⚠️ Nenhuma nota válida para salvar')
+        }
+      } else {
+        console.log('⚠️ Nenhuma nota para salvar ou formato inválido:', relatorio.notas)
+      }
+      
+      console.log('✅ Relatório completo salvo com sucesso no banco')
     } catch (error) {
       console.error('❌ Erro ao salvar relatório:', error)
       throw error
@@ -585,7 +794,7 @@ export const RelatoriosService = {
           somaVolumes: item.soma_volumes ?? 0,
           notas: item.notas ?? [],
           dataFinalizacao: item.data_finalizacao ?? new Date().toISOString(),
-          status: item.status ?? 'finalizado',
+          status: item.status ?? 'liberado',
         }))
         
         console.log('✅ Relatórios carregados do banco:', relatorios.length)
@@ -762,7 +971,7 @@ export const ChatService = {
               .eq('area', 'recebimento')
               .eq('data', data)
               .eq('turno', turno)
-              .eq('status', 'finalizado')
+              .eq('status', 'liberado')
           })
           
           if (!relatoriosError && relatoriosData && relatoriosData.length > 0) {
@@ -771,7 +980,7 @@ export const ChatService = {
             // Procurar pela NF em todos os relatórios
             for (const relatorio of relatoriosData) {
               if (relatorio.notas && Array.isArray(relatorio.notas)) {
-                console.log(`📋 Verificando relatório: ${relatorio.nome} (${relatorio.notas.length} NFs)`)
+                console.log(`�� Verificando relatório: ${relatorio.nome} (${relatorio.notas.length} NFs)`)
                 
                 // Procurar por diferentes formatos da NF
                 const nota = relatorio.notas.find((n: NotaFiscal) => 
@@ -813,7 +1022,7 @@ export const ChatService = {
               .from('relatorios')
               .select('*')
               .eq('area', 'recebimento')
-              .eq('status', 'finalizado')
+              .eq('status', 'liberado')
               .gte('data', dataFormatada)
               .order('data', { ascending: false })
               .limit(50) // Limitar a 50 relatórios para performance

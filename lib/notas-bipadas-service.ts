@@ -360,7 +360,12 @@ export class NotasBipadasService {
     notaRecebimento?: NotaBipada;
   }> {
     try {
+      console.log(`🔍 Validando NF ${numeroNF} no recebimento - Data: ${data || 'N/A'}, Turno: ${turno || 'N/A'}`)
+      
       const supabase = getSupabase();
+      
+      // Verificar se a tabela existe
+      console.log('🔍 Verificando conectividade com o banco...')
       
       // Buscar a NF no setor de recebimento
       let query = supabase
@@ -378,11 +383,24 @@ export class NotasBipadasService {
         query = query.eq('turno', turno);
       }
 
+      console.log(`🔍 Executando query: NF=${numeroNF}, Area=recebimento, Data=${data || 'N/A'}, Turno=${turno || 'N/A'}`)
+      
       const { data: notasRecebimento, error } = await query as { data: NotaBipada[] | null; error: any };
 
       if (error) {
-        console.error('❌ Erro ao validar NF no recebimento:', error);
-        throw error;
+        console.error('❌ Erro ao validar NF no recebimento:', {
+          error,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
+        
+        // Retornar erro em vez de propagar
+        return {
+          valida: false,
+          motivo: `Erro na consulta ao banco: ${error.message || 'Erro desconhecido'}`
+        };
       }
 
       // Se não encontrou nenhuma nota no recebimento
@@ -414,7 +432,13 @@ export class NotasBipadasService {
       };
 
     } catch (error) {
-      console.error('❌ Erro ao validar NF no recebimento:', error);
+      console.error('❌ Erro ao validar NF no recebimento:', {
+        error,
+        message: error instanceof Error ? error.message : 'Erro desconhecido',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      // Retornar erro estruturado em vez de propagar
       return {
         valida: false,
         motivo: `Erro ao validar NF no recebimento: ${error instanceof Error ? error.message : 'Erro desconhecido'}`

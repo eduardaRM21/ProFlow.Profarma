@@ -1,6 +1,7 @@
 import { getSupabase, retryWithBackoff } from './supabase-client'
 import { SessionService } from './database-service'
 import type { NotaFiscal, Carro } from './database-service'
+import { NotasBipadasService } from './notas-bipadas-service'
 
 // Interface para NF de embalagem
 export interface NFEmbalagem {
@@ -39,20 +40,52 @@ export const EmbalagemService = {
   // Validar NF para embalagem
   async validateNF(numeroNF: string, data: string, turno: string): Promise<{ valido: boolean; nota?: NotaFiscal; erro?: string }> {
     try {
-      console.log(`🔍 EmbalagemService: Validando NF ${numeroNF}`)
+      console.log(`🔍 EmbalagemService: Validando NF ${numeroNF} para embalagem`)
       
-      // Usar a função de validação do database-service
-      const resultado = await SessionService.validateNFForEmbalagem(numeroNF, data, turno)
+      // Buscar a NF em relatórios FINALIZADOS do recebimento usando o código completo
+      console.log(`🔍 Buscando NF ${numeroNF} em relatórios finalizados do recebimento...`)
       
-      if (resultado.valido && resultado.nota) {
-        console.log(`✅ NF ${numeroNF} validada com sucesso para embalagem`)
-        return resultado
+      const resultado = await this.buscarNFEmRelatoriosFinalizados(numeroNF, data, turno)
+      
+      console.log(`📋 Resultado da busca em relatórios finalizados:`, resultado)
+      
+      if (resultado.encontrada) {
+        console.log(`✅ NF ${numeroNF} encontrada em relatório finalizado: ${resultado.relatorio}`)
+        
+        // Converter para o formato esperado
+        const notaFiscal: NotaFiscal = {
+          id: `${Date.now()}-${numeroNF}`,
+          codigoCompleto: numeroNF,
+          data: resultado.dataRelatorio || data,
+          numeroNF: resultado.numeroNF || numeroNF,
+          volumes: resultado.volumes || 0,
+          destino: resultado.destino || '',
+          fornecedor: resultado.fornecedor || '',
+          clienteDestino: resultado.clienteDestino || '',
+          tipoCarga: resultado.tipoCarga || '',
+          timestamp: new Date().toISOString(),
+          status: 'ok'
+        }
+        
+        return { 
+          valido: true, 
+          nota: notaFiscal,
+          erro: undefined
+        }
       } else {
-        console.log(`❌ NF ${numeroNF} não validada: ${resultado.erro}`)
-        return resultado
+        console.log(`❌ NF ${numeroNF} não encontrada em relatórios finalizados: ${resultado.erro}`)
+        return { 
+          valido: false, 
+          nota: undefined,
+          erro: resultado.erro 
+        }
       }
     } catch (error) {
-      console.error('❌ Erro no EmbalagemService.validateNF:', error)
+      console.error('❌ Erro no EmbalagemService.validateNF:', {
+        error,
+        message: error instanceof Error ? error.message : 'Erro desconhecido',
+        stack: error instanceof Error ? error.stack : undefined
+      })
       return { 
         valido: false, 
         erro: `Erro interno na validação: ${error instanceof Error ? error.message : 'Erro desconhecido'}` 
@@ -124,6 +157,208 @@ export const EmbalagemService = {
     }
   },
 
+  // Buscar NF específica em relatórios FINALIZADOS do recebimento
+  async buscarNFEmRelatoriosFinalizados(codigoCompleto: string, data: string, turno: string): Promise<{ 
+    encontrada: boolean; 
+    relatorio?: string; 
+    dataRelatorio?: string; 
+    turnoRelatorio?: string;
+    numeroNF?: string;
+    volumes?: number;
+    destino?: string;
+    fornecedor?: string;
+    clienteDestino?: string;
+    tipoCarga?: string;
+    erro?: string;
+  }> {
+    try {
+      console.log(`🔍 Buscando NF com código ${codigoCompleto} em TODOS os relatórios finalizados`)
+      
+      // 1. Buscar em TODOS os relatórios de recebimento (sem restrição de data/turno)
+      console.log(`🔍 1. Buscando em todos os relatórios de recebimento...`)
+      
+      const { getSupabase, retryWithBackoff } = await import('./supabase-client')
+      
+      const { data: todosRelatoriosData, error: todosRelatoriosError } = await retryWithBackoff(async () => {
+        return await getSupabase()
+          .from('relatorios')
+          .select('*')
+          .eq('area', 'recebimento')
+          .in('status', ['finalizado', 'Liberado', 'liberado'])
+          .order('data', { ascending: false })
+          .limit(200)
+      })
+      
+      if (todosRelatoriosError) {
+        console.error('❌ Erro ao buscar todos os relatórios:', todosRelatoriosError)
+        return {
+          encontrada: false,
+          erro: `Erro ao buscar relatórios: ${todosRelatoriosError.message}`
+        }
+      }
+      
+      if (todosRelatoriosData && todosRelatoriosData.length > 0) {
+        console.log(`📋 Encontrados ${todosRelatoriosData.length} relatórios para busca ampliada`)
+        console.log(`📊 Primeiros 3 relatórios:`, todosRelatoriosData.slice(0, 3).map((r: any) => ({
+          nome: r.nome,
+          data: r.data,
+          turno: r.turno,
+          status: r.status,
+          quantidadeNotas: (r.notas as any[])?.length || 0
+        })))
+        
+        // Buscar em cada relatório pelo código completo
+        for (const relatorio of todosRelatoriosData) {
+          if (relatorio.notas && Array.isArray(relatorio.notas)) {
+            console.log(`🔍 Verificando relatório: ${relatorio.nome} (${relatorio.data} - ${relatorio.turno}) com ${relatorio.notas.length} NFs`)
+            
+            // Mostrar algumas NFs para debug
+            const primeirasNFs = relatorio.notas.slice(0, 3).map(nf => ({
+              numeroNF: nf.numeroNF,
+              codigoCompleto: nf.codigoCompleto?.substring(0, 50) + '...',
+              destino: nf.destino,
+              fornecedor: nf.fornecedor
+            }))
+            console.log(`📋 Primeiras NFs do relatório:`, primeirasNFs)
+            
+            // Buscar por código completo (match exato ou parcial)
+            const nfEncontrada = relatorio.notas.find((nf: any) => {
+              // Match por código completo
+              const matchCodigoCompleto = nf.codigoCompleto === codigoCompleto
+              const matchCodigoInclui = nf.codigoCompleto && nf.codigoCompleto.includes(codigoCompleto)
+              const matchCodigoInvertido = codigoCompleto.includes(nf.codigoCompleto)
+              
+              // Match por número da NF
+              const matchNumeroNF = nf.numeroNF === codigoCompleto
+              const matchNumeroInclui = nf.numeroNF && nf.numeroNF.includes(codigoCompleto)
+              
+              // Match por partes do código (destino, fornecedor, etc.)
+              const matchDestino = nf.destino && codigoCompleto.includes(nf.destino)
+              const matchFornecedor = nf.fornecedor && codigoCompleto.includes(codigoCompleto)
+              
+              // Debug de cada comparação
+              if (nf.numeroNF === '003274130' || codigoCompleto.includes('003274130')) {
+                console.log(`🎯 NF 003274130 encontrada! Comparando:`, {
+                  codigoCompleto,
+                  nfNumero: nf.numeroNF,
+                  nfCodigo: nf.codigoCompleto,
+                  matchCodigoCompleto, matchCodigoInclui, matchCodigoInvertido,
+                  matchNumeroNF, matchNumeroInclui, matchDestino, matchFornecedor
+                })
+              }
+              
+              if (matchCodigoCompleto || matchCodigoInclui || matchCodigoInvertido || 
+                  matchNumeroNF || matchNumeroInclui || matchDestino || matchFornecedor) {
+                console.log(`🎯 NF encontrada! Match:`, { 
+                  codigoCompleto, 
+                  nfCodigo: nf.codigoCompleto, 
+                  nfNumero: nf.numeroNF,
+                  matchCodigoCompleto, matchCodigoInclui, matchCodigoInvertido,
+                  matchNumeroNF, matchNumeroInclui, matchDestino, matchFornecedor
+                })
+                return true
+              }
+              return false
+            })
+            
+            if (nfEncontrada) {
+              console.log(`✅ NF encontrada em relatório: ${relatorio.nome} (${relatorio.data} - ${relatorio.turno})`)
+              return {
+                encontrada: true,
+                relatorio: relatorio.nome as string,
+                dataRelatorio: relatorio.data as string,
+                turnoRelatorio: relatorio.turno as string,
+                numeroNF: nfEncontrada.numeroNF,
+                volumes: nfEncontrada.volumes,
+                destino: nfEncontrada.destino,
+                fornecedor: nfEncontrada.fornecedor,
+                clienteDestino: nfEncontrada.clienteDestino,
+                tipoCarga: nfEncontrada.tipoCarga
+              }
+            }
+          }
+        }
+      } else {
+        console.log(`⚠️ Nenhum relatório encontrado para busca ampliada`)
+      }
+      
+      // 2. Buscar em relatórios de outras áreas (custos, embalagem) que possam ter a NF
+      console.log('🔍 2. NF não encontrada em relatórios de recebimento, buscando em outras áreas...')
+      
+      const { data: outrosRelatoriosData, error: outrosRelatoriosError } = await retryWithBackoff(async () => {
+        return await getSupabase()
+          .from('relatorios')
+          .select('*')
+          .in('area', ['custos', 'embalagem', 'inventario'])
+          .order('data', { ascending: false })
+          .limit(100)
+      })
+      
+      if (outrosRelatoriosError) {
+        console.error('❌ Erro ao buscar relatórios de outras áreas:', outrosRelatoriosError)
+      }
+      
+      if (outrosRelatoriosData && outrosRelatoriosData.length > 0) {
+        console.log(`📋 Encontrados ${outrosRelatoriosData.length} relatórios de outras áreas`)
+        
+        for (const relatorio of outrosRelatoriosData) {
+          if (relatorio.notas && Array.isArray(relatorio.notas)) {
+            console.log(`🔍 Verificando relatório ${relatorio.area}: ${relatorio.nome} (${relatorio.data} - ${relatorio.turno})`)
+            
+            const nfEncontrada = relatorio.notas.find((nf: any) => {
+              const matchNumeroNF = nf.numeroNF === codigoCompleto
+              const matchCodigo = nf.codigoCompleto && nf.codigoCompleto.includes(codigoCompleto)
+              
+              if (matchNumeroNF || matchCodigo) {
+                console.log(`🎯 NF encontrada em relatório de ${relatorio.area}:`, {
+                  codigoCompleto,
+                  nfNumero: nf.numeroNF,
+                  nfCodigo: nf.codigoCompleto,
+                  area: relatorio.area
+                })
+                return true
+              }
+              return false
+            })
+            
+            if (nfEncontrada) {
+              console.log(`✅ NF encontrada em relatório de ${relatorio.area}: ${relatorio.nome}`)
+              return {
+                encontrada: true,
+                relatorio: `${relatorio.area}: ${relatorio.nome}`,
+                dataRelatorio: relatorio.data as string,
+                turnoRelatorio: relatorio.turno as string,
+                numeroNF: nfEncontrada.numeroNF,
+                volumes: nfEncontrada.volumes,
+                destino: nfEncontrada.destino,
+                fornecedor: nfEncontrada.fornecedor,
+                clienteDestino: nfEncontrada.clienteDestino,
+                tipoCarga: nfEncontrada.tipoCarga
+              }
+            }
+          }
+        }
+      }
+      
+      console.log(`❌ NF com código ${codigoCompleto} não encontrada em nenhum lugar`)
+      console.log(`📊 Resumo da busca:`)
+      console.log(`   - Relatórios de recebimento verificados: ${todosRelatoriosData?.length || 0}`)
+      console.log(`   - Relatórios de outras áreas verificados: ${outrosRelatoriosData?.length || 0}`)
+      
+      return { 
+        encontrada: false, 
+        erro: `NF não foi encontrada em nenhum relatório (recebimento, custos, embalagem, inventário - busca completa)` 
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao buscar NF em relatórios finalizados:', error)
+      return { 
+        encontrada: false, 
+        erro: `Erro interno: ${error instanceof Error ? error.message : 'Erro desconhecido'}` 
+      }
+    }
+  },
+
   // Buscar NFs bipadas nos relatórios de recebimento
   async buscarNFsBipadasEmRelatorios(data: string, turno: string, numeroNF?: string): Promise<{ 
     sucesso: boolean; 
@@ -145,7 +380,7 @@ export const EmbalagemService = {
           .eq('area', 'recebimento')
           .eq('data', data)
           .eq('turno', turno)
-          .eq('status', 'finalizado')
+          .in('status', ['finalizado', 'Liberado', 'liberado'])
           .order('data_finalizacao', { ascending: false })
       })
       
@@ -223,52 +458,87 @@ export const EmbalagemService = {
     erro?: string;
   }> {
     try {
-      console.log(`🔍 Verificando NF ${numeroNF} em relatórios - Data: ${data}, Turno: ${turno}`)
+      console.log(`🔍 Verificando NF ${numeroNF} em TODOS os relatórios (sem restrição de data/turno)`)
       
-      const resultado = await this.buscarNFsBipadasEmRelatorios(data, turno, numeroNF)
-      
-      if (!resultado.sucesso) {
-        return { 
-          encontrada: false, 
-          erro: resultado.erro 
-        }
-      }
-      
-      if (resultado.nfs && resultado.nfs.length > 0) {
-        const nf = resultado.nfs[0]
-        console.log(`✅ NF ${numeroNF} encontrada em relatórios`)
-        
-        return {
-          encontrada: true,
-          relatorio: `Relatório com ${nf.numeroNF}`,
-          dataRelatorio: data,
-          turnoRelatorio: turno
-        }
-      }
-      
-      // Se não encontrou no dia/turno específico, tentar buscar nos últimos 7 dias
-      console.log('🔍 NF não encontrada no dia/turno, buscando nos últimos 7 dias...')
+      // 1. Buscar em TODOS os relatórios de recebimento (sem restrição de data/turno)
+      console.log('🔍 1. Buscando em todos os relatórios de recebimento...')
       
       const { getSupabase, retryWithBackoff } = await import('./supabase-client')
       
-      // Calcular data de 7 dias atrás
-      const dataAtual = new Date()
-      const data7DiasAtras = new Date(dataAtual.getTime() - (7 * 24 * 60 * 60 * 1000))
-      const dataFormatada = data7DiasAtras.toLocaleDateString('pt-BR')
-      
-      const { data: relatoriosAntigosData, error: relatoriosAntigosError } = await retryWithBackoff(async () => {
+      const { data: todosRelatoriosData, error: todosRelatoriosError } = await retryWithBackoff(async () => {
         return await getSupabase()
           .from('relatorios')
           .select('*')
           .eq('area', 'recebimento')
-          .eq('status', 'finalizado')
-          .gte('data', dataFormatada)
+          .in('status', ['finalizado', 'Liberado', 'liberado'])
           .order('data', { ascending: false })
-          .limit(50)
+          .limit(200)
       })
       
-      if (!relatoriosAntigosError && relatoriosAntigosData && relatoriosAntigosData.length > 0) {
-        for (const relatorio of relatoriosAntigosData) {
+      if (todosRelatoriosError) {
+        console.error('❌ Erro ao buscar todos os relatórios:', todosRelatoriosError)
+      }
+      
+      if (todosRelatoriosData && todosRelatoriosData.length > 0) {
+        console.log(`📋 Encontrados ${todosRelatoriosData.length} relatórios para busca ampliada`)
+        
+        // Buscar em cada relatório
+        for (const relatorio of todosRelatoriosData) {
+          if (relatorio.notas && Array.isArray(relatorio.notas)) {
+            console.log(`🔍 Verificando relatório: ${relatorio.nome} (${relatorio.data} - ${relatorio.turno}) com ${relatorio.notas.length} NFs`)
+            
+            // Buscar por diferentes formatos da NF
+            const nfEncontrada = relatorio.notas.find((nf: any) => {
+              const matchExato = nf.numeroNF === numeroNF
+              const matchInclui = nf.numeroNF && nf.numeroNF.includes(numeroNF)
+              const matchCodigo = nf.codigoCompleto && nf.codigoCompleto.includes(numeroNF)
+              const matchNF = nf.numeroNF && nf.numeroNF.replace(/\D/g, '') === numeroNF.replace(/\D/g, '')
+              
+              if (matchExato || matchInclui || matchCodigo || matchNF) {
+                console.log(`🎯 NF encontrada! Match:`, { 
+                  numeroNF, 
+                  nfNumero: nf.numeroNF, 
+                  nfCodigo: nf.codigoCompleto,
+                  matchExato, matchInclui, matchCodigo, matchNF
+                })
+                return true
+              }
+              return false
+            })
+            
+            if (nfEncontrada) {
+              console.log(`✅ NF ${numeroNF} encontrada em relatório: ${relatorio.nome} (${relatorio.data} - ${relatorio.turno})`)
+              return {
+                encontrada: true,
+                relatorio: relatorio.nome as string,
+                dataRelatorio: relatorio.data as string,
+                turnoRelatorio: relatorio.turno as string
+              }
+            }
+          }
+        }
+      }
+      
+      // 2. Buscar em relatórios de outras áreas
+      console.log('🔍 2. NF não encontrada em relatórios de recebimento, buscando em outras áreas...')
+      
+      const { data: outrosRelatoriosData, error: outrosRelatoriosError } = await retryWithBackoff(async () => {
+        return await getSupabase()
+          .from('relatorios')
+          .select('*')
+          .in('area', ['custos', 'embalagem', 'inventario'])
+          .order('data', { ascending: false })
+          .limit(100)
+      })
+      
+      if (outrosRelatoriosError) {
+        console.error('❌ Erro ao buscar relatórios de outras áreas:', outrosRelatoriosError)
+      }
+      
+      if (outrosRelatoriosData && outrosRelatoriosData.length > 0) {
+        console.log(`📋 Encontrados ${outrosRelatoriosData.length} relatórios de outras áreas`)
+        
+        for (const relatorio of outrosRelatoriosData) {
           if (relatorio.notas && Array.isArray(relatorio.notas)) {
             const nfEncontrada = relatorio.notas.find((nf: any) => 
               nf.numeroNF === numeroNF || 
@@ -277,22 +547,26 @@ export const EmbalagemService = {
             )
             
             if (nfEncontrada) {
-              console.log(`✅ NF ${numeroNF} encontrada em relatório antigo: ${relatorio.nome}`)
+              console.log(`✅ NF ${numeroNF} encontrada em relatório de ${relatorio.area}: ${relatorio.nome}`)
               return {
                 encontrada: true,
-                relatorio: relatorio.nome,
-                dataRelatorio: relatorio.data,
-                turnoRelatorio: relatorio.turno
+                relatorio: `${relatorio.area}: ${relatorio.nome}`,
+                dataRelatorio: relatorio.data as string,
+                turnoRelatorio: relatorio.turno as string
               }
             }
           }
         }
       }
       
-      console.log(`❌ NF ${numeroNF} não encontrada em nenhum relatório`)
+      console.log(`❌ NF ${numeroNF} não encontrada em nenhum lugar`)
+      console.log(`📊 Resumo da busca:`)
+      console.log(`   - Relatórios de recebimento verificados: ${todosRelatoriosData?.length || 0}`)
+      console.log(`   - Relatórios de outras áreas verificados: ${outrosRelatoriosData?.length || 0}`)
+      
       return { 
         encontrada: false, 
-        erro: `NF ${numeroNF} não foi encontrada em nenhum relatório finalizado` 
+        erro: `NF ${numeroNF} não foi encontrada em nenhum relatório (recebimento, custos, embalagem, inventário - busca completa)` 
       }
       
     } catch (error) {
@@ -341,8 +615,9 @@ export const EmbalagemService = {
       
       if (error) throw error
       
-      const carros = data?.carros || []
+      const carros = (data?.carros as CarroEmbalagem[]) || []
       console.log(`✅ ${carros.length} carros de embalagem carregados`)
+      console.log(carros)
       return carros
     } catch (error) {
       console.error('❌ Erro ao carregar carros de embalagem:', error)

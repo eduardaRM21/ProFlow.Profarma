@@ -191,6 +191,122 @@ BEGIN
     END IF;
 END $$;
 
+-- =====================================================
+-- VERIFICAÇÃO E CRIAÇÃO DAS TABELAS NECESSÁRIAS
+-- =====================================================
+
+-- Verificar se a tabela recebimento_notas existe
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'recebimento_notas') THEN
+        RAISE NOTICE 'Tabela recebimento_notas não existe. Criando...';
+        
+        CREATE TABLE IF NOT EXISTS recebimento_notas (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            session_id VARCHAR(255) NOT NULL,
+            notas JSONB NOT NULL DEFAULT '[]',
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Criar índices
+        CREATE INDEX IF NOT EXISTS idx_recebimento_notas_session_id ON recebimento_notas(session_id);
+        
+        -- Criar trigger para updated_at
+        CREATE OR REPLACE FUNCTION update_recebimento_notas_updated_at()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            NEW.updated_at = NOW();
+            RETURN NEW;
+        END;
+        $$ language 'plpgsql';
+        
+        CREATE TRIGGER update_recebimento_notas_updated_at 
+        BEFORE UPDATE ON recebimento_notas 
+        FOR EACH ROW EXECUTE FUNCTION update_recebimento_notas_updated_at();
+        
+        RAISE NOTICE 'Tabela recebimento_notas criada com sucesso!';
+    ELSE
+        RAISE NOTICE 'Tabela recebimento_notas já existe.';
+    END IF;
+END $$;
+
+-- Verificar se a tabela relatorio_notas existe
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'relatorio_notas') THEN
+        RAISE NOTICE 'Tabela relatorio_notas não existe. Criando...';
+        
+        CREATE TABLE IF NOT EXISTS relatorio_notas (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            relatorio_id UUID REFERENCES relatorios(id) ON DELETE CASCADE,
+            nota_fiscal_id UUID REFERENCES notas_fiscais(id) ON DELETE CASCADE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Criar índices
+        CREATE INDEX IF NOT EXISTS idx_relatorio_notas_relatorio_id ON relatorio_notas(relatorio_id);
+        CREATE INDEX IF NOT EXISTS idx_relatorio_notas_nota_fiscal_id ON relatorio_notas(nota_fiscal_id);
+        
+        RAISE NOTICE 'Tabela relatorio_notas criada com sucesso!';
+    ELSE
+        RAISE NOTICE 'Tabela relatorio_notas já existe.';
+    END IF;
+END $$;
+
+-- Verificar se a tabela relatorio_colaboradores existe
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'relatorio_colaboradores') THEN
+        RAISE NOTICE 'Tabela relatorio_colaboradores não existe. Criando...';
+        
+        CREATE TABLE IF NOT EXISTS relatorio_colaboradores (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            relatorio_id UUID REFERENCES relatorios(id) ON DELETE CASCADE,
+            user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Criar índices
+        CREATE INDEX IF NOT EXISTS idx_relatorio_colaboradores_relatorio_id ON relatorio_colaboradores(relatorio_id);
+        CREATE INDEX IF NOT EXISTS idx_relatorio_colaboradores_user_id ON relatorio_colaboradores(user_id);
+        
+        RAISE NOTICE 'Tabela relatorio_colaboradores criada com sucesso!';
+    ELSE
+        RAISE NOTICE 'Tabela relatorio_colaboradores já existe.';
+    END IF;
+END $$;
+
+-- Verificar se a tabela divergencias existe
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'divergencias') THEN
+        RAISE NOTICE 'Tabela divergencias não existe. Criando...';
+        
+        CREATE TABLE IF NOT EXISTS divergencias (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            nota_fiscal_id UUID REFERENCES notas_fiscais(id) ON DELETE CASCADE,
+            tipo VARCHAR(100) NOT NULL,
+            descricao TEXT,
+            volumes_informados INTEGER,
+            volumes_reais INTEGER,
+            observacoes TEXT,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        );
+        
+        -- Criar índices
+        CREATE INDEX IF NOT EXISTS idx_divergencias_nota_fiscal_id ON divergencias(nota_fiscal_id);
+        
+        RAISE NOTICE 'Tabela divergencias criada com sucesso!';
+    ELSE
+        RAISE NOTICE 'Tabela divergencias já existe.';
+    END IF;
+END $$;
+
+-- =====================================================
+-- VERIFICAÇÃO DAS TABELAS EXISTENTES
+-- =====================================================
+
 -- Verificar status das tabelas
 SELECT 
     table_name,

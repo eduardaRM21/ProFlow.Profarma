@@ -83,7 +83,7 @@ Este script irá:
 1. **Verifique as variáveis de ambiente:**
 ```bash
 # .env.local
-NEXT_PUBLIC_SUPABASE_URL=https://auiidcxarcjjxvyswwhf.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://vzqibndtoitnppvgkekc.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 

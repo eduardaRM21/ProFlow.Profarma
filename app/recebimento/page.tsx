@@ -76,23 +76,62 @@ export default function RecebimentoPage() {
   useEffect(() => {
     const verificarSessao = async () => {
       try {
+        console.log('🔍 Verificando sessão para área recebimento...')
+        console.log('🌐 Status da conectividade:', { isFullyConnected })
+        
         const session = await getSession("current")
-        if (!session || session.area !== "recebimento") {
+        console.log('📊 Sessão retornada:', session)
+        
+        if (!session) {
+          console.log('⚠️ Nenhuma sessão encontrada, redirecionando...')
           router.push("/")
           return
         }
+        
+        if (session.area !== "recebimento") {
+          console.log('❌ Sessão não é de recebimento:', session.area, 'redirecionando...')
+          router.push("/")
+          return
+        }
+        
+        console.log('✅ Sessão válida encontrada para recebimento:', session)
         setSessionData(session)
       } catch (error) {
-        console.error("Erro ao verificar sessão:", error)
-        router.push("/")
+        console.error("❌ Erro ao verificar sessão:", error)
+        console.log('⚠️ Usando fallback para localStorage...')
+        
+        // Fallback para localStorage
+        try {
+          const sessionLocal = localStorage.getItem("sistema_session")
+          if (sessionLocal) {
+            const sessionObj = JSON.parse(sessionLocal)
+            console.log('📋 Sessão local encontrada:', sessionObj)
+            
+            if (sessionObj.area === "recebimento") {
+              console.log('✅ Usando sessão local de recebimento')
+              setSessionData(sessionObj)
+            } else {
+              console.log('❌ Sessão local não é de recebimento, redirecionando...')
+              router.push("/")
+            }
+          } else {
+            console.log('❌ Nenhuma sessão local disponível, redirecionando...')
+            router.push("/")
+          }
+        } catch (fallbackError) {
+          console.error('❌ Erro no fallback:', fallbackError)
+          router.push("/")
+        }
       }
     }
     verificarSessao()
-  }, [router, getSession])
+  }, [router, getSession, isFullyConnected])
   
   // O hook `useRecebimento` deve ser chamado após `sessionData` ser definido.
   const chaveNotas = sessionData
-    ? `recebimento_${sessionData.colaboradores.join('_')}_${sessionData.data}_${sessionData.turno}`
+    ? `recebimento_${Array.isArray(sessionData.colaboradores) && sessionData.colaboradores.length > 0 
+        ? sessionData.colaboradores.join('_') 
+        : 'sem_colaborador'}_${sessionData.data}_${sessionData.turno}`
     : ''
   const { notas, saveNotas, clearNotas } = useRecebimento(chaveNotas)
 
@@ -108,20 +147,195 @@ export default function RecebimentoPage() {
       return { valido: false, erro: `Volumes deve ser um número válido maior que 0. Recebido: "${volumesStr}"` }
     }
 
-    if (notas.find((nota) => nota.numeroNF === numeroNF)) {
-      return { valido: false, erro: `NF ${numeroNF} já foi bipada nesta sessão.` }
-    }
+    console.log(`🔍 Validando NF ${numeroNF}...`)
+    console.log(`📊 Notas na sessão atual:`, notas.length)
+    console.log(`📊 Notas bipadas:`, notas.map(n => n.numeroNF))
 
-    // Acessar relatórios diretamente do `useRelatorios`
-    const relatoriosExistentes = await getRelatorios() as Relatorio[]
-    const relatorioComNota = relatoriosExistentes.find((rel) => rel.notas.some((nota) => nota.numeroNF === numeroNF))
-
-    if (relatorioComNota) {
-      return {
-        valido: false,
-        erro: `NF ${numeroNF} já utilizada no relatório "${relatorioComNota.nome}" por ${relatorioComNota.colaboradores.join(", ")}`,
+    // 1. Verificar se a nota já foi bipada na sessão atual
+    const notaNaSessao = notas.find((nota) => nota.numeroNF === numeroNF)
+    if (notaNaSessao) {
+      console.log(`⚠️ NF ${numeroNF} já bipada na sessão atual`)
+      return { 
+        valido: false, 
+        erro: `NF ${numeroNF} já foi bipada nesta sessão (${notaNaSessao.timestamp ? new Date(notaNaSessao.timestamp).toLocaleString('pt-BR') : 'agora'}).` 
       }
     }
+
+    // 2. Verificar se a nota está em algum relatório existente (qualquer setor)
+    console.log(`🔍 Verificando se NF ${numeroNF} está em relatórios existentes...`)
+    try {
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      // Buscar diretamente na tabela notas_fiscais pelo codigo_completo
+      const { data: notaFiscalData, error: notaFiscalError } = await supabase
+        .from('notas_fiscais')
+        .select('*')
+        .eq('codigo_completo', codigo)
+      
+      console.log(`🔍 Resultado busca notas_fiscais:`, { notaFiscalData, notaFiscalError })
+      
+      if (!notaFiscalError && notaFiscalData && notaFiscalData.length > 0) {
+        console.log(`⚠️ NF ${numeroNF} encontrada em ${notaFiscalData.length} registro(s) na tabela notas_fiscais`)
+        
+        // Pegar o primeiro registro encontrado
+        const notaFiscal = notaFiscalData[0]
+        
+        // Buscar o relatório relacionado através da tabela relatorio_notas
+        const { data: relatorioNotaData, error: relatorioNotaError } = await supabase
+          .from('relatorio_notas')
+          .select('relatorio_id')
+          .eq('nota_fiscal_id', notaFiscal.id as string)
+          .single()
+        
+        if (!relatorioNotaError && relatorioNotaData) {
+          // Buscar detalhes do relatório
+          const { data: relatorioData, error: relatorioError } = await supabase
+            .from('relatorios')
+            .select('id, nome, area, data')
+            .eq('id', relatorioNotaData.relatorio_id as string)
+            .single()
+          
+          if (!relatorioError && relatorioData) {
+            console.log(`⚠️ NF ${numeroNF} encontrada no relatório:`, relatorioData.nome)
+            
+            // Buscar colaboradores do relatório
+            let colaboradoresTexto = 'Não informado'
+            try {
+              const { data: colaboradoresData, error: colaboradoresError } = await supabase
+                .from('relatorio_colaboradores')
+                .select('user_id')
+                .eq('relatorio_id', relatorioData.id as string)
+              
+              if (!colaboradoresError && colaboradoresData && colaboradoresData.length > 0) {
+                // Buscar nomes dos usuários individualmente
+                const nomesColaboradores = await Promise.all(
+                  colaboradoresData.map(async (col: any) => {
+                    const { data: userData, error: userError } = await supabase
+                      .from('users')
+                      .select('nome')
+                      .eq('id', col.user_id)
+                      .single()
+                    
+                    if (!userError && userData) {
+                      return userData.nome
+                    } else {
+                      return 'Colaborador sem nome'
+                    }
+                  })
+                )
+                
+                colaboradoresTexto = nomesColaboradores.filter((nome): nome is string => typeof nome === 'string').join(', ')
+              }
+            } catch (colabError) {
+              console.error(`❌ Erro ao buscar colaboradores:`, colabError)
+            }
+            
+            const setorRelatorio = relatorioData.area || 'setor não informado'
+            const dataRelatorio = relatorioData.data || 'data não informada'
+      
+      return {
+        valido: false,
+              erro: `NF ${numeroNF} já utilizada no relatório "${relatorioData.nome}" (${setorRelatorio}) por ${colaboradoresTexto} em ${dataRelatorio}`,
+            }
+          }
+        } else {
+          // Se não encontrar o relatório, mas a nota está na tabela notas_fiscais
+          console.log(`⚠️ NF ${numeroNF} encontrada na tabela notas_fiscais mas sem relatório associado`)
+          return {
+            valido: false,
+            erro: `NF ${numeroNF} já foi processada e está registrada no sistema.`,
+          }
+        }
+      }
+
+      console.log(`✅ NF ${numeroNF} não encontrada em relatórios existentes`)
+    } catch (error) {
+      console.error(`❌ Erro ao verificar relatórios existentes:`, error)
+      // Em caso de erro, continuar com a validação para não bloquear o usuário
+    }
+
+    // 3. Verificar se a nota está em alguma sessão ativa de outros setores
+    console.log(`🔍 Verificando sessões ativas de outros setores...`)
+    try {
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      // Buscar sessões ativas de hoje
+      const hoje = new Date().toISOString().split('T')[0]
+      const { data: sessoesAtivas, error: sessoesError } = await supabase
+        .from('sessions')
+        .select('*')
+        .gte('data', hoje)
+        .order('updated_at', { ascending: false })
+
+      if (!sessoesError && sessoesAtivas && sessoesAtivas.length > 0) {
+        console.log(`📊 Sessões ativas encontradas:`, sessoesAtivas.length)
+        
+        // Verificar se alguma sessão tem a nota bipada
+        for (const sessao of sessoesAtivas) {
+          if (sessao.area === 'recebimento') continue // Pular sessões do próprio setor
+          
+          const chaveSessao = `${sessao.area}_${Array.isArray(sessao.colaboradores) && sessao.colaboradores.length > 0 
+            ? sessao.colaboradores.join('_') 
+            : 'sem_colaborador'}_${sessao.data}_${sessao.turno}`
+          
+          // Buscar notas da sessão no localStorage
+          const notasSessao = localStorage.getItem(chaveSessao)
+          if (notasSessao) {
+            try {
+              const notasParsed = JSON.parse(notasSessao)
+              if (Array.isArray(notasParsed)) {
+                const notaNaSessaoOutroSetor = notasParsed.find((n: any) => n.numeroNF === numeroNF)
+                if (notaNaSessaoOutroSetor) {
+                  console.log(`⚠️ NF ${numeroNF} encontrada em sessão ativa de ${sessao.area}`)
+                  return {
+                    valido: false,
+                    erro: `NF ${numeroNF} já foi bipada na sessão ativa de ${sessao.area} por ${Array.isArray(sessao.colaboradores) ? sessao.colaboradores.join(', ') : 'colaborador não informado'}`,
+                  }
+                }
+              }
+            } catch (parseError) {
+              console.error(`❌ Erro ao parsear notas da sessão ${chaveSessao}:`, parseError)
+            }
+          }
+        }
+      }
+      
+      console.log(`✅ NF ${numeroNF} não encontrada em sessões ativas de outros setores`)
+    } catch (error) {
+      console.error(`❌ Erro ao verificar sessões ativas:`, error)
+      // Em caso de erro, continuar com a validação
+    }
+
+    // 4. Verificar se a nota está em alguma tabela de divergências
+    console.log(`🔍 Verificando se NF ${numeroNF} está em divergências...`)
+    try {
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      // Buscar divergências para esta nota
+      const { data: divergencias, error: divergenciasError } = await supabase
+        .from('divergencias')
+        .select('*')
+        .eq('nota_fiscal_id', numeroNF)
+        .single()
+
+      if (!divergenciasError && divergencias) {
+        console.log(`⚠️ NF ${numeroNF} encontrada em divergências`)
+        return {
+          valido: false,
+          erro: `NF ${numeroNF} possui divergência registrada e não pode ser bipada novamente.`,
+        }
+      }
+      
+      console.log(`✅ NF ${numeroNF} não encontrada em divergências`)
+    } catch (error) {
+      console.error(`❌ Erro ao verificar divergências:`, error)
+      // Em caso de erro, continuar com a validação
+    }
+
+    console.log(`✅ NF ${numeroNF} validada com sucesso - pode ser bipada`)
 
     const nota: NotaFiscal = {
       id: `${Date.now()}-${numeroNF}`,
@@ -142,15 +356,42 @@ export default function RecebimentoPage() {
   const handleBipagem = async () => {
     if (!codigoInput.trim()) return
 
+    console.log(`🚀 Iniciando validação da NF: ${codigoInput.trim()}`)
+
     const resultado = await validarCodigo(codigoInput.trim())
 
     if (resultado.valido && resultado.nota) {
+      console.log(`✅ NF ${resultado.nota.numeroNF} validada com sucesso`)
       setNotaAtual(resultado.nota)
       setModalConfirmacao(true)
       setCodigoInput("")
     } else {
-      alert(`Erro na bipagem: ${resultado.erro}`)
+      console.log(`❌ NF rejeitada:`, resultado.erro)
+      
+      // Criar mensagem mais informativa
+      let mensagem = `❌ Nota Fiscal não pode ser bipada:\n\n${resultado.erro}`
+      
+      // Adicionar informações adicionais baseadas no tipo de erro
+      if (resultado.erro?.includes('já foi bipada nesta sessão')) {
+        mensagem += '\n\n💡 Dica: Esta nota já foi processada na sessão atual.'
+      } else if (resultado.erro?.includes('já utilizada no relatório')) {
+        mensagem += '\n\n💡 Dica: Esta nota já foi finalizada em outro relatório.'
+      } else if (resultado.erro?.includes('sessão ativa de')) {
+        mensagem += '\n\n💡 Dica: Esta nota está sendo processada em outro setor.'
+      } else if (resultado.erro?.includes('divergência registrada')) {
+        mensagem += '\n\n💡 Dica: Esta nota possui divergência e não pode ser reprocessada.'
+      }
+      
+      alert(mensagem)
       setCodigoInput("")
+      
+      // Reativar a câmera automaticamente após rejeitar a nota (bipagem manual)
+      if (scannerAtivo) {
+        setTimeout(() => {
+          setScannerAtivo(true)
+          console.log('📷 Câmera reativada automaticamente após rejeição da nota (bipagem manual)')
+        }, 1000) // Delay maior para dar tempo do usuário ler o alerta
+      }
     }
     setTimeout(() => inputRef.current?.focus(), 100)
   }
@@ -158,15 +399,41 @@ export default function RecebimentoPage() {
   const handleCodigoEscaneado = async (codigo: string) => {
     setCodigoInput(codigo)
     setScannerAtivo(false)
+    
+    console.log(`📱 Código escaneado: ${codigo}`)
+    
     const resultado = await validarCodigo(codigo.trim())
 
     if (resultado.valido && resultado.nota) {
+      console.log(`✅ NF ${resultado.nota.numeroNF} validada com sucesso via scanner`)
       setNotaAtual(resultado.nota)
       setModalConfirmacao(true)
       setCodigoInput("")
     } else {
-      alert(`Erro na bipagem: ${resultado.erro}`)
+      console.log(`❌ NF rejeitada via scanner:`, resultado.erro)
+      
+      // Criar mensagem mais informativa
+      let mensagem = `❌ Nota Fiscal não pode ser bipada:\n\n${resultado.erro}`
+      
+      // Adicionar informações adicionais baseadas no tipo de erro
+      if (resultado.erro?.includes('já foi bipada nesta sessão')) {
+        mensagem += '\n\n💡 Dica: Esta nota já foi processada na sessão atual.'
+      } else if (resultado.erro?.includes('já utilizada no relatório')) {
+        mensagem += '\n\n💡 Dica: Esta nota já foi finalizada em outro relatório.'
+      } else if (resultado.erro?.includes('sessão ativa de')) {
+        mensagem += '\n\n💡 Dica: Esta nota está sendo processada em outro setor.'
+      } else if (resultado.erro?.includes('divergência registrada')) {
+        mensagem += '\n\n💡 Dica: Esta nota possui divergência e não pode ser reprocessada.'
+      }
+      
+      alert(mensagem)
       setCodigoInput("")
+      
+      // Reativar a câmera automaticamente após rejeitar a nota
+      setTimeout(() => {
+        setScannerAtivo(true)
+        console.log('📷 Câmera reativada automaticamente após rejeição da nota')
+      }, 1000) // Delay maior para dar tempo do usuário ler o alerta
     }
     setTimeout(() => inputRef.current?.focus(), 100)
   }
@@ -181,14 +448,16 @@ export default function RecebimentoPage() {
         codigo_completo: notaAtual.codigoCompleto,
         area_origem: 'recebimento' as const,
         session_id: `recebimento_${sessionData?.data}_${sessionData?.turno}`,
-        colaboradores: sessionData?.colaboradores || [],
+        colaboradores: Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0
+          ? sessionData.colaboradores
+          : ['Não informado'],
         data: sessionData?.data || new Date().toISOString().split('T')[0],
         turno: sessionData?.turno || '',
         volumes: notaAtual.volumes,
-        destino: notaAtual.destinoFinal,
+        destino: notaAtual.destino,
         fornecedor: notaAtual.fornecedor,
-        cliente_destino: notaAtual.destinoFinal,
-        tipo_carga: notaAtual.tipo,
+        cliente_destino: notaAtual.clienteDestino,
+        tipo_carga: notaAtual.tipoCarga,
         status: 'bipada',
         observacoes: 'NF recebida no setor de Recebimento'
       };
@@ -215,6 +484,13 @@ export default function RecebimentoPage() {
     
     setModalConfirmacao(false)
     setNotaAtual(null)
+    
+    // Reativar a câmera automaticamente após confirmar a nota
+    setTimeout(() => {
+      setScannerAtivo(true)
+      console.log('📷 Câmera reativada automaticamente após confirmação da nota')
+    }, 500) // Pequeno delay para garantir que o modal foi fechado
+    
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
@@ -242,14 +518,16 @@ export default function RecebimentoPage() {
         codigo_completo: notaAtual.codigoCompleto,
         area_origem: 'recebimento' as const,
         session_id: `recebimento_${sessionData?.data}_${sessionData?.turno}`,
-        colaboradores: sessionData?.colaboradores || [],
+        colaboradores: Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0
+          ? sessionData.colaboradores
+          : ['Não informado'],
         data: sessionData?.data || new Date().toISOString().split('T')[0],
         turno: sessionData?.turno || '',
         volumes: notaAtual.volumes,
-        destino: notaAtual.destinoFinal,
+        destino: notaAtual.destino,
         fornecedor: notaAtual.fornecedor,
-        cliente_destino: notaAtual.destinoFinal,
-        tipo_carga: notaAtual.tipo,
+        cliente_destino: notaAtual.clienteDestino,
+        tipo_carga: notaAtual.tipoCarga,
         status: 'divergencia',
         observacoes: `NF recebida com divergência: ${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`
       };
@@ -276,6 +554,13 @@ export default function RecebimentoPage() {
     
     setModalDivergencia(false)
     setNotaAtual(null)
+    
+    // Reativar a câmera automaticamente após confirmar a divergência
+    setTimeout(() => {
+      setScannerAtivo(true)
+      console.log('📷 Câmera reativada automaticamente após confirmação da divergência')
+    }, 500) // Pequeno delay para garantir que o modal foi fechado
+    
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
@@ -299,8 +584,13 @@ export default function RecebimentoPage() {
 
     try {
       const somaVolumes = notas.reduce((sum, nota) => sum + (nota.divergencia?.volumesInformados || nota.volumes), 0)
+      
+      console.log('🔍 Debug antes de criar relatório:')
+      console.log('🔍 sessionData:', sessionData)
+      console.log('🔍 sessionData.colaboradores:', sessionData.colaboradores)
+      console.log('🔍 notas:', notas)
+      
       const relatorio: Relatorio = {
-        id: `REL_${Date.now()}`,
         nome: nomeTransportadora.trim(),
         colaboradores: sessionData.colaboradores,
         data: sessionData.data,
@@ -310,8 +600,12 @@ export default function RecebimentoPage() {
         somaVolumes: somaVolumes,
         notas: notas,
         dataFinalizacao: new Date().toISOString(),
-        status: "finalizado",
+        status: "liberado",
       }
+      
+      console.log('🔍 Relatório criado:', relatorio)
+      console.log('🔍 Relatório.colaboradores:', relatorio.colaboradores)
+      console.log('🔍 Relatório.notas:', relatorio.notas)
 
       await saveRelatorio(relatorio)
       console.log('✅ Relatório processado (db/local)')
@@ -322,20 +616,26 @@ export default function RecebimentoPage() {
         timestamp: new Date().toISOString(),
         sector: 'recebimento',
         type: 'relatorio_finalized',
-        message: `Relatório finalizado para ${nomeTransportadora.trim()}`,
+        message: `Relatório Liberado para ${nomeTransportadora.trim()}`,
         data: { transportadora: nomeTransportadora.trim(), quantidadeNotas: notas.length, somaVolumes }
       });
       
-      alert(`Relatório "${nomeTransportadora.trim()}" finalizado com sucesso!`)
+      alert(`Relatório "${nomeTransportadora.trim()}" Liberado com sucesso!`)
 
       await clearNotas(chaveNotas)
       setModalFinalizacao(false)
       setNomeTransportadora("")
+      
+      // Reativar a câmera automaticamente após finalizar o relatório
+      setTimeout(() => {
+        setScannerAtivo(true)
+        console.log('📷 Câmera reativada automaticamente após finalização do relatório')
+      }, 500)
     } catch (error) {
       console.error('❌ Erro ao salvar relatório:', error)
       alert('Erro ao salvar relatório. Tente novamente.')
     }
-  }
+  } 
 
   const handleLogout = () => {
     LocalAuthService.logout()
@@ -345,6 +645,55 @@ export default function RecebimentoPage() {
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       handleBipagem()
+    }
+  }
+
+  const debugRecebimento = async () => {
+    try {
+      console.log('🐛 Debug do setor de recebimento...')
+      console.log('📊 Status da sessão:', sessionData)
+      console.log('📊 Notas atuais:', notas)
+      console.log('📊 Chave de notas:', chaveNotas)
+      
+      // Testar busca direta de relatórios
+      console.log('🔍 Testando busca direta de relatórios...')
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      const { data: relatoriosRecebimento, error: erroRelatorios } = await supabase
+        .from('relatorios')
+        .select('*')
+        .eq('area', 'recebimento')
+        .order('created_at', { ascending: false })
+      
+      if (erroRelatorios) {
+        console.log('❌ Erro ao buscar relatórios:', erroRelatorios)
+      } else {
+        console.log('📊 Relatórios de recebimento encontrados:', relatoriosRecebimento?.length || 0)
+        if (relatoriosRecebimento && relatoriosRecebimento.length > 0) {
+          console.log('🔍 Primeiro relatório:', relatoriosRecebimento[0])
+        }
+      }
+      
+      // Testar busca de notas bipadas
+      console.log('🔍 Testando busca de notas bipadas...')
+      const { data: notasBipadas, error: erroNotas } = await supabase
+        .from('notas_bipadas')
+        .select('*')
+        .eq('area_origem', 'recebimento')
+        .limit(5)
+      
+      if (erroNotas) {
+        console.log('❌ Erro ao buscar notas bipadas:', erroNotas)
+      } else {
+        console.log('📊 Notas bipadas encontradas:', notasBipadas?.length || 0)
+        if (notasBipadas && notasBipadas.length > 0) {
+          console.log('🔍 Primeira nota bipada:', notasBipadas[0])
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro no debug:', error)
     }
   }
 
@@ -384,7 +733,6 @@ export default function RecebimentoPage() {
                   <Badge className="text-xs bg-blue-100 text-blue-800">Turno {sessionData.turno}</Badge>
                 </div>
               </div>
-
               <Button
                 variant="outline"
                 size="sm"
@@ -509,18 +857,17 @@ export default function RecebimentoPage() {
             className="mb-3 bg-orange-600 hover:bg-orange-700 text-white"
             size="sm"
           >
-            <FileText className="h-6 w-6 " />
+            <FileText className="h-4 w-4 mr-2" />
             Finalizar Relatório ({notas.length} notas)
           </Button>
 
           <Button
             onClick={() => setModalRelatorios(true)}
-            variant="outline"
-            className="mb-3 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+            className="mb-3 bg-blue-100 hover:bg-blue-200 text-blue-600"
             size="sm"
           >
-            <Eye className="h-6 w-6 " />
-            Ver Relatórios Liberados
+            <Eye className="h-4 w-4 mr-2" />
+            Ver Relatórios
           </Button>
         </div>
 
@@ -605,6 +952,12 @@ export default function RecebimentoPage() {
             onClose={() => {
               setModalConfirmacao(false)
               setNotaAtual(null)
+              
+              // Reativar a câmera automaticamente quando o modal for fechado sem confirmação
+              setTimeout(() => {
+                setScannerAtivo(true)
+                console.log('📷 Câmera reativada automaticamente após fechamento do modal de confirmação')
+              }, 300)
             }}
           />
           <DivergenciaModal
@@ -615,6 +968,12 @@ export default function RecebimentoPage() {
             onClose={() => {
               setModalDivergencia(false)
               setNotaAtual(null)
+              
+              // Reativar a câmera automaticamente quando o modal de divergência for fechado sem confirmação
+              setTimeout(() => {
+                setScannerAtivo(true)
+                console.log('📷 Câmera reativada automaticamente após fechamento do modal de divergência')
+              }, 300)
             }}
           />
         </>
@@ -686,6 +1045,12 @@ export default function RecebimentoPage() {
                   onClick={() => {
                     setModalFinalizacao(false)
                     setNomeTransportadora("")
+                    
+                    // Reativar a câmera automaticamente quando o modal de finalização for cancelado
+                    setTimeout(() => {
+                      setScannerAtivo(true)
+                      console.log('📷 Câmera reativada automaticamente após cancelamento da finalização')
+                    }, 300)
                   }}
                   variant="outline"
                   className="flex-1"

@@ -171,7 +171,7 @@ export default function LoginPage() {
     const loginData = {
       area,
       colaboradores: area === "embalagem" ? colaboradoresPreenchidos : area === "custos" || area === "crdk" ? [usuarioCustos] : [colaborador],
-      data: LocalAuthService.isLocalAuthArea(area) && data ? format(data, "dd/MM/yyyy") : new Date().toLocaleDateString("pt-BR"),
+      data: LocalAuthService.isLocalAuthArea(area) && data ? format(data, "yyyy-MM-dd") : new Date().toISOString().split('T')[0],
       turno: LocalAuthService.isLocalAuthArea(area) ? turno : "N/A",
       loginTime: new Date().toISOString(),
       usuarioCustos: area === "custos" || area === "crdk" ? usuarioCustos : undefined,

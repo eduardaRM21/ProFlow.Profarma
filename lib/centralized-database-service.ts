@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase-client'
+import { convertDateToISO } from './utils'
 
 // =====================================================
 // TIPOS DE DADOS CENTRALIZADOS
@@ -86,7 +87,7 @@ export interface InventarioItem {
 }
 
 export interface Relatorio {
-  id: string
+  id?: string
   nome: string
   area: string
   data: string
@@ -99,8 +100,8 @@ export interface Relatorio {
   data_lancamento?: string
   numero_lancamento?: string
   responsavel_lancamento?: string
-  created_at: string
-  updated_at: string
+  created_at?: string
+  updated_at?: string
 }
 
 export interface ActivityLog {
@@ -470,9 +471,29 @@ export class CentralizedDatabaseService {
       throw new Error('Banco de dados não está conectado')
     }
 
+    // Converter data para formato ISO se estiver no formato brasileiro
+    let dataFormatada = relatorioData.data
+    if (relatorioData.data && relatorioData.data.includes('/')) {
+      dataFormatada = convertDateToISO(relatorioData.data)
+      console.log('📅 Data convertida de', relatorioData.data, 'para', dataFormatada)
+    }
+
     const { data, error } = await this.supabase
       .from('relatorios')
-      .insert([relatorioData])
+      .insert([{ 
+        nome: relatorioData.nome,
+        area: relatorioData.area,
+        data: dataFormatada,
+        turno: relatorioData.turno,
+        quantidade_notas: relatorioData.quantidade_notas || 0,
+        soma_volumes: relatorioData.soma_volumes || 0,
+        status: relatorioData.status || 'aguardando_lancamento',
+        observacoes: relatorioData.observacoes,
+        data_finalizacao: relatorioData.data_finalizacao,
+        data_lancamento: relatorioData.data_lancamento,
+        numero_lancamento: relatorioData.numero_lancamento,
+        responsavel_lancamento: relatorioData.responsavel_lancamento
+      }])
       .select()
       .single()
 
