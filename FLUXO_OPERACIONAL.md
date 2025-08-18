@@ -83,14 +83,6 @@ Recebimento (NFs)
 5. **Análise Financeira**: Processamento automático de custos
 6. **Relatórios Consolidados**: Visão unificada de todas as operações
 
-## 🔐 Usuários Autorizados
-
-### **Setor CRDK** (Torre de Controle)
-- `franklin.viana` - Senha: `crdkes2025`
-- `eduarda.medeiros` - Senha: `crdkes2025`
-- `ramon.fraga` - Senha: `crdkes2025`
-- `alessandro.santos` - Senha: `crdkes2025`
-- `rafael.lobo` - Senha: `crdkes2025`
 
 ### **Setor Custos**
 - Usuários internos com senhas específicas
