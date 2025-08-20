@@ -31,15 +31,15 @@ export default function ConfirmacaoModal({
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={`${isColetor ? 'max-w-sm mx-2' : 'max-w-2xl'}`}>
-        <DialogHeader>
+      <DialogContent className={`${isColetor ? 'max-w-sm mx-2 coletor-confirmation-modal' : 'max-w-2xl'}`}>
+        <DialogHeader className={`${isColetor ? 'coletor-modal-header' : ''}`}>
           <DialogTitle className="flex items-center space-x-2">
             <Package className="h-5 w-5 text-blue-600" />
             <span>Confirmar Recebimento</span>
           </DialogTitle>
         </DialogHeader>
 
-        <div className={`space-y-${isColetor ? '4' : '6'}`}>
+        <div className={`space-y-${isColetor ? '4' : '6'} ${isColetor ? 'coletor-modal-content' : ''}`}>
           {/* Informações da Nota */}
           <div className={`bg-blue-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
             <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '3'} ${isColetor ? 'text-sm' : ''}`}>
@@ -95,7 +95,7 @@ export default function ConfirmacaoModal({
           </div>
 
           {/* Botões */}
-          <div className={`flex ${isColetor ? 'flex-col space-y-2' : 'space-x-4'}`}>
+          <div className={`flex ${isColetor ? 'flex-col space-y-2 coletor-modal-buttons' : 'space-x-4'}`}>
             <Button
               onClick={onAlterar}
               variant="outline"

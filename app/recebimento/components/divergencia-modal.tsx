@@ -75,15 +75,15 @@ export default function DivergenciaModal({
     <>
       {/* Modal Principal de Divergência */}
       <Dialog open={isOpen && !modalConfirmacao} onOpenChange={handleClose}>
-        <DialogContent className={`${isColetor ? 'max-w-sm mx-2' : 'max-w-2xl'}`}>
-          <DialogHeader>
+        <DialogContent className={`${isColetor ? 'max-w-sm mx-2 coletor-confirmation-modal' : 'max-w-2xl'}`}>
+          <DialogHeader className={`${isColetor ? 'coletor-modal-header' : ''}`}>
             <DialogTitle className="flex items-center space-x-2">
               <AlertTriangle className="h-5 w-5 text-orange-600" />
               <span>Informar Divergência</span>
             </DialogTitle>
           </DialogHeader>
 
-          <div className={`space-y-${isColetor ? '4' : '6'}`}>
+          <div className={`space-y-${isColetor ? '4' : '6'} ${isColetor ? 'coletor-modal-content' : ''}`}>
             {/* Informações da Nota */}
             <div className={`bg-orange-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
               <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '3'} ${isColetor ? 'text-sm' : ''}`}>Nota Fiscal: {nota.numeroNF}</h3>
@@ -163,7 +163,7 @@ export default function DivergenciaModal({
             )}
 
             {/* Botões */}
-            <div className={`flex ${isColetor ? 'flex-col space-y-2' : 'space-x-4'}`}>
+            <div className={`flex ${isColetor ? 'flex-col space-y-2 coletor-modal-buttons' : 'space-x-4'}`}>
               <Button
                 onClick={handleSubmit}
                 disabled={!tipoDivergencia || !volumesInformados}
@@ -183,15 +183,15 @@ export default function DivergenciaModal({
 
       {/* Modal de Confirmação Final */}
       <Dialog open={modalConfirmacao} onOpenChange={() => setModalConfirmacao(false)}>
-        <DialogContent className={`${isColetor ? 'max-w-sm mx-2' : 'max-w-md'}`}>
-          <DialogHeader>
+        <DialogContent className={`${isColetor ? 'max-w-sm mx-2 coletor-confirmation-modal' : 'max-w-md'}`}>
+          <DialogHeader className={`${isColetor ? 'coletor-modal-header' : ''}`}>
             <DialogTitle className="flex items-center space-x-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
               <span>Confirmar Divergência</span>
             </DialogTitle>
           </DialogHeader>
 
-          <div className={`space-y-${isColetor ? '3' : '4'}`}>
+          <div className={`space-y-${isColetor ? '3' : '4'} ${isColetor ? 'coletor-modal-content' : ''}`}>
             <div className="text-center">
               <p className={`${isColetor ? 'text-base' : 'text-lg'}`}>
                 Confirma que a nota <strong>{nota.numeroNF}</strong> possui{" "}
@@ -205,7 +205,7 @@ export default function DivergenciaModal({
               )}
             </div>
 
-            <div className={`flex ${isColetor ? 'flex-col space-y-2' : 'space-x-4'}`}>
+            <div className={`flex ${isColetor ? 'flex-col space-y-2 coletor-modal-buttons' : 'space-x-4'}`}>
               <Button onClick={confirmarDivergencia} className={`flex-1 bg-green-600 hover:bg-green-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}>
                 Confirmar
               </Button>

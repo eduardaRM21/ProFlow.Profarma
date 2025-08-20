@@ -1039,15 +1039,15 @@ export default function RecebimentoPage() {
       {/* Modais */}
       {modalFinalizacao && (
         <Dialog open={modalFinalizacao} onOpenChange={setModalFinalizacao}>
-          <DialogContent className={`${isColetor ? 'max-w-sm mx-2' : 'max-w-md'}`}>
-            <DialogHeader>
+          <DialogContent className={`${isColetor ? 'max-w-sm mx-2 coletor-confirmation-modal' : 'max-w-md'}`}>
+            <DialogHeader className={`${isColetor ? 'coletor-modal-header' : ''}`}>
               <DialogTitle className="flex items-center space-x-2">
                 <FileText className="h-5 w-5 text-orange-600" />
                 <span>Finalizar Relatório</span>
               </DialogTitle>
             </DialogHeader>
 
-            <div className={`space-y-${isColetor ? '3' : '4'}`}>
+            <div className={`space-y-${isColetor ? '3' : '4'} ${isColetor ? 'coletor-modal-content' : ''}`}>
               <div className={`bg-blue-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
                 <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '2'} ${isColetor ? 'text-sm' : ''}`}>Resumo do Relatório</h3>
                 <div className={`grid ${isColetor ? 'grid-cols-1' : 'grid-cols-2'} gap-${isColetor ? '3' : '4'} text-sm`}>
@@ -1091,7 +1091,7 @@ export default function RecebimentoPage() {
                 <p className={`${isColetor ? 'text-xs' : 'text-xs'} text-gray-500 mt-1`}>Este será o nome do relatório na área de Custos</p>
               </div>
 
-              <div className={`flex ${isColetor ? 'flex-col space-y-2' : 'space-x-4'}`}>
+              <div className={`flex ${isColetor ? 'flex-col space-y-2 coletor-modal-buttons' : 'space-x-4'}`}>
                 <Button
                   onClick={confirmarFinalizacao}
                   disabled={!nomeTransportadora.trim()}

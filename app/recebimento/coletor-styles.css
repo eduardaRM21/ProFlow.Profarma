@@ -190,6 +190,61 @@
     border-radius: 2px;
   }
 
+  /* Estilos para modais em coletores */
+  .coletor-modal {
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .coletor-modal-header {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .coletor-modal-content {
+    padding-bottom: 1rem;
+  }
+
+  /* Garantir que os botões sejam visíveis */
+  .coletor-modal-buttons {
+    position: sticky;
+    bottom: 0;
+    background: white;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e5e7eb;
+    margin-top: 1rem;
+  }
+
+  /* Ajustes específicos para modais de confirmação */
+  .coletor-confirmation-modal {
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .coletor-confirmation-modal .dialog-content {
+    padding: 1rem;
+  }
+
+  .coletor-confirmation-modal .dialog-header {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+    padding-bottom: 1rem;
+  }
+
+  .coletor-confirmation-modal .dialog-footer {
+    position: sticky;
+    bottom: 0;
+    background: white;
+    padding-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+  }
+
   /* Estados de foco para acessibilidade */
   .coletor-focus:focus {
     outline: 2px solid #3b82f6;
