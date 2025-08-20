@@ -31,6 +31,8 @@ import { useRealtimeMonitoring } from "@/hooks/use-realtime-monitoring"
 import { useNotasBipadas } from "@/lib/notas-bipadas-service"
 import type { SessionData, NotaFiscal, Relatorio } from "@/lib/database-service"
 import { LocalAuthService } from "@/lib/local-auth-service"
+import { useIsColetor } from "@/hooks/use-coletor"
+import ColetorView from "./components/coletor-view"
 
 const TIPOS_DIVERGENCIA = [
   { codigo: "0063", descricao: "Avaria transportadora" },
@@ -57,8 +59,12 @@ export default function RecebimentoPage() {
   const [modalConfirmacao, setModalConfirmacao] = useState(false)
   const [modalDivergencia, setModalDivergencia] = useState(false)
   const [notaAtual, setNotaAtual] = useState<NotaFiscal | null>(null)
+  const [scannerParaBipar, setScannerParaBipar] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
+  
+  // Hook para detectar se é um coletor
+  const isColetor = useIsColetor()
 
   // Hooks do banco de dados
   const { getSession } = useSession()
@@ -357,6 +363,13 @@ export default function RecebimentoPage() {
     if (!codigoInput.trim()) return
 
     console.log(`🚀 Iniciando validação da NF: ${codigoInput.trim()}`)
+    console.log(`📱 Scanner ativo: ${scannerAtivo}, Scanner para bipar: ${scannerParaBipar}`)
+    
+    // Se for bipagem manual (não via scanner), limpar a flag
+    if (!scannerAtivo) {
+      console.log('📝 Bipagem manual detectada - limpando flag scannerParaBipar')
+      setScannerParaBipar(false)
+    }
 
     const resultado = await validarCodigo(codigoInput.trim())
 
@@ -385,12 +398,14 @@ export default function RecebimentoPage() {
       alert(mensagem)
       setCodigoInput("")
       
-      // Reativar a câmera automaticamente após rejeitar a nota (bipagem manual)
-      if (scannerAtivo) {
+      // Reativar a câmera automaticamente apenas se foi aberta para bipar via scanner
+      if (scannerParaBipar) {
         setTimeout(() => {
           setScannerAtivo(true)
-          console.log('📷 Câmera reativada automaticamente após rejeição da nota (bipagem manual)')
+          console.log('📷 Câmera reativada automaticamente após rejeição da nota (bipagem via scanner)')
         }, 1000) // Delay maior para dar tempo do usuário ler o alerta
+      } else {
+        console.log('📝 Bipagem manual - scanner não será reativado automaticamente')
       }
     }
     setTimeout(() => inputRef.current?.focus(), 100)
@@ -429,11 +444,15 @@ export default function RecebimentoPage() {
       alert(mensagem)
       setCodigoInput("")
       
-      // Reativar a câmera automaticamente após rejeitar a nota
-      setTimeout(() => {
-        setScannerAtivo(true)
-        console.log('📷 Câmera reativada automaticamente após rejeição da nota')
-      }, 1000) // Delay maior para dar tempo do usuário ler o alerta
+      // Reativar a câmera automaticamente apenas se foi aberta para bipar via scanner
+      if (scannerParaBipar) {
+        setTimeout(() => {
+          setScannerAtivo(true)
+          console.log('📷 Câmera reativada automaticamente após rejeição da nota via scanner')
+        }, 1000) // Delay maior para dar tempo do usuário ler o alerta
+      } else {
+        console.log('📝 Nota rejeitada via scanner mas scanner não foi aberto para bipar - não reativando')
+      }
     }
     setTimeout(() => inputRef.current?.focus(), 100)
   }
@@ -485,11 +504,15 @@ export default function RecebimentoPage() {
     setModalConfirmacao(false)
     setNotaAtual(null)
     
-    // Reativar a câmera automaticamente após confirmar a nota
-    setTimeout(() => {
-      setScannerAtivo(true)
-      console.log('📷 Câmera reativada automaticamente após confirmação da nota')
-    }, 500) // Pequeno delay para garantir que o modal foi fechado
+    // Reativar a câmera automaticamente apenas se foi aberta para bipar via scanner
+    if (scannerParaBipar) {
+      setTimeout(() => {
+        setScannerAtivo(true)
+        console.log('📷 Câmera reativada automaticamente após confirmação da nota (scanner para bipar)')
+      }, 500) // Pequeno delay para garantir que o modal foi fechado
+    } else {
+      console.log('📝 Nota confirmada mas scanner não foi aberto para bipar - não reativando')
+    }
     
     setTimeout(() => inputRef.current?.focus(), 100)
   }
@@ -555,11 +578,7 @@ export default function RecebimentoPage() {
     setModalDivergencia(false)
     setNotaAtual(null)
     
-    // Reativar a câmera automaticamente após confirmar a divergência
-    setTimeout(() => {
-      setScannerAtivo(true)
-      console.log('📷 Câmera reativada automaticamente após confirmação da divergência')
-    }, 500) // Pequeno delay para garantir que o modal foi fechado
+    // Não reativar a câmera automaticamente após confirmar divergência
     
     setTimeout(() => inputRef.current?.focus(), 100)
   }
@@ -626,11 +645,7 @@ export default function RecebimentoPage() {
       setModalFinalizacao(false)
       setNomeTransportadora("")
       
-      // Reativar a câmera automaticamente após finalizar o relatório
-      setTimeout(() => {
-        setScannerAtivo(true)
-        console.log('📷 Câmera reativada automaticamente após finalização do relatório')
-      }, 500)
+      // Não reativar a câmera automaticamente após finalizar o relatório
     } catch (error) {
       console.error('❌ Erro ao salvar relatório:', error)
       alert('Erro ao salvar relatório. Tente novamente.')
@@ -642,8 +657,18 @@ export default function RecebimentoPage() {
     router.push("/")
   }
 
+  // Função para limpar a flag de scanner para bipar
+  const limparScannerParaBipar = () => {
+    setScannerParaBipar(false)
+  }
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
+      // Se for bipagem manual (não via scanner), limpar a flag
+      if (!scannerAtivo) {
+        console.log('📝 Bipagem manual via Enter detectada - limpando flag scannerParaBipar')
+        setScannerParaBipar(false)
+      }
       handleBipagem()
     }
   }
@@ -707,8 +732,11 @@ export default function RecebimentoPage() {
 
   return (
     <div className="min-h-screen bg-blue-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-blue-100">
+      {/* Renderização condicional: Desktop vs Coletor */}
+      {!isColetor ? (
+        <>
+          {/* Header */}
+          <header className="bg-white shadow-sm border-b border-blue-100">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 sm:py-0 sm:h-16 gap-2 sm:gap-4">
             <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
@@ -785,7 +813,6 @@ export default function RecebimentoPage() {
               <div className="text-xs text-gray-600 leading-tight">Total de Volumes</div>
             </CardContent>
           </Card>
-
         </div>
 
         {/* Campo de bipagem */}
@@ -803,7 +830,11 @@ export default function RecebimentoPage() {
                   <h3 className="text-lg font-medium">Scanner de Código de Barras</h3>
                   <Button
                     variant="outline"
-                    onClick={() => setScannerAtivo(false)}
+                    onClick={() => {
+                      console.log('📷 Fechando scanner')
+                      setScannerAtivo(false)
+                      setScannerParaBipar(false)
+                    }}
                     className="text-red-600 hover:text-red-700"
                   >
                     <CameraOff className="h-4 w-4 mr-2" />
@@ -831,7 +862,11 @@ export default function RecebimentoPage() {
                       className="text-base h-12 font-mono"
                     />
                   </div>
-                  <Button onClick={() => setScannerAtivo(true)} className="h-12 px-4 bg-blue-600 hover:bg-blue-700">
+                  <Button onClick={() => {
+                    console.log('📷 Abrindo scanner para bipar')
+                    setScannerAtivo(true)
+                    setScannerParaBipar(true)
+                  }} className="h-12 px-4 bg-blue-600 hover:bg-blue-700">
                     <Camera className="h-4 w-4 mr-2" />
                     Scanner
                   </Button>
@@ -940,6 +975,24 @@ export default function RecebimentoPage() {
           </CardContent>
         </Card>
       </main>
+        </>
+      ) : (
+        <ColetorView
+          codigoInput={codigoInput}
+          setCodigoInput={setCodigoInput}
+          scannerAtivo={scannerAtivo}
+          setScannerAtivo={setScannerAtivo}
+          scannerParaBipar={scannerParaBipar}
+          setScannerParaBipar={setScannerParaBipar}
+          handleBipagem={handleBipagem}
+          handleKeyPress={handleKeyPress}
+          handleCodigoEscaneado={handleCodigoEscaneado}
+          notas={notas}
+          finalizarRelatorio={finalizarRelatorio}
+          setModalRelatorios={setModalRelatorios}
+          inputRef={inputRef}
+        />
+      )}
 
       {/* Modais */}
       {notaAtual && (
@@ -953,11 +1006,13 @@ export default function RecebimentoPage() {
               setModalConfirmacao(false)
               setNotaAtual(null)
               
-              // Reativar a câmera automaticamente quando o modal for fechado sem confirmação
-              setTimeout(() => {
-                setScannerAtivo(true)
-                console.log('📷 Câmera reativada automaticamente após fechamento do modal de confirmação')
-              }, 300)
+              // Reativar a câmera automaticamente apenas se foi aberta para bipar via scanner
+              if (scannerParaBipar) {
+                setTimeout(() => {
+                  setScannerAtivo(true)
+                  console.log('📷 Câmera reativada automaticamente após fechamento do modal de confirmação (scanner para bipar)')
+                }, 300)
+              }
             }}
           />
           <DivergenciaModal
@@ -969,15 +1024,19 @@ export default function RecebimentoPage() {
               setModalDivergencia(false)
               setNotaAtual(null)
               
-              // Reativar a câmera automaticamente quando o modal de divergência for fechado sem confirmação
-              setTimeout(() => {
-                setScannerAtivo(true)
-                console.log('📷 Câmera reativada automaticamente após fechamento do modal de divergência')
-              }, 300)
+              // Reativar a câmera automaticamente apenas se foi aberta para bipar via scanner
+              if (scannerParaBipar) {
+                setTimeout(() => {
+                  setScannerAtivo(true)
+                  console.log('📷 Câmera reativada automaticamente após fechamento do modal de divergência (scanner para bipar)')
+                }, 300)
+              }
             }}
           />
         </>
       )}
+
+      {/* Modais */}
       {modalFinalizacao && (
         <Dialog open={modalFinalizacao} onOpenChange={setModalFinalizacao}>
           <DialogContent className="max-w-md">
@@ -1046,11 +1105,7 @@ export default function RecebimentoPage() {
                     setModalFinalizacao(false)
                     setNomeTransportadora("")
                     
-                    // Reativar a câmera automaticamente quando o modal de finalização for cancelado
-                    setTimeout(() => {
-                      setScannerAtivo(true)
-                      console.log('📷 Câmera reativada automaticamente após cancelamento da finalização')
-                    }, 300)
+                    // Não reativar a câmera automaticamente ao cancelar finalização
                   }}
                   variant="outline"
                   className="flex-1"
