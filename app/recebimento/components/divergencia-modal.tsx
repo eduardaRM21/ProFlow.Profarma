@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, CheckCircle } from "lucide-react"
 import type { NotaFiscal } from "@/lib/database-service"
+import { useIsColetor } from "@/hooks/use-coletor"
 
 interface TipoDivergencia {
   codigo: string
@@ -30,6 +31,7 @@ export default function DivergenciaModal({
   onConfirmar,
   onClose,
 }: DivergenciaModalProps) {
+  const isColetor = useIsColetor();
   const [volumesInformados, setVolumesInformados] = useState(nota.volumes.toString())
   const [tipoDivergencia, setTipoDivergencia] = useState("")
   const [modalConfirmacao, setModalConfirmacao] = useState(false)
@@ -73,7 +75,7 @@ export default function DivergenciaModal({
     <>
       {/* Modal Principal de Divergência */}
       <Dialog open={isOpen && !modalConfirmacao} onOpenChange={handleClose}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className={`${isColetor ? 'max-w-sm mx-2' : 'max-w-2xl'}`}>
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <AlertTriangle className="h-5 w-5 text-orange-600" />
@@ -81,12 +83,12 @@ export default function DivergenciaModal({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-6">
+          <div className={`space-y-${isColetor ? '4' : '6'}`}>
             {/* Informações da Nota */}
-            <div className="bg-orange-50 p-4 rounded-lg">
-              <h3 className="font-semibold text-gray-900 mb-3">Nota Fiscal: {nota.numeroNF}</h3>
+            <div className={`bg-orange-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
+              <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '3'} ${isColetor ? 'text-sm' : ''}`}>Nota Fiscal: {nota.numeroNF}</h3>
 
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className={`grid ${isColetor ? 'grid-cols-1' : 'grid-cols-3'} gap-${isColetor ? '3' : '4'} text-sm`}>
                 <div>
                   <div className="text-gray-600">Volumes Originais</div>
                   <Badge variant="outline" className="bg-white">
@@ -142,9 +144,9 @@ export default function DivergenciaModal({
 
             {/* Resumo da Divergência */}
             {tipoDivergencia && (
-              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                <h4 className="font-semibold text-gray-900 mb-2">Resumo da Divergência</h4>
-                <div className="space-y-1 text-sm">
+              <div className={`bg-yellow-50 p-${isColetor ? '3' : '4'} rounded-lg border border-yellow-200`}>
+                <h4 className={`font-semibold text-gray-900 mb-${isColetor ? '1' : '2'} ${isColetor ? 'text-sm' : ''}`}>Resumo da Divergência</h4>
+                <div className={`space-y-1 ${isColetor ? 'text-xs' : 'text-sm'}`}>
                   <div>
                     <strong>Tipo:</strong> {tipoDivergencia} - {tipoSelecionado?.descricao}
                   </div>
@@ -161,17 +163,17 @@ export default function DivergenciaModal({
             )}
 
             {/* Botões */}
-            <div className="flex space-x-4">
+            <div className={`flex ${isColetor ? 'flex-col space-y-2' : 'space-x-4'}`}>
               <Button
                 onClick={handleSubmit}
                 disabled={!tipoDivergencia || !volumesInformados}
-                className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
-                size="lg"
+                className={`flex-1 bg-orange-600 hover:bg-orange-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}
+                size={isColetor ? "default" : "lg"}
               >
-                <AlertTriangle className="h-5 w-5 mr-2" />
+                <AlertTriangle className={`${isColetor ? 'h-4 w-4' : 'h-5 w-5'} mr-2`} />
                 Confirmar Divergência
               </Button>
-              <Button onClick={handleClose} variant="outline" className="flex-1 bg-transparent" size="lg">
+              <Button onClick={handleClose} variant="outline" className={`flex-1 bg-transparent ${isColetor ? 'h-12 text-sm' : ''}`} size={isColetor ? "default" : "lg"}>
                 Cancelar
               </Button>
             </div>
@@ -181,7 +183,7 @@ export default function DivergenciaModal({
 
       {/* Modal de Confirmação Final */}
       <Dialog open={modalConfirmacao} onOpenChange={() => setModalConfirmacao(false)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className={`${isColetor ? 'max-w-sm mx-2' : 'max-w-md'}`}>
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
@@ -189,25 +191,25 @@ export default function DivergenciaModal({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className={`space-y-${isColetor ? '3' : '4'}`}>
             <div className="text-center">
-              <p className="text-lg">
+              <p className={`${isColetor ? 'text-base' : 'text-lg'}`}>
                 Confirma que a nota <strong>{nota.numeroNF}</strong> possui{" "}
                 <strong className="text-orange-600">{tipoSelecionado?.descricao}</strong>?
               </p>
 
               {Number.parseInt(volumesInformados) !== nota.volumes && (
-                <p className="text-sm text-gray-600 mt-2">
+                <p className={`${isColetor ? 'text-xs' : 'text-sm'} text-gray-600 mt-2`}>
                   Volumes alterados: {nota.volumes} → {volumesInformados}
                 </p>
               )}
             </div>
 
-            <div className="flex space-x-4">
-              <Button onClick={confirmarDivergencia} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+            <div className={`flex ${isColetor ? 'flex-col space-y-2' : 'space-x-4'}`}>
+              <Button onClick={confirmarDivergencia} className={`flex-1 bg-green-600 hover:bg-green-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}>
                 Confirmar
               </Button>
-              <Button onClick={() => setModalConfirmacao(false)} variant="outline" className="flex-1">
+              <Button onClick={() => setModalConfirmacao(false)} variant="outline" className={`flex-1 ${isColetor ? 'h-12 text-sm' : ''}`}>
                 Cancelar
               </Button>
             </div>

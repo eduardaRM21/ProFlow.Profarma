@@ -1039,7 +1039,7 @@ export default function RecebimentoPage() {
       {/* Modais */}
       {modalFinalizacao && (
         <Dialog open={modalFinalizacao} onOpenChange={setModalFinalizacao}>
-          <DialogContent className="max-w-md">
+          <DialogContent className={`${isColetor ? 'max-w-sm mx-2' : 'max-w-md'}`}>
             <DialogHeader>
               <DialogTitle className="flex items-center space-x-2">
                 <FileText className="h-5 w-5 text-orange-600" />
@@ -1047,10 +1047,10 @@ export default function RecebimentoPage() {
               </DialogTitle>
             </DialogHeader>
 
-            <div className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
-                <h3 className="font-semibold text-gray-900 mb-2">Resumo do Relatório</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className={`space-y-${isColetor ? '3' : '4'}`}>
+              <div className={`bg-blue-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
+                <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '2'} ${isColetor ? 'text-sm' : ''}`}>Resumo do Relatório</h3>
+                <div className={`grid ${isColetor ? 'grid-cols-1' : 'grid-cols-2'} gap-${isColetor ? '3' : '4'} text-sm`}>
                   <div>
                     <div className="text-gray-600">Total de Notas</div>
                     <div className="font-bold text-blue-600">{notas.length}</div>
@@ -1081,21 +1081,21 @@ export default function RecebimentoPage() {
                   placeholder="Ex: Ativa, Mira, Real94, etc."
                   value={nomeTransportadora}
                   onChange={(e) => setNomeTransportadora(e.target.value)}
-                  className="text-base"
+                  className={`${isColetor ? 'h-12 text-sm' : 'text-base'}`}
                   onKeyPress={(e) => {
                     if (e.key === "Enter") {
                       confirmarFinalizacao()
                     }
                   }}
                 />
-                <p className="text-xs text-gray-500 mt-1">Este será o nome do relatório na área de Custos</p>
+                <p className={`${isColetor ? 'text-xs' : 'text-xs'} text-gray-500 mt-1`}>Este será o nome do relatório na área de Custos</p>
               </div>
 
-              <div className="flex space-x-4">
+              <div className={`flex ${isColetor ? 'flex-col space-y-2' : 'space-x-4'}`}>
                 <Button
                   onClick={confirmarFinalizacao}
                   disabled={!nomeTransportadora.trim()}
-                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+                  className={`flex-1 bg-orange-600 hover:bg-orange-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}
                 >
                   <FileText className="h-4 w-4 mr-2" />
                   Finalizar Relatório
@@ -1108,7 +1108,7 @@ export default function RecebimentoPage() {
                     // Não reativar a câmera automaticamente ao cancelar finalização
                   }}
                   variant="outline"
-                  className="flex-1"
+                  className={`flex-1 ${isColetor ? 'h-12 text-sm' : ''}`}
                 >
                   Cancelar
                 </Button>
