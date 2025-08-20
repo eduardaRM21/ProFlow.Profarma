@@ -37,33 +37,31 @@ export interface CarroEmbalagem {
 
 // Serviço de Embalagem
 export const EmbalagemService = {
-  // Validar NF para embalagem
+  // Validar NF para embalagem usando a tabela notas_fiscais
   async validateNF(numeroNF: string, data: string, turno: string): Promise<{ valido: boolean; nota?: NotaFiscal; erro?: string }> {
     try {
-      console.log(`🔍 EmbalagemService: Validando NF ${numeroNF} para embalagem`)
+      console.log(`🔍 EmbalagemService: Validando NF ${numeroNF} para embalagem usando tabela notas_fiscais`)
       
-      // Buscar a NF em relatórios FINALIZADOS do recebimento usando o código completo
-      console.log(`🔍 Buscando NF ${numeroNF} em relatórios finalizados do recebimento...`)
+      // Buscar a NF diretamente na tabela notas_fiscais usando codigo_completo
+      const resultado = await this.buscarNFNaTabelaNotasFiscais(numeroNF)
       
-      const resultado = await this.buscarNFEmRelatoriosFinalizados(numeroNF, data, turno)
-      
-      console.log(`📋 Resultado da busca em relatórios finalizados:`, resultado)
-      
-      if (resultado.encontrada) {
-        console.log(`✅ NF ${numeroNF} encontrada em relatório finalizado: ${resultado.relatorio}`)
+              console.log(`📋 Resultado da busca na tabela notas_fiscais:`, resultado)
+        
+        if (resultado.encontrada) {
+          console.log(`✅ NF ${numeroNF} encontrada na tabela notas_fiscais: ${resultado.status}`)
         
         // Converter para o formato esperado
         const notaFiscal: NotaFiscal = {
-          id: `${Date.now()}-${numeroNF}`,
-          codigoCompleto: numeroNF,
-          data: resultado.dataRelatorio || data,
-          numeroNF: resultado.numeroNF || numeroNF,
+          id: resultado.id || `${Date.now()}-${numeroNF}`,
+          codigoCompleto: resultado.codigo_completo || numeroNF,
+          data: resultado.data || data,
+          numeroNF: resultado.numero_nf || numeroNF,
           volumes: resultado.volumes || 0,
           destino: resultado.destino || '',
           fornecedor: resultado.fornecedor || '',
-          clienteDestino: resultado.clienteDestino || '',
-          tipoCarga: resultado.tipoCarga || '',
-          timestamp: new Date().toISOString(),
+          clienteDestino: resultado.cliente_destino || '',
+          tipoCarga: resultado.tipo_carga || '',
+          timestamp: resultado.created_at || new Date().toISOString(),
           status: 'ok'
         }
         
@@ -72,14 +70,14 @@ export const EmbalagemService = {
           nota: notaFiscal,
           erro: undefined
         }
-      } else {
-        console.log(`❌ NF ${numeroNF} não encontrada em relatórios finalizados: ${resultado.erro}`)
-        return { 
-          valido: false, 
-          nota: undefined,
-          erro: resultado.erro 
+              } else {
+          console.log(`❌ NF ${numeroNF} não encontrada na tabela notas_fiscais: ${resultado.erro}`)
+          return { 
+            valido: false, 
+            nota: undefined,
+            erro: resultado.erro 
+          }
         }
-      }
     } catch (error) {
       console.error('❌ Erro no EmbalagemService.validateNF:', {
         error,
@@ -89,6 +87,125 @@ export const EmbalagemService = {
       return { 
         valido: false, 
         erro: `Erro interno na validação: ${error instanceof Error ? error.message : 'Erro desconhecido'}` 
+      }
+    }
+  },
+
+  // Buscar NF na tabela notas_fiscais usando codigo_completo
+  async buscarNFNaTabelaNotasFiscais(codigoCompleto: string): Promise<{ 
+    encontrada: boolean; 
+    id?: string;
+    numero_nf?: string;
+    codigo_completo?: string;
+    data?: string;
+    volumes?: number;
+    destino?: string;
+    fornecedor?: string;
+    cliente_destino?: string;
+    tipo_carga?: string;
+    status?: string;
+    created_at?: string;
+    erro?: string;
+  }> {
+    try {
+      console.log(`🔍 Buscando NF com código ${codigoCompleto} na tabela notas_fiscais`)
+      
+      const { getSupabase, retryWithBackoff } = await import('./supabase-client')
+      
+      // Buscar na tabela notas_bipadas usando codigo_completo
+      let notasData: any[] = []
+      let notasError: any = null
+      
+      // Primeiro, tentar buscar por codigo_completo
+      console.log(`🔍 Buscando por codigo_completo: "${codigoCompleto}"`)
+      const { data: dataCodigo, error: errorCodigo } = await retryWithBackoff(async () => {
+        return await getSupabase()
+          .from('notas_fiscais')
+          .select('*')
+          .eq('codigo_completo', codigoCompleto)
+          .order('created_at', { ascending: false })
+          .limit(5)
+      })
+      
+      if (errorCodigo) {
+        console.error('❌ Erro ao buscar por codigo_completo:', errorCodigo)
+        notasError = errorCodigo
+      } else if (dataCodigo && dataCodigo.length > 0) {
+        console.log(`✅ Encontradas ${dataCodigo.length} notas por codigo_completo`)
+        notasData = dataCodigo
+      } else {
+        console.log(`⚠️ Nenhuma nota encontrada por codigo_completo`)
+        // Se não encontrou por codigo_completo, tentar por numero_nf
+        console.log(`🔍 Buscando por numero_nf: "${codigoCompleto}"`)
+        const { data: dataNF, error: errorNF } = await retryWithBackoff(async () => {
+          return await getSupabase()
+            .from('notas_fiscais')
+            .select('*')
+            .eq('numero_nf', codigoCompleto)
+            .order('created_at', { ascending: false })
+            .limit(5)
+        })
+        
+        if (errorNF) {
+          console.error('❌ Erro ao buscar por numero_nf:', errorNF)
+          notasError = errorNF
+        } else if (dataNF && dataNF.length > 0) {
+          console.log(`✅ Encontradas ${dataNF.length} notas por numero_nf`)
+          notasData = dataNF
+        } else {
+          console.log(`⚠️ Nenhuma nota encontrada por numero_nf`)
+        }
+      }
+      
+      if (notasError) {
+        console.error('❌ Erro ao buscar na tabela notas_bipadas:', notasError)
+        return {
+          encontrada: false,
+          erro: `Erro ao buscar na tabela notas_bipadas: ${notasError.message}`
+        }
+      }
+      
+      if (notasData && notasData.length > 0) {
+        console.log(`📋 Encontradas ${notasData.length} notas na tabela notas_fiscais`)
+        
+        // Pegar a primeira nota encontrada (mais recente)
+        const nota = notasData[0]
+        console.log(`✅ NF encontrada na tabela notas_fiscais:`, {
+          id: nota.id,
+          numero_nf: nota.numero_nf,
+          codigo_completo: nota.codigo_completo,
+          data: nota.data,
+          status: nota.status,
+          fornecedor: nota.fornecedor
+        })
+        
+        return {
+          encontrada: true,
+          id: nota.id as string,
+          numero_nf: nota.numero_nf as string,
+          codigo_completo: nota.codigo_completo as string,
+          data: nota.data as string,
+          volumes: nota.volumes as number,
+          destino: nota.destino as string,
+          fornecedor: nota.fornecedor as string,
+          cliente_destino: nota.cliente_destino as string,
+          tipo_carga: nota.tipo_carga as string,
+          status: nota.status as string,
+          created_at: nota.created_at as string
+        }
+      }
+      
+      console.log(`❌ NF com código ${codigoCompleto} não encontrada na tabela notas_fiscais`)
+      return { 
+        encontrada: false, 
+        erro: `NF não foi encontrada na tabela notas_fiscais. Verifique se a NF foi processada em algum setor.` 
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao buscar NF na tabela notas_fiscais:', error)
+      return { 
+        encontrada: false, 
+        erro: `Erro interno: ${error instanceof Error ? error.message : 'Erro desconhecido'}` 
       }
     }
   },
@@ -117,13 +234,13 @@ export const EmbalagemService = {
         }
       }
       
-      // Validar se a NF foi bipada no recebimento
+      // Validar se a NF foi processada em algum setor
       const validacao = await this.validateNF(numeroNF, data, turno)
       
       if (!validacao.valido) {
         return { 
           valido: false, 
-          erro: validacao.erro || 'NF não foi bipada no Recebimento' 
+          erro: validacao.erro || 'NF não foi processada em nenhum setor' 
         }
       }
       

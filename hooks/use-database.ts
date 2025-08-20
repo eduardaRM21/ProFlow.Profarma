@@ -363,6 +363,32 @@ export const useRelatorios = () => {
     }
   }, [isFullyConnected])
 
+  const updateRelatorioStatus = useCallback(async (relatorioId: string, novoStatus: string) => {
+    try {
+      // Tentar atualizar no banco se conectado
+      if (isFullyConnected) {
+        await RelatoriosService.updateRelatorioStatus(relatorioId, novoStatus)
+        console.log('🔄 Status do relatório atualizado no banco')
+      }
+
+      // Atualizar localmente como backup
+      const relatoriosData = localStorage.getItem('relatorios_local') || '[]'
+      const relatorios = JSON.parse(relatoriosData)
+      const updatedRelatorios = relatorios.map((r: any) => 
+        r.id === relatorioId ? { ...r, status: novoStatus } : r
+      )
+      localStorage.setItem('relatorios_local', JSON.stringify(updatedRelatorios))
+      console.log('🔄 Status do relatório atualizado localmente')
+
+      // Invalidar cache
+      relatoriosCache = null
+      recebimentoCache = null
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status do relatório:', error)
+      throw error
+    }
+  }, [isFullyConnected])
+
   const getRelatorios = useCallback(async (): Promise<any[]> => {
     try {
       console.log('📋 Tentando carregar relatórios do banco...')
@@ -478,6 +504,7 @@ export const useRelatorios = () => {
 
   return {
     saveRelatorio,
+    updateRelatorioStatus,
     getRelatorios,
     getRelatoriosRecebimento
   }

@@ -29,6 +29,7 @@ import {
 import BarcodeScanner from "./barcode-scanner"
 import ChatModal from "./chat-modal"
 import { useNotasBipadas } from "@/lib/notas-bipadas-service"
+import { EmbalagemNotasBipadasService, EmbalagemNotaBipada } from '@/lib/embalagem-notas-bipadas-service'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { config, debugConfig } from '@/lib/config'
@@ -254,7 +255,7 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     
     // Teste específico da validação
     console.log("🧪 TESTE: Verificando validação com NF de teste")
-    const resultado = verificarNFNoRecebimento("123456")
+    const resultado = verificarNFEmRelatorios("123456")
     console.log("🧪 Resultado do teste:", resultado)
     
     // Criar dados de teste se não existirem
@@ -280,30 +281,27 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     }
   }
 
-  // Função auxiliar para testar validação
-  const verificarNFNoRecebimento = async (numeroNF: string): Promise<boolean> => {
-    console.log("🔍 Verificando NF no recebimento:", numeroNF)
+  // Função auxiliar para verificar se NF está em relatórios de recebimento (OBRIGATÓRIO)
+  const verificarNFEmRelatorios = async (numeroNF: string): Promise<boolean> => {
+    console.log("🔍 Verificando NF para embalagem (apenas recebimento):", numeroNF)
     
     try {
-      // 1. Primeiro, tentar validar usando o banco de dados (método principal)
-      console.log("🔍 Tentando validar NF no banco:", numeroNF, sessionData.data, sessionData.turno)
+      // 1. Primeiro, tentar validar usando o EmbalagemService (método principal)
+      console.log("🔍 Tentando validar NF usando EmbalagemService:", numeroNF, sessionData.data, sessionData.turno)
       
-      const validacao = await notasBipadasService.validarNFRecebimento(
-        numeroNF, 
-        sessionData.data, 
-        sessionData.turno
-      );
+      const { EmbalagemService } = await import('@/lib/embalagem-service')
+      const resultado = await EmbalagemService.buscarNFNaTabelaNotasFiscais(numeroNF);
       
-      console.log("📋 Resultado da validação:", validacao)
+      console.log("📋 Resultado da validação na tabela notas_fiscais:", resultado)
       
-      if (validacao.valida) {
-        console.log("✅ NF validada no banco de dados:", numeroNF);
+      if (resultado.encontrada) {
+        console.log("✅ NF encontrada na tabela notas_fiscais:", numeroNF, "Status:", resultado.status);
         return true;
       }
       
-      console.log("❌ NF não validada no banco:", validacao.motivo);
+      console.log("❌ NF não encontrada na tabela notas_fiscais:", resultado.erro);
       
-      // 2. Fallback: verificar em sessões ativas de recebimento (localStorage)
+      // 2. Verificar em sessões ativas de recebimento (localStorage)
       for (let i = 0; i < localStorage.length; i++) {
         const chave = localStorage.key(i)
         if (chave && chave.startsWith("recebimento_")) {
@@ -311,7 +309,6 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
           try {
             const notasRecebimento = JSON.parse(localStorage.getItem(chave) || "[]")
             console.log("📋 Notas encontradas:", notasRecebimento.length)
-            console.log("📋 NFs:", notasRecebimento.map((n: any) => n.numeroNF))
             
             const notaEncontrada = notasRecebimento.find((nota: any) => nota.numeroNF === numeroNF)
             if (notaEncontrada) {
@@ -324,34 +321,34 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
         }
       }
       
-      // 3. Fallback: verificar em relatórios finalizados (localStorage)
+      // 3. Verificar em relatórios finalizados de recebimento (localStorage)
       const chaveRelatorios = "relatorios_custos"
       const relatoriosExistentes = localStorage.getItem(chaveRelatorios)
       if (relatoriosExistentes) {
-        console.log("📁 Verificando relatórios finalizados...")
+        console.log("📁 Verificando relatórios finalizados de recebimento...")
         try {
           const relatorios = JSON.parse(relatoriosExistentes)
           console.log("📋 Total de relatórios:", relatorios.length)
           
           for (const relatorio of relatorios) {
-            if (relatorio.notas && Array.isArray(relatorio.notas)) {
-              console.log("📋 Verificando relatório:", relatorio.nome)
-              console.log("📋 NFs no relatório:", relatorio.notas.map((n: any) => n.numeroNF))
+            // Verificar apenas relatórios de recebimento
+            if (relatorio.area === "recebimento" && relatorio.notas && Array.isArray(relatorio.notas)) {
+              console.log("📋 Verificando relatório de recebimento:", relatorio.nome)
               
               const notaEncontrada = relatorio.notas.find((nota: any) => nota.numeroNF === numeroNF)
               if (notaEncontrada) {
-                console.log("✅ NF encontrada em relatório finalizado (localStorage):", numeroNF)
+                console.log("✅ NF encontrada em relatório de recebimento finalizado (localStorage):", numeroNF)
                 console.log("📋 Relatório:", relatorio.nome)
-                return true // NF encontrada em relatório finalizado
+                return true // NF encontrada em relatório de recebimento finalizado
               }
             }
           }
         } catch (error) {
-          console.error("❌ Erro ao verificar relatórios:", error)
+          console.error("❌ Erro ao verificar relatórios de recebimento:", error)
         }
       }
       
-      console.log("❌ NF NÃO encontrada em nenhum lugar:", numeroNF)
+      console.log("❌ NF NÃO encontrada em relatórios de recebimento:", numeroNF)
       return false // NF não encontrada
       
     } catch (error) {
@@ -363,7 +360,7 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
       // Em caso de erro no banco, usar apenas localStorage como fallback
       console.log("⚠️ Usando fallback localStorage devido a erro no banco")
       
-      // Verificar localStorage como fallback
+      // Verificar localStorage como fallback (apenas recebimento)
       for (let i = 0; i < localStorage.length; i++) {
         const chave = localStorage.key(i)
         if (chave && chave.startsWith("recebimento_")) {
@@ -422,6 +419,8 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
       return
     }
 
+
+
     const novoCarro: Carro = {
       id: `carro_${carros.length + 1}_${Date.now()}`,
       nome: nomeNovoCarro.trim(),
@@ -452,6 +451,12 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
   const trocarCarro = (carroId: string) => {
     const carro = carros.find((c) => c.id === carroId)
     if (carro) {
+      // Verificar se o carro está em embalagem
+      if (carro.statusCarro === "embalando" || carro.statusCarro === "em_producao") {
+        alert("Este carro está em embalagem e não pode ser selecionado. Apenas administradores podem acessá-lo.")
+        return
+      }
+      
       // Desativar todos os carros e ativar o selecionado
       const carrosAtualizados = carros.map((c) => ({
         ...c,
@@ -505,13 +510,16 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
       }
     }
 
-    // Verificar se a NF foi bipada no recebimento
-    const nfNoRecebimento = await verificarNFNoRecebimento(numeroNF)
+    // Verificar se a NF está em algum relatório finalizado (OBRIGATÓRIO)
+    const nfEmRelatorio = await verificarNFEmRelatorios(numeroNF)
     
-    if (!nfNoRecebimento) {
+    if (!nfEmRelatorio) {
+      console.warn(`❌ NF ${numeroNF} não encontrada em relatórios de recebimento. Bipagem negada.`)
       return {
         valido: false,
-        erro: `NF ${numeroNF} não foi bipada no setor de recebimento ou não está em nenhum relatório finalizado. É necessário bipar a NF primeiro no recebimento antes de processá-la na embalagem.`,
+        erro: `NF ${numeroNF} não foi encontrada em relatórios de recebimento. 
+Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no setor de recebimento.
+`,
       }
     }
 
@@ -550,38 +558,25 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     if (!codigoInput.trim() || !carroAtivo) return
 
     if (!podeEditar()) {
-      alert("Este carro está embalado e só pode ser editado por administradores!")
+      alert("Este carro está em embalagem e não pode mais ser modificado. Apenas administradores podem fazer alterações.")
+      return
+    }
+
+    // Verificar se a nota já foi bipada em algum carro
+    const verificarNota = await EmbalagemNotasBipadasService.verificarNotaJaBipada(codigoInput.trim())
+    
+    if (verificarNota.success && verificarNota.jaBipada) {
+      alert(`⚠️ Esta nota já foi bipada no carro "${verificarNota.carroInfo?.carro_nome}" em ${new Date(verificarNota.carroInfo?.timestamp_bipagem || '').toLocaleString()}. Não é possível bipar a mesma nota em outro carro.`)
+      setCodigoInput("")
       return
     }
 
     const resultado = await validarCodigo(codigoInput.trim())
 
     if (resultado.valido && resultado.nf) {
-      // Salvar nota bipada na tabela centralizada
-      try {
-        const notaBipada = {
-          numero_nf: resultado.nf.numeroNF,
-          codigo_completo: resultado.nf.codigoCompleto,
-          area_origem: 'embalagem' as const,
-          session_id: `embalagem_${sessionData.data}_${sessionData.turno}`,
-          colaboradores: sessionData.colaboradores,
-          data: sessionData.data,
-          turno: sessionData.turno,
-          volumes: resultado.nf.volume,
-          destino: resultado.nf.destinoFinal,
-          fornecedor: resultado.nf.nomeFornecedor,
-          cliente_destino: resultado.nf.destinoFinal,
-          tipo_carga: resultado.nf.tipo,
-          status: 'bipada',
-          observacoes: `NF bipada no carro: ${carroAtivo?.nome || 'Sem nome'}`
-        };
-
-        await notasBipadasService.salvarNotaBipada(notaBipada);
-        console.log('✅ Nota bipada salva na tabela centralizada');
-      } catch (error) {
-        console.error('❌ Erro ao salvar nota bipada na tabela centralizada:', error);
-        // Continuar com o processo mesmo se falhar ao salvar na tabela centralizada
-      }
+      // NOTA: As notas só serão salvas no banco quando o carro for marcado como "embalar carro"
+      // Por enquanto, apenas adicionar ao estado local do carro
+      console.log('📝 Nota validada e adicionada ao carro localmente. Será salva no banco quando o carro for marcado como "embalar carro".')
 
       // Atualizar o carro ativo
       const carrosAtualizados = carros.map((c) => {
@@ -664,7 +659,7 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     if (!carroAtivo) return
 
     if (!podeEditar()) {
-      alert("Este carro está embalado e só pode ser editado por administradores!")
+      alert("Este carro está em embalagem e não pode mais ser modificado. Apenas administradores podem fazer alterações.")
       return
     }
 
@@ -687,6 +682,13 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
   const handleCodigoEscaneado = async (codigo: string) => {
     setCodigoInput(codigo)
     setScannerAtivo(false)
+    
+    if (!podeEditar()) {
+      alert("Este carro está em embalagem e não pode mais ser modificado. Apenas administradores podem fazer alterações.")
+      setCodigoInput("")
+      return
+    }
+    
     const resultado = await validarCodigo(codigo.trim())
 
     if (resultado.valido && resultado.nf && carroAtivo) {
@@ -860,6 +862,8 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     return nfsInvalidas.length > 0
   }
 
+
+
   const carroFinalizadoPronto = () => {
     if (!carroAtivo) return false
     const isLiberado = carroAtivo.statusCarro === "liberado"
@@ -893,6 +897,8 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     if (!carroAtivo) return false
     return isAdmin() && (carroAtivo.statusCarro === "em_producao" || carroAtivo.statusCarro === "embalando")
   }
+
+
 
   const finalizarBipagem = () => {
     if (!carroAtivo || nfsValidas.length === 0) {
@@ -955,6 +961,65 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     )
 
     if (confirmacao) {
+      // Salvar todas as notas bipadas no banco antes de marcar como "embalando"
+      const salvarNotasNoBanco = async () => {
+        try {
+          console.log('💾 Salvando notas bipadas no banco antes de marcar carro como "embalando"...')
+          
+          const notasParaSalvar = carroAtivo.nfs.filter(nf => nf.status === 'valida')
+          let notasSalvas = 0
+          let erros = 0
+          
+          for (const nf of notasParaSalvar) {
+            try {
+              const notaBipada: EmbalagemNotaBipada = {
+                numero_nf: nf.numeroNF,
+                codigo_completo: nf.codigoCompleto,
+                carro_id: carroAtivo.id,
+                session_id: `embalagem_${sessionData.data}_${sessionData.turno}`,
+                colaboradores: sessionData.colaboradores.join(', '),
+                data: sessionData.data,
+                turno: sessionData.turno,
+                volumes: nf.volume,
+                destino: nf.destinoFinal,
+                fornecedor: nf.nomeFornecedor,
+                cliente_destino: nf.destinoFinal,
+                tipo_carga: nf.tipo,
+                status: 'bipada',
+                observacoes: `NF bipada no carro: ${carroAtivo.nome}`
+              };
+
+              const resultado = await EmbalagemNotasBipadasService.salvarNotaBipada(notaBipada)
+              
+              if (resultado.success) {
+                notasSalvas++
+                console.log(`✅ Nota ${nf.numeroNF} salva com sucesso no banco`)
+              } else {
+                erros++
+                console.error(`❌ Erro ao salvar nota ${nf.numeroNF}:`, resultado.error)
+              }
+            } catch (error) {
+              erros++
+              console.error(`❌ Erro inesperado ao salvar nota ${nf.numeroNF}:`, error)
+            }
+          }
+          
+          console.log(`📊 Resultado do salvamento: ${notasSalvas} notas salvas, ${erros} erros`)
+          
+          if (erros > 0) {
+            alert(`⚠️ Carro marcado como "embalando", mas ${erros} notas não puderam ser salvas no banco. Verifique os logs para mais detalhes.`)
+          } else {
+            alert(`✅ ${notasSalvas} notas salvas com sucesso no banco!`)
+          }
+        } catch (error) {
+          console.error('❌ Erro geral ao salvar notas no banco:', error)
+          alert('⚠️ Carro marcado como "embalando", mas houve erro ao salvar as notas no banco. Verifique os logs para mais detalhes.')
+        }
+      }
+      
+      // Executar salvamento das notas
+      salvarNotasNoBanco()
+
       // Alterar status do carro ativo para "embalando"
       const carrosAtualizados = carros.map((c) => {
         if (c.id === carroAtivo.id) {
@@ -972,10 +1037,23 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
       // Salvar na lista de carros para embalagem
       salvarCarroParaEmbalagem()
 
-      alert(`${carroAtivo.nome} enviado para embalagem!\n\nVá para a seção "Carros Produzidos" para finalizar o embalamento e informar a quantidade de paletes.`)
-      
-      // Criar novo carro automaticamente após embalar
-      criarNovoCarroAutomatico()
+      // Criar automaticamente um novo carro após embalar o atual
+      const novoCarro: Carro = {
+        id: `carro_${carrosAtualizados.length + 1}_${Date.now()}`,
+        nome: `Carro ${carrosAtualizados.length + 1}`,
+        destinoFinal: "",
+        nfs: [],
+        statusCarro: "aguardando_colagem",
+        dataInicio: new Date().toISOString(),
+        ativo: true,
+      }
+
+      // Adicionar o novo carro à lista e torná-lo ativo
+      const carrosComNovo = [...carrosAtualizados, novoCarro]
+      setCarros(carrosComNovo)
+      setCarroAtivo(novoCarro)
+
+      alert(`${carroAtivo.nome} enviado para embalagem!\n\nUm novo carro foi criado automaticamente para continuar a bipagem.\n\nVá para a seção "Carros Produzidos" para finalizar o embalamento e informar a quantidade de paletes.`)
     }
   }
 
@@ -1012,44 +1090,13 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     }
   }
 
-  const criarNovoCarroAutomatico = () => {
-    // Contar apenas carros que não estão em embalagem
-    const carrosDisponiveis = carros.filter((carro) => 
-      carro.statusCarro !== "embalando" && carro.statusCarro !== "em_producao"
-    )
-    const proximoNumero = carrosDisponiveis.length + 1
-    const nomeNovoCarro = `Carro ${proximoNumero}`
 
-    const novoCarro: Carro = {
-      id: `carro_${proximoNumero}_${Date.now()}`,
-      nome: nomeNovoCarro,
-      destinoFinal: "",
-      nfs: [],
-      statusCarro: "aguardando_colagem",
-      dataInicio: new Date().toISOString(),
-      ativo: true,
-    }
-
-    // Desativar carro atual e adicionar o novo
-    const carrosAtualizados = carros.map((c) => ({ ...c, ativo: false }))
-    carrosAtualizados.push(novoCarro)
-
-    setCarros(carrosAtualizados)
-    setCarroAtivo(novoCarro)
-
-    // Focar no input
-    setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.focus()
-      }
-    }, 100)
-  }
 
   const salvarCarroParaEmbalagem = () => {
     if (!carroAtivo) return
 
     const carroParaEmbalagem = {
-      id: `${carroAtivo.id}_${sessionData.colaboradores.join("_")}_${sessionData.data}_${sessionData.turno}`,
+      id: carroAtivo.id, // Usar o ID original do carro para sincronização
       nomeCarro: carroAtivo.nome,
       colaboradores: sessionData.colaboradores,
       data: sessionData.data,
@@ -1057,6 +1104,7 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
       destinoFinal: destinosUnicos.join(", "),
       quantidadeNFs: nfsValidas.length,
       totalVolumes,
+      dataCriacao: carroAtivo.dataInicio || new Date().toISOString(),
       dataInicioEmbalagem: new Date().toISOString(),
       nfs: nfsValidas.map((nf) => ({
         id: nf.id,
@@ -1069,8 +1117,9 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
         tipo: nf.tipo,
         codigoCompleto: nf.codigoCompleto,
         timestamp: nf.timestamp,
+        status: nf.status,
       })),
-      status: "embalando",
+      statusCarro: "embalando" as StatusCarro, // Usar statusCarro para compatibilidade com admin
       estimativaPallets: Math.ceil(totalVolumes / 100),
       palletesReais: null,
       dataFinalizacao: null,
@@ -1094,7 +1143,59 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     carros.sort((a: any, b: any) => new Date(b.dataInicioEmbalagem).getTime() - new Date(a.dataInicioEmbalagem).getTime())
 
     localStorage.setItem(chaveCarrosEmbalagem, JSON.stringify(carros))
+    
+    // Também adicionar à seção de carros produzidos com status "embalando"
+    const carroParaProducao = {
+      id: carroAtivo.id,
+      colaboradores: sessionData.colaboradores,
+      data: sessionData.data,
+      turno: sessionData.turno,
+      destinoFinal: destinosUnicos.join(", "),
+      quantidadeNFs: nfsValidas.length,
+      totalVolumes,
+      dataProducao: new Date().toISOString(),
+      nfs: nfsValidas.map((nf) => ({
+        id: nf.id,
+        numeroNF: nf.numeroNF,
+        volume: nf.volume,
+        fornecedor: nf.nomeFornecedor,
+        codigo: nf.codigo,
+      })),
+      estimativaPallets: Math.ceil(totalVolumes / 100),
+      status: "embalando", // Status específico para carros produzidos
+      palletesReais: null,
+      dataInicioEmbalagem: new Date().toISOString(),
+      dataFinalizacao: null,
+    }
+
+    // Salvar na lista de carros produzidos (seção de carros produzidos)
+    const chaveCarrosProduzidos = "profarma_carros_produzidos"
+    const carrosProduzidosExistentes = localStorage.getItem(chaveCarrosProduzidos)
+    const carrosProduzidos = carrosProduzidosExistentes ? JSON.parse(carrosProduzidosExistentes) : []
+
+    // Verificar se já existe na lista de carros produzidos
+    const carroProduzidoExistente = carrosProduzidos.findIndex((c: any) => c.id === carroParaProducao.id)
+
+    if (carroProduzidoExistente !== -1) {
+      carrosProduzidos[carroProduzidoExistente] = carroParaProducao
+    } else {
+      carrosProduzidos.push(carroParaProducao)
+    }
+
+    // Ordenar por data de produção (mais recente primeiro)
+    carrosProduzidos.sort((a: any, b: any) => new Date(b.dataProducao).getTime() - new Date(a.dataProducao).getTime())
+
+    localStorage.setItem(chaveCarrosProduzidos, JSON.stringify(carrosProduzidos))
+    
+    console.log('✅ Carro salvo para embalagem e sincronizado com admin e seção de carros produzidos:', {
+      carroId: carroParaEmbalagem.id,
+      nome: carroParaEmbalagem.nomeCarro,
+      status: carroParaEmbalagem.statusCarro,
+      nfs: carroParaEmbalagem.quantidadeNFs
+    })
   }
+
+
 
   const confirmarBipagem = async () => {
     if (!notaAtual) return
@@ -1202,20 +1303,17 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
             </div>
           )}
 
-          {/* Alerta de Validação de Recebimento */}
-          <div className="mb-3 sm:mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          {/* Alerta de Validação de Notas Fiscais */}
+          <div className="mb-3 sm:mb-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
             <div className="flex items-center space-x-2 mb-2">
               <AlertTriangle className="h-4 w-4 text-orange-600" />
-              <span className="text-sm font-medium text-blue-800">
-                Validação de Recebimento
+              <span className="text-sm font-medium text-orange-800">
+                ⚠️ Validação Obrigatória de Notas Fiscais
               </span>
             </div>
-            <div className="text-xs text-blue-700">
+            <div className="text-xs text-orange-700">
               <p className="mb-1">
-                <strong>Importante:</strong> As notas só podem ser bipadas aqui se já foram processadas no setor de recebimento.
-              </p>
-              <p className="text-blue-600">
-                O sistema verifica tanto sessões ativas quanto relatórios finalizados do recebimento.
+                <strong>REGRAS DE VALIDAÇÃO:</strong> Apenas notas que tenham sido processadas no setor de recebimento podem ser embaladas.
               </p>
             </div>
           </div>
@@ -1291,6 +1389,7 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
                 <span className="sm:hidden">Desembalar</span>
               </Button>
             )}
+
           </div>
           
           {/* Status Badges */}
@@ -1333,13 +1432,7 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
               </Badge>
             )}
 
-            {!podeEditar() && !isAdmin() && (
-              <Badge className="bg-gray-100 text-gray-800 text-xs">
-                <AlertTriangle className="h-3 w-3 mr-1" />
-                <span className="hidden sm:inline">Somente Leitura</span>
-                <span className="sm:hidden">Bloqueado</span>
-              </Badge>
-            )}
+
 
             {isAdmin() && (
               <Badge className="bg-purple-100 text-purple-800 text-xs">
@@ -1362,8 +1455,10 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
             </CardTitle>
             <Button 
               onClick={() => setModalNovoCarroAberto(true)} 
+              disabled={false}
               className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto" 
               size="sm"
+              title="Criar novo carro"
             >
               <Plus className="h-4 w-4 mr-2" />
               <span className="hidden sm:inline">Novo Carro</span>
@@ -1541,7 +1636,7 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
                 <div className="flex-1">
                   <Input
                     ref={inputRef}
-                    placeholder={podeEditar() ? "Digite ou escaneie o código de barras..." : "Carro embalado - Somente leitura"}
+                    placeholder={podeEditar() ? "Digite ou escaneie o código de barras..." : "Carro embalado - Apenas administradores podem editar"}
                     value={codigoInput}
                     onChange={(e) => setCodigoInput(e.target.value)}
                     onKeyPress={handleKeyPress}
@@ -1573,7 +1668,7 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
               </div>
               <p className="text-xs text-gray-500">
                 {podeEditar() 
-                  ? "Digite manualmente, use o scanner ou pressione Enter para bipar. ⚠️ Notas devem ser bipadas primeiro no recebimento."
+                  ? "Digite manualmente, use o scanner ou pressione Enter para bipar. ⚠️ Apenas notas processadas em algum setor podem ser embaladas."
                   : "Carro embalado - Apenas administradores podem fazer alterações"
                 }
               </p>
@@ -1725,10 +1820,10 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
                 </div>
 
                 <div className="border-l-4 border-red-500 pl-4">
-                  <h4 className="font-medium text-gray-900">⚠️ IMPORTANTE: Validação de Recebimento</h4>
+                  <h4 className="font-medium text-gray-900">⚠️ IMPORTANTE: Validação de Notas Bipadas</h4>
                   <p className="text-sm text-gray-600 mt-1">
-                    <strong>As notas só podem ser bipadas na embalagem se já foram bipadas no setor de recebimento.</strong><br/>
-                    Se uma NF não for aceita, verifique se ela foi processada primeiro no recebimento.
+                    <strong>Apenas notas que tenham sido processadas em algum setor podem ser embaladas.</strong><br/>
+                    Se uma NF não for aceita, verifique se ela foi bipada no setor de recebimento.
                   </p>
                 </div>
 
@@ -1793,32 +1888,32 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
               </div>
             </div>
 
-            {/* Seção: Validação de Recebimento */}
+            {/* Seção: Validação de Notas Fiscais */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">🔒 Validação de Recebimento</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">🔒 Validação de Notas Fiscais</h3>
               <div className="space-y-3">
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                   <h4 className="font-medium text-red-800 mb-2">⚠️ Regra Obrigatória</h4>
                   <p className="text-sm text-red-700">
-                    <strong>Todas as notas fiscais devem ser bipadas primeiro no setor de recebimento antes de serem processadas na embalagem.</strong>
+                    <strong>Apenas notas que tenham sido processadas no setor de recebimento podem ser embaladas.</strong>
                   </p>
                 </div>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <h4 className="font-medium text-blue-800 mb-2">ℹ️ Como Funciona</h4>
                   <ul className="text-sm text-blue-700 space-y-1">
-                    <li>• O sistema verifica se a NF foi bipada no recebimento (sessões ativas)</li>
-                    <li>• Também verifica se a NF está em relatórios finalizados</li>
-                    <li>• Se não encontrar em nenhum lugar, a NF será rejeitada</li>
-                    <li>• Esta validação garante o controle de qualidade do processo</li>
+                    <li>• O sistema verifica a tabela de notas_fiscais</li>
+                    <li>• Busca por código_completo ou número da NF</li>
+                    <li>• Se não encontrar na tabela, a NF será rejeitada</li>
+                    <li>• Esta validação garante que apenas NFs processadas no Recebimento sejam embaladas</li>
                   </ul>
                 </div>
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <h4 className="font-medium text-green-800 mb-2">✅ Fluxo Correto</h4>
                   <ol className="text-sm text-green-700 space-y-1">
                     <li>1. Bipar NF no setor de recebimento</li>
-                    <li>2. Processar divergências se necessário</li>
-                    <li>3. Finalizar relatório de recebimento</li>
-                    <li>4. Bipar NF no setor de embalagem</li>
+                    <li>2. A NF é salva na tabela notas_fiscais</li>
+                    <li>3. Processar divergências se necessário</li>
+                    <li>4. Bipar NF no setor de embalagem (após ser processada)</li>
                   </ol>
                 </div>
               </div>
@@ -1831,18 +1926,17 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <h4 className="font-medium text-green-800 mb-2">📋 Gerenciar Carros</h4>
                   <ul className="text-sm text-green-700 space-y-1">
-                    <li>• Carros em bipagem (aguardando_colagem, liberado)</li>
+                    <li>• Carros em bipagem (em_conferencia)</li>
                     <li>• Carros em conferência (em_conferencia)</li>
-                    <li>• Carros disponíveis para edição</li>
+                    <li>• Carros disponíveis para edição (liberado)</li>
                   </ul>
                 </div>
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                   <h4 className="font-medium text-orange-800 mb-2">📦 Carros Produzidos</h4>
                   <ul className="text-sm text-orange-700 space-y-1">
                     <li>• Carros em embalagem (embalando)</li>
-                    <li>• Carros finalizados (em_producao)</li>
-                    <li>• Carros prontos para finalização</li>
-                  </ul>
+                    <li>• Carros finalizados (finalizado)</li>
+                    </ul>
                 </div>
               </div>
             </div>
@@ -1853,10 +1947,10 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
               <ul className="space-y-2 text-sm text-gray-600">
                 <li>• O sistema mantém foco automático no campo de bipagem</li>
                 <li>• Você pode trabalhar em dupla ou trio adicionando colaboradores no login</li>
-                <li>• Filtre as NFs por status para visualizar apenas o que precisa</li>
-                <li>• Carros em embalagem saem da seção "Gerenciar Carros"</li>
+                
+                <li>• Carros em embalagem vão para a seção "Carros Produzidos"</li>
                 <li>• Use o scanner para maior velocidade e precisão</li>
-                <li>• <strong>Lembre-se: Sempre bipar primeiro no recebimento!</strong></li>
+                <li>• <strong>Lembre-se: Apenas NFs processadas no Recebimento podem ser embaladas!</strong></li>
               </ul>
             </div>
               

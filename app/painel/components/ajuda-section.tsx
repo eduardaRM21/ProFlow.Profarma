@@ -147,21 +147,11 @@ export default function AjudaSection({ sessionData }: AjudaSectionProps) {
             </p>
           </div>
 
-          <div className="border-l-4 border-purple-500 pl-3 sm:pl-4">
-            <h4 className="font-medium text-gray-900 text-sm sm:text-base mb-1 sm:mb-2">
-              Como alterar o status do carro?
-            </h4>
-            <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-              No painel de bipagem, use o seletor "Status do Carro" para alterar entre: Aguardando Colagem, Em
-              Conferência, Liberado ou Em Produção.
-            </p>
-          </div>
-
           <div className="border-l-4 border-orange-500 pl-3 sm:pl-4">
             <h4 className="font-medium text-gray-900 text-sm sm:text-base mb-1 sm:mb-2">
               Posso trabalhar em dupla?
             </h4>
-            <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
+            <p className="text-xs sm:text-sm text-gray-60 0 leading-relaxed">
               Sim! Na tela de login, use o botão "Adicionar" para incluir até 3 colaboradores na mesma sessão.
             </p>
           </div>

@@ -53,7 +53,9 @@ CREATE TABLE IF NOT EXISTS relatorio_notas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     relatorio_id UUID REFERENCES relatorios(id) ON DELETE CASCADE,
     nota_fiscal_id UUID REFERENCES notas_fiscais(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    -- Constraint de unicidade para evitar duplicações
+    UNIQUE(relatorio_id, nota_fiscal_id)
 );
 
 -- 5. Criar tabela relatorio_colaboradores (relacionamento)
@@ -150,40 +152,43 @@ BEGIN
     END IF;
 END $$;
 
--- 10. Função para sincronizar campos JSON com tabelas relacionais
+-- 10. Função para sincronizar campos JSON com tabelas relacionais (CORRIGIDA)
 CREATE OR REPLACE FUNCTION sync_relatorio_data()
 RETURNS TRIGGER AS $$
 BEGIN
   -- Atualizar campo colaboradores com dados da tabela relatorio_colaboradores
   UPDATE relatorios 
   SET colaboradores = (
-    SELECT COALESCE(json_agg(u.nome), '[]'::jsonb)
+    SELECT COALESCE(json_agg(DISTINCT u.nome), '[]'::jsonb)
     FROM relatorio_colaboradores rc
     JOIN users u ON rc.user_id = u.id
     WHERE rc.relatorio_id = NEW.relatorio_id
   )
   WHERE id = NEW.relatorio_id;
   
-  -- Atualizar campo notas com dados da tabela relatorio_notas
+  -- Atualizar campo notas com dados da tabela relatorio_notas (usando DISTINCT para evitar duplicações)
   UPDATE relatorios 
   SET notas = (
-    SELECT COALESCE(json_agg(
-      json_build_object(
-        'id', nf.id,
-        'numeroNF', nf.numero_nf,
-        'codigoCompleto', nf.codigo_completo,
-        'volumes', nf.volumes,
-        'destino', nf.destino,
-        'fornecedor', nf.fornecedor,
-        'clienteDestino', nf.cliente_destino,
-        'tipoCarga', nf.tipo_carga,
-        'status', nf.status,
-        'data', nf.data
-      )
-    ), '[]'::jsonb)
-    FROM relatorio_notas rn
-    JOIN notas_fiscais nf ON rn.nota_fiscal_id = nf.id
-    WHERE rn.relatorio_id = NEW.relatorio_id
+    SELECT COALESCE(json_agg(DISTINCT jsonb_build_object(
+      'id', nf.id,
+      'numeroNF', nf.numero_nf,
+      'codigoCompleto', nf.codigo_completo,
+      'volumes', nf.volumes,
+      'destino', nf.destino,
+      'fornecedor', nf.fornecedor,
+      'clienteDestino', nf.cliente_destino,
+      'tipoCarga', nf.tipo_carga,
+      'status', nf.status,
+      'data', nf.data
+    )), '[]'::jsonb)
+    FROM (
+      SELECT DISTINCT nf.id, nf.numero_nf, nf.codigo_completo, nf.volumes, 
+             nf.destino, nf.fornecedor, nf.cliente_destino, nf.tipo_carga, 
+             nf.status, nf.data
+      FROM relatorio_notas rn
+      JOIN notas_fiscais nf ON rn.nota_fiscal_id = nf.id
+      WHERE rn.relatorio_id = NEW.relatorio_id
+    ) nf
   )
   WHERE id = NEW.relatorio_id;
   

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Send, MessageCircle, User, Clock, CheckCircle2 } from "lucide-react"
-import { createClient } from '@supabase/supabase-js'
+import { getSupabase } from '@/lib/supabase-client'
 import { useToast } from '@/hooks/use-toast'
 
 interface ChatMessage {
@@ -34,9 +34,7 @@ interface ChatModalProps {
   sessionData: SessionData
 }
 
-const supabaseUrl = 'https://auiidcxarcjjxvyswwhf.supabase.co'
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1aWlkY3hhcmNqanh2eXN3d2hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMjcxNjAsImV4cCI6MjA2ODkwMzE2MH0.KCMuEq5p1UHtZp-mJc5RKozEyWhpZg8J023lODrr3rY'
-const supabase = createClient(supabaseUrl, supabaseKey)
+
 
 export default function ChatModal({ isOpen, onClose, sessionData }: ChatModalProps) {
   const [mensagens, setMensagens] = useState<ChatMessage[]>([])
@@ -54,14 +52,15 @@ export default function ChatModal({ isOpen, onClose, sessionData }: ChatModalPro
   useEffect(() => {
     let polling: NodeJS.Timeout | null = null
     const buscarMensagens = async () => {
-      const { data } = await supabase
+      const { data } = await getSupabase()
         .from('messages')
         .select('*')
         .or(`remetente_id.eq.${conversaId},destinatario_id.eq.${conversaId}`)
         .order('timestamp', { ascending: true })
       if (data) {
+        const mensagensTyped = data as unknown as ChatMessage[]
         // Detectar nova mensagem do admin
-        const novaMsg = data[data.length - 1]
+        const novaMsg = mensagensTyped[mensagensTyped.length - 1]
         const abaVisivel = typeof document !== 'undefined' ? document.visibilityState === 'visible' : true
         if (
           mensagens.length > 0 &&
@@ -75,7 +74,7 @@ export default function ChatModal({ isOpen, onClose, sessionData }: ChatModalPro
             description: novaMsg.mensagem,
           })
         }
-        setMensagens(data)
+        setMensagens(mensagensTyped)
       }
     }
     polling = setInterval(buscarMensagens, 2000)
@@ -93,13 +92,13 @@ export default function ChatModal({ isOpen, onClose, sessionData }: ChatModalPro
   }, [mensagens])
 
   const carregarMensagens = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('messages')
       .select('*')
       .or(`remetente_id.eq.${conversaId},destinatario_id.eq.${conversaId}`)
       .order('timestamp', { ascending: true })
     if (!error && data) {
-      setMensagens(data)
+      setMensagens(data as unknown as ChatMessage[])
     }
   }
 
@@ -117,7 +116,7 @@ export default function ChatModal({ isOpen, onClose, sessionData }: ChatModalPro
       timestamp: new Date().toISOString(),
       lida: false,
     }
-    const { error } = await supabase.from('messages').insert([mensagem])
+    const { error } = await getSupabase().from('messages').insert([mensagem])
     if (!error) {
       // Salvar também no localStorage para o admin
       const mensagemParaLocalStorage = {
@@ -155,7 +154,7 @@ export default function ChatModal({ isOpen, onClose, sessionData }: ChatModalPro
     }, 100)
   }
 
-  const salvarNaListaGeral = (mensagem: ChatMessage) => {
+  const salvarNaListaGeral = (mensagem: any) => {
     // Lista geral de conversas para o admin
     const chaveListaGeral = "profarma_conversas_admin"
     const conversasExistentes = localStorage.getItem(chaveListaGeral)

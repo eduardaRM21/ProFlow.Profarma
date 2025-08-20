@@ -33,16 +33,17 @@ import ChatModal from "./components/chat-modal";
 // Adicionar a importação do novo componente de ajuda
 import AjudaSection from "./components/ajuda-section";
 import { useSession } from "@/hooks/use-database";
+import { useEmbalagemStats } from "@/hooks/use-embalagem-stats";
 import type { SessionData } from "@/lib/database-service";
 
 export default function PainelPage() {
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>(null);
-  const [stats, setStats] = useState({
-    nfsBipadas: 0,
-    carrosProduzidos: 0,
-    relatoriosGerados: 0,
-  });
+  // Hook para estatísticas do setor de embalagem
+  const { stats: embalagemStats, loading: statsLoading, error: statsError, refreshStats } = useEmbalagemStats(
+    sessionData?.data || '',
+    sessionData?.turno || ''
+  );
   const router = useRouter();
 
   // Hook do banco de dados
@@ -85,6 +86,29 @@ export default function PainelPage() {
 
     verificarSessao()
   }, [router, getSession])
+
+  // Verificar se o usuário é admin e redirecionar para a página admin
+  useEffect(() => {
+    if (sessionData && sessionData.area === "embalagem") {
+      // Verificar se há um usuário "admin_crdk" na lista de colaboradores
+      const hasAdminUser = sessionData.colaboradores.some((colab: string) => 
+        colab.toLowerCase().includes("admin_crdk")
+      )
+
+      if (hasAdminUser) {
+        console.log("🔐 Usuário admin_crdk detectado no setor de embalagem, redirecionando para admin...")
+        router.push("/admin")
+        return
+      }
+    }
+    
+    // Usuários do setor "admin-embalagem" já vão direto para admin, não precisam ser redirecionados
+    if (sessionData && sessionData.area === "admin-embalagem") {
+      console.log("🔐 Usuário do setor Admin Embalagem detectado no painel, redirecionando para admin...")
+      router.push("/admin")
+      return
+    }
+  }, [sessionData, router])
 
   const handleLogout = () => {
     localStorage.removeItem("sistema_session");
@@ -197,6 +221,25 @@ export default function PainelPage() {
         {!activeSection ? (
           <div className="space-y-6 sm:space-y-8">
             {/* Estatísticas Rápidas */}
+            {/* Indicador de erro das estatísticas */}
+            {statsError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <span className="text-red-600 text-sm">⚠️ Erro ao carregar estatísticas: {statsError}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={refreshStats}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    Tentar Novamente
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-3 sm:p-4 rounded-lg shadow-md">
                 <div className="flex items-center justify-between">
@@ -205,7 +248,10 @@ export default function PainelPage() {
                       NFs Bipadas
                     </p>
                     <p className="text-xl sm:text-2xl font-bold">
-                      {stats.nfsBipadas}
+                      {statsLoading ? '...' : embalagemStats.nfsBipadas}
+                    </p>
+                    <p className="text-green-200 text-xs">
+                      {statsLoading ? 'Carregando...' : `${embalagemStats.totalVolumes} volumes`}
                     </p>
                   </div>
                   <Package className="h-6 w-6 sm:h-8 sm:w-8 text-green-200" />
@@ -218,13 +264,18 @@ export default function PainelPage() {
                       Carros Prontos
                     </p>
                     <p className="text-xl sm:text-2xl font-bold">
-                      {stats.carrosProduzidos}
+                      {statsLoading ? '...' : embalagemStats.carrosProduzidos}
+                    </p>
+                    <p className="text-blue-200 text-xs">
+                      {statsLoading ? 'Carregando...' : `${embalagemStats.carrosUtilizados} carros utilizados`}
                     </p>
                   </div>
                   <Truck className="h-6 w-6 sm:h-8 sm:w-8 text-blue-200" />
                 </div>
               </div>
             </div>
+
+
             {/* Cards de Ações Principais */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {/* Card 1: Bipagem de NFs */}
@@ -251,7 +302,7 @@ export default function PainelPage() {
                     progresso
                   </p>
                   <div className="flex justify-between text-xs text-gray-500 mb-3 sm:mb-4">
-                    <span>Hoje: {stats.nfsBipadas} NFs</span>
+                    <span>Hoje: {statsLoading ? '...' : embalagemStats.nfsBipadas} NFs</span>
                     <span className="text-green-600 font-medium">↗ +3</span>
                   </div>
                   <Button
@@ -287,7 +338,7 @@ export default function PainelPage() {
                     informações detalhadas
                   </p>
                   <div className="flex justify-between text-xs text-gray-500 mb-3 sm:mb-4">
-                    <span>Carros: {stats.carrosProduzidos}</span>
+                    <span>Carros: {statsLoading ? '...' : embalagemStats.carrosProduzidos}</span>
                     <span className="text-blue-600 font-medium">100%</span>
                   </div>
                   <Button

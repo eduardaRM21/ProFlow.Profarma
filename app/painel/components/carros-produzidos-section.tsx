@@ -35,6 +35,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRealtimeMonitoring } from "@/hooks/use-realtime-monitoring";
 import { createClient } from '@supabase/supabase-js'
+import { EmbalagemNotasBipadasService } from "@/lib/embalagem-notas-bipadas-service";
+import { useCarrosRealtime } from "@/hooks/use-carros-realtime";
+import { CarroStatus } from "@/lib/carros-status-service";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/hooks/use-toast";
+import { Toaster } from "@/components/ui/toaster";
 
 const supabaseUrl = 'https://auiidcxarcjjxvyswwhf.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1aWlkY3hhcmNqanh2eXN3d2hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMjcxNjAsImV4cCI6MjA2ODkwMzE2MH0.KCMuEq5p1UHtZp-mJc5RKozEyWhpZg8J023lODrr3rY'
@@ -93,9 +101,11 @@ interface CarroProduzido {
     volume: number;
     fornecedor: string;
     codigo: string;
+    destino: string;
+    tipoCarga: string;
   }>;
   estimativaPallets: number;
-  status?: string;
+  status?: "embalando" | "concluido" | "finalizado" | "pronto" | "liberado";
   palletesReais?: number;
   dataInicioEmbalagem?: string;
   dataFinalizacao?: string;
@@ -129,6 +139,7 @@ export default function CarrosProduzidosSection({
   const [quantidadePallets, setQuantidadePallets] = useState("");
 
   const { addRealtimeEvent } = useRealtimeMonitoring();
+  const { toast } = useToast();
 
   const conversaId = `${sessionData.colaboradores.join("_")}_${
     sessionData.data
@@ -156,7 +167,7 @@ export default function CarrosProduzidosSection({
     setMensagensNaoLidas(0);
   };
 
-  const finalizarEmbalagem = () => {
+  const finalizarEmbalagem = async () => {
     if (
       !quantidadePallets.trim() ||
       isNaN(Number(quantidadePallets)) ||
@@ -168,48 +179,96 @@ export default function CarrosProduzidosSection({
 
     const pallets = Number(quantidadePallets);
 
-    // Atualizar o carro na lista de embalagem
-    const carrosEmbalagem = localStorage.getItem("profarma_carros_embalagem");
-    if (carrosEmbalagem) {
-      const carros = JSON.parse(carrosEmbalagem);
-      const carroIndex = carros.findIndex(
-        (c: any) => c.id === modalPallets.carroId
+    try {
+      // 1. Finalizar o carro no banco de dados
+      const resultado = await EmbalagemNotasBipadasService.finalizarCarro(
+        modalPallets.carroId,
+        pallets
       );
 
-      if (carroIndex !== -1) {
-        carros[carroIndex] = {
-          ...carros[carroIndex],
-          status: "concluido",
-          palletesReais: pallets,
-          dataFinalizacao: new Date().toISOString(),
-        };
-
-        localStorage.setItem(
-          "profarma_carros_embalagem",
-          JSON.stringify(carros)
-        );
-
-        // Disparar evento em tempo real
-        addRealtimeEvent({
-          id: Date.now().toString(),
-          timestamp: new Date().toISOString(),
-          sector: 'embalagem',
-          type: 'carro_created',
-          message: `Carro ${modalPallets.nomeCarro} finalizado`,
-          data: { nomeCarro: modalPallets.nomeCarro, pallets, carroId: modalPallets.carroId }
-        });
-
-        // Recarregar a lista
-        carregarCarrosProduzidos();
-
-        // Fechar modal
-        setModalPallets({ aberto: false, carroId: "", nomeCarro: "" });
-        setQuantidadePallets("");
-
-        alert(
-          `${modalPallets.nomeCarro} finalizado com sucesso!\nPallets informados: ${pallets}`
-        );
+      if (!resultado.success) {
+        alert(`Erro ao finalizar carro: ${resultado.error}`);
+        return;
       }
+
+      // 2. Atualizar o carro na lista de embalagem
+      const carrosEmbalagem = localStorage.getItem("profarma_carros_embalagem");
+      if (carrosEmbalagem) {
+        const carros = JSON.parse(carrosEmbalagem);
+        const carroIndex = carros.findIndex(
+          (c: any) => c.id === modalPallets.carroId
+        );
+
+        if (carroIndex !== -1) {
+          carros[carroIndex] = {
+            ...carros[carroIndex],
+            status: "finalizado",
+            palletesReais: pallets,
+            dataFinalizacao: new Date().toISOString(),
+          };
+
+          localStorage.setItem(
+            "profarma_carros_embalagem",
+            JSON.stringify(carros)
+          );
+        }
+      }
+
+      // 3. Atualizar o carro na lista de carros produzidos
+      const carrosProduzidos = localStorage.getItem("profarma_carros_produzidos");
+      if (carrosProduzidos) {
+        const carros = JSON.parse(carrosProduzidos);
+        const carroIndex = carros.findIndex(
+          (c: any) => c.id === modalPallets.carroId
+        );
+
+        if (carroIndex !== -1) {
+          carros[carroIndex] = {
+            ...carros[carroIndex],
+            status: "finalizado",
+            palletesReais: pallets,
+            dataFinalizacao: new Date().toISOString(),
+          };
+
+          localStorage.setItem(
+            "profarma_carros_produzidos",
+            JSON.stringify(carros)
+          );
+        }
+      }
+
+      // 4. Disparar evento em tempo real
+      addRealtimeEvent({
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+        sector: 'embalagem',
+        type: 'carro_created',
+        message: `Carro ${modalPallets.nomeCarro} finalizado`,
+        data: { nomeCarro: modalPallets.nomeCarro, pallets, carroId: modalPallets.carroId }
+      });
+
+      // 5. Atualizar o carro na lista atual
+      setCarros(prevCarros => 
+        prevCarros.map(carro => 
+          carro.id === modalPallets.carroId 
+            ? { ...carro, status: "finalizado", palletesReais: pallets, dataFinalizacao: new Date().toISOString() }
+            : carro
+        )
+      );
+
+      // 6. Recarregar a lista para sincronizar com o banco
+      await carregarCarrosProduzidos();
+
+      // 7. Fechar modal
+      setModalPallets({ aberto: false, carroId: "", nomeCarro: "" });
+      setQuantidadePallets("");
+
+      alert(
+        `${modalPallets.nomeCarro} finalizado com sucesso!\nPallets informados: ${pallets}`
+      );
+    } catch (error) {
+      console.error('Erro ao finalizar carro:', error);
+      alert(`Erro ao finalizar carro: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
@@ -224,6 +283,12 @@ export default function CarrosProduzidosSection({
         return "Embalando";
       case "concluido":
         return "Concluído";
+      case "finalizado":
+        return "Finalizado";
+      case "pronto":
+        return "Pronto";
+      case "liberado":
+        return "Liberado";
       default:
         return "Finalizado";
     }
@@ -233,10 +298,14 @@ export default function CarrosProduzidosSection({
     switch (status) {
       case "embalando":
         return "bg-orange-100 text-orange-800";
+      case "pronto":
+        return "bg-green-100 text-green-800";
       case "concluido":
         return "bg-purple-100 text-purple-800";
+      case "finalizado":
+        return "bg-blue-100 text-blue-800";
       default:
-        return "bg-green-100 text-green-800";
+        return "bg-gray-100 text-gray-800";
     }
   };
 
@@ -252,15 +321,92 @@ export default function CarrosProduzidosSection({
     return () => clearInterval(interval);
   }, [conversaId]);
 
-  const carregarCarrosProduzidos = () => {
+  const carregarCarrosProduzidos = async () => {
+    try {
+      console.log('🚛 Carregando carros produzidos...')
+      
+      const carrosEncontrados: CarroProduzido[] = [];
+      
+      // 1. Buscar carros da tabela embalagem_notas_bipadas
+      const resultado = await EmbalagemNotasBipadasService.buscarCarrosProduzidos()
+      if (resultado.success && resultado.carros) {
+        console.log(`✅ Carregados ${resultado.carros.length} carros da tabela embalagem_notas_bipadas`)
+        carrosEncontrados.push(...(resultado.carros as CarroProduzido[]))
+      }
+      
+      // 2. Buscar carros em embalagem do localStorage (carros marcados como "Embalar carro")
+      const carrosEmbalagem = localStorage.getItem("profarma_carros_embalagem");
+      if (carrosEmbalagem) {
+        try {
+          const carros = JSON.parse(carrosEmbalagem);
+          carros.forEach((carro: any) => {
+            // Verificar se o carro já não foi adicionado da tabela
+            const carroJaExiste = carrosEncontrados.find(c => c.id === carro.id);
+            if (!carroJaExiste && carro.statusCarro === "embalando") {
+              const carroFormatado: CarroProduzido = {
+                id: carro.id,
+                colaboradores: carro.colaboradores,
+                data: carro.data,
+                turno: carro.turno,
+                destinoFinal: carro.destinoFinal,
+                quantidadeNFs: carro.quantidadeNFs,
+                totalVolumes: carro.totalVolumes,
+                dataProducao: carro.dataInicioEmbalagem || carro.dataCriacao,
+                nfs: carro.nfs.map((nf: any) => ({
+                  id: nf.id,
+                  numeroNF: nf.numeroNF,
+                  volume: nf.volume,
+                  fornecedor: nf.fornecedor,
+                  codigo: nf.codigo,
+                  destino: nf.destinoFinal || nf.codigoDestino,
+                  tipoCarga: nf.tipo || 'Normal'
+                })),
+                estimativaPallets: carro.estimativaPallets,
+                status: "embalando", // Carros do localStorage marcados como "embalando"
+                palletesReais: carro.palletesReais,
+                dataInicioEmbalagem: carro.dataInicioEmbalagem,
+                dataFinalizacao: carro.dataFinalizacao,
+              };
+              carrosEncontrados.push(carroFormatado);
+            }
+          });
+        } catch (error) {
+          console.error("Erro ao processar carros em embalagem:", error);
+        }
+      }
+      
+      // 3. Fallback para outros carros do localStorage se necessário
+      if (carrosEncontrados.length === 0) {
+        console.log('🔄 Nenhum carro encontrado, carregando do localStorage como fallback...')
+        carregarCarrosDoLocalStorage()
+        return
+      }
+      
+      // Ordenar por data de produção (mais recente primeiro)
+      carrosEncontrados.sort(
+        (a, b) => new Date(b.dataProducao).getTime() - new Date(a.dataProducao).getTime()
+      );
+      
+      console.log(`✅ Total de ${carrosEncontrados.length} carros carregados`)
+      setCarros(carrosEncontrados)
+      
+    } catch (error) {
+      console.error('❌ Erro inesperado ao carregar carros:', error)
+      // Fallback para localStorage em caso de erro
+      carregarCarrosDoLocalStorage()
+    }
+  };
+
+  const carregarCarrosDoLocalStorage = () => {
+    console.log('🔄 Carregando carros do localStorage como fallback...')
     // Buscar todos os carros produzidos no localStorage
     const carrosEncontrados: CarroProduzido[] = [];
 
-    // Buscar carros em embalagem
-    const carrosEmbalagem = localStorage.getItem("profarma_carros_embalagem");
-    if (carrosEmbalagem) {
+    // Buscar carros da nova lista de carros produzidos
+    const carrosProduzidos = localStorage.getItem("profarma_carros_produzidos");
+    if (carrosProduzidos) {
       try {
-        const carros = JSON.parse(carrosEmbalagem);
+        const carros = JSON.parse(carrosProduzidos);
         carros.forEach((carro: any) => {
           const carroFormatado: CarroProduzido = {
             id: carro.id,
@@ -270,7 +416,7 @@ export default function CarrosProduzidosSection({
             destinoFinal: carro.destinoFinal,
             quantidadeNFs: carro.quantidadeNFs,
             totalVolumes: carro.totalVolumes,
-            dataProducao: carro.dataInicioEmbalagem,
+            dataProducao: carro.dataProducao,
             nfs: carro.nfs,
             estimativaPallets: carro.estimativaPallets,
             status: carro.status,
@@ -279,6 +425,39 @@ export default function CarrosProduzidosSection({
             dataFinalizacao: carro.dataFinalizacao,
           };
           carrosEncontrados.push(carroFormatado);
+        });
+      } catch (error) {
+        console.error("Erro ao processar carros produzidos:", error);
+      }
+    }
+
+    // Buscar carros em embalagem (fallback para compatibilidade)
+    const carrosEmbalagem = localStorage.getItem("profarma_carros_embalagem");
+    if (carrosEmbalagem) {
+      try {
+        const carros = JSON.parse(carrosEmbalagem);
+        carros.forEach((carro: any) => {
+          // Verificar se o carro já não foi adicionado da lista de carros produzidos
+          const carroJaExiste = carrosEncontrados.find(c => c.id === carro.id);
+          if (!carroJaExiste) {
+            const carroFormatado: CarroProduzido = {
+              id: carro.id,
+              colaboradores: carro.colaboradores,
+              data: carro.data,
+              turno: carro.turno,
+              destinoFinal: carro.destinoFinal,
+              quantidadeNFs: carro.quantidadeNFs,
+              totalVolumes: carro.totalVolumes,
+              dataProducao: carro.dataInicioEmbalagem,
+              nfs: carro.nfs,
+              estimativaPallets: carro.estimativaPallets,
+              status: carro.status,
+              palletesReais: carro.palletesReais,
+              dataInicioEmbalagem: carro.dataInicioEmbalagem,
+              dataFinalizacao: carro.dataFinalizacao,
+            };
+            carrosEncontrados.push(carroFormatado);
+          }
         });
       } catch (error) {
         console.error("Erro ao processar carros em embalagem:", error);
@@ -508,7 +687,7 @@ export default function CarrosProduzidosSection({
 
               <Button
                 variant="outline"
-                onClick={carregarCarrosProduzidos}
+                onClick={() => carregarCarrosProduzidos()}
                 size="sm"
                 className="w-full sm:w-auto text-xs sm:text-sm"
               >
@@ -552,6 +731,13 @@ export default function CarrosProduzidosSection({
                     >
                       {getStatusLabel(carro.status)}
                     </Badge>
+                    
+                    {/* Indicador especial para carros prontos */}
+                    {carro.status === "pronto" && (
+                      <Badge className="text-xs bg-emerald-100 text-emerald-800 border-emerald-200">
+                        🟢 Pronto para Admin
+                      </Badge>
+                    )}
                     <Badge className={`text-xs ${getTurnoColor(carro.turno)}`}>
                       <span className="hidden sm:inline">Turno </span>
                       {carro.turno}
@@ -678,6 +864,8 @@ export default function CarrosProduzidosSection({
                                   <th className="px-4 py-2">NF</th>
                                   <th className="px-4 py-2">Código</th>
                                   <th className="px-4 py-2">Forn</th>
+                                  <th className="px-4 py-2">Destino</th>
+                                  <th className="px-4 py-2">Tipo</th>
                                   <th className="px-4 py-2 text-center">
                                     Volume
                                   </th>
@@ -708,6 +896,13 @@ export default function CarrosProduzidosSection({
                                     >
                                       {nf.fornecedor}
                                     </td>
+                                    <td className="px-4 py-2 truncate max-w-[120px]">
+                                      {nf.destino}
+                                    </td>
+                                    <td className="px-4 py-2 truncate max-w-[120px]">
+                                      {nf.tipoCarga}
+                                    </td>
+                                   
                                     <td className="px-4 py-2 text-center">
                                       {nf.volume}
                                     </td>
@@ -719,7 +914,7 @@ export default function CarrosProduzidosSection({
                                 <tr className="bg-emerald-100 text-emerald-800 font-bold">
                                   <td
                                     className="px-4 py-2 text-right"
-                                    colSpan={4}
+                                    colSpan={6}
                                   >
                                     Total do Carro:
                                   </td>
@@ -735,7 +930,7 @@ export default function CarrosProduzidosSection({
                     </DialogContent>
                   </Dialog>
 
-                  {carro.status === "embalando" && (
+                  {(carro.status === "embalando" || carro.status === "concluido" || carro.status === "finalizado") && (
                     <Button
                       onClick={() =>
                         abrirModalPallets(
@@ -743,11 +938,20 @@ export default function CarrosProduzidosSection({
                           `${carro.colaboradores.join(" + ")}`
                         )
                       }
-                      className="bg-green-600 hover:bg-green-700 text-white"
+                      className={`${
+                        (carro.status as string) === "embalando" 
+                          ? "bg-green-600 hover:bg-green-700" 
+                          : (carro.status as string) === "pronto"
+                          ? "bg-emerald-600 hover:bg-emerald-700"
+                          : (carro.status as string) === "finalizado"
+                          ? "bg-gray-600 hover:bg-gray-700"
+                          : "bg-blue-600 hover:bg-blue-700"
+                      } text-white`}
                       size="sm"
+                      disabled={(carro.status as string) === "finalizado" || (carro.status as string) === "pronto" || (carro.status as string) === "concluido"}
                     >
                       <CheckCircle2 className="h-4 w-4 mr-1" />
-                      Finalizar
+                                              {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "pronto" ? "Pronto ✓" : (carro.status as string) === "finalizado" ? "Finalizado" : "Atualizar Pallets"}
                     </Button>
                   )}
                 </div>
@@ -951,7 +1155,7 @@ export default function CarrosProduzidosSection({
 
             <div className="flex space-x-4">
               <Button
-                onClick={finalizarEmbalagem}
+                onClick={() => finalizarEmbalagem()}
                 disabled={!quantidadePallets.trim()}
                 className="flex-1 bg-green-600 hover:bg-green-700"
               >

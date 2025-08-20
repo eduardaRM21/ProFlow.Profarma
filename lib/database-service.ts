@@ -495,6 +495,33 @@ export const EmbalagemService = {
 
 // Serviço de Relatórios
 export const RelatoriosService = {
+  // Atualizar apenas o status do relatório (mais eficiente)
+  async updateRelatorioStatus(relatorioId: string, novoStatus: string): Promise<void> {
+    try {
+      console.log('🔄 Atualizando status do relatório:', relatorioId, 'para:', novoStatus)
+      
+      const supabase = getSupabase()
+      
+      const { error } = await supabase
+        .from('relatorios')
+        .update({ 
+          status: novoStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', relatorioId)
+      
+      if (error) {
+        console.error('❌ Erro ao atualizar status do relatório:', error)
+        throw error
+      }
+      
+      console.log('✅ Status do relatório atualizado com sucesso')
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status do relatório:', error)
+      throw error
+    }
+  },
+
   // Salvar relatório
   async saveRelatorio(relatorio: Relatorio): Promise<void> {
     try {
@@ -644,36 +671,70 @@ export const RelatoriosService = {
         console.log('💾 Salvando notas...')
         console.log('🔍 Notas recebidas:', relatorio.notas)
         
+        // Verificar se já existem notas associadas a este relatório
+        const { data: notasExistentes, error: checkError } = await supabase
+          .from('relatorio_notas')
+          .select('nota_fiscal_id')
+          .eq('relatorio_id', relatorioId)
+        
+        if (checkError) {
+          console.error('❌ Erro ao verificar notas existentes:', checkError)
+        } else {
+          console.log('🔍 Notas já associadas ao relatório:', notasExistentes?.length || 0)
+        }
+        
+        // Obter IDs das notas já associadas
+        const notasExistentesIds = new Set(notasExistentes?.map(n => n.nota_fiscal_id) || [])
+        
         // Salvar todas as notas na tabela notas_fiscais
         const notasSalvas = await Promise.all(
           relatorio.notas.map(async (nota: any, index: number) => {
             console.log(`🔍 Processando nota ${index + 1}:`, nota)
             
             try {
-              // Sempre salvar a nota na tabela notas_fiscais
-              const { data: notaSalva, error: notaError } = await supabase
+              // Verificar se a nota já existe na tabela notas_fiscais
+              const { data: notaExistente, error: buscaError } = await supabase
                 .from('notas_fiscais')
-                .insert({
-                  codigo_completo: nota.codigoCompleto || '',
-                  numero_nf: nota.numeroNF,
-                  data: dataFormatada,
-                  volumes: nota.volumes,
-                  destino: nota.destino,
-                  fornecedor: nota.fornecedor,
-                  cliente_destino: nota.clienteDestino,
-                  tipo_carga: nota.tipoCarga,
-                  status: nota.status || 'ok'
-                })
-                .select()
+                .select('id')
+                .eq('numero_nf', nota.numeroNF)
+                .eq('codigo_completo', nota.codigoCompleto || '')
                 .single()
               
-              if (notaError) {
-                console.error(`❌ Erro ao salvar nota fiscal ${index + 1}:`, notaError)
-                return null
+              let notaId: string
+              
+              if (buscaError || !notaExistente) {
+                // Nota não existe, criar nova
+                console.log(`🔍 Criando nova nota fiscal: ${nota.numeroNF}`)
+                const { data: notaSalva, error: notaError } = await supabase
+                  .from('notas_fiscais')
+                  .insert({
+                    codigo_completo: nota.codigoCompleto || '',
+                    numero_nf: nota.numeroNF,
+                    data: dataFormatada,
+                    volumes: nota.volumes,
+                    destino: nota.destino,
+                    fornecedor: nota.fornecedor,
+                    cliente_destino: nota.clienteDestino,
+                    tipo_carga: nota.tipoCarga,
+                    status: nota.status || 'ok'
+                  })
+                  .select()
+                  .single()
+                
+                if (notaError) {
+                  console.error(`❌ Erro ao salvar nota fiscal ${index + 1}:`, notaError)
+                  return null
+                }
+                
+                notaId = notaSalva.id
+                console.log(`✅ Nova nota fiscal ${index + 1} criada com ID: ${notaId}`)
+              } else {
+                // Nota já existe, usar ID existente
+                notaId = notaExistente.id
+                console.log(`✅ Nota fiscal ${index + 1} já existe com ID: ${notaId}`)
               }
               
-              console.log(`✅ Nota fiscal ${index + 1} salva com ID: ${notaSalva.id}`)
-              return { ...nota, id: notaSalva.id }
+              return { ...nota, id: notaId }
             } catch (error) {
               console.error(`❌ Erro ao processar nota ${index + 1}:`, error)
               return null
@@ -681,33 +742,41 @@ export const RelatoriosService = {
           })
         )
         
-        console.log('🔍 Notas salvas na tabela notas_fiscais:', notasSalvas)
+        console.log('🔍 Notas processadas:', notasSalvas)
         
         // Filtrar notas válidas
         const notasValidas = notasSalvas.filter(nota => nota !== null)
         console.log('🔍 Notas válidas filtradas:', notasValidas)
         
         if (notasValidas.length > 0) {
-          // Salvar relacionamentos na tabela relatorio_notas
-          const notasRelacionamentos = notasValidas.map(nota => ({
-            relatorio_id: relatorioId,
-            nota_fiscal_id: nota.id
-          }))
+          // Filtrar apenas notas que ainda não estão associadas ao relatório
+          const notasNovas = notasValidas.filter(nota => !notasExistentesIds.has(nota.id))
+          console.log('🔍 Notas novas para associar:', notasNovas.length)
           
-          console.log('🔍 Relacionamentos de notas a serem salvos:', notasRelacionamentos)
-          
-          const { error: notasError } = await supabase
-            .from('relatorio_notas')
-            .insert(notasRelacionamentos)
-          
-          if (notasError) {
-            console.error('❌ Erro ao salvar relacionamentos de notas:', notasError)
+          if (notasNovas.length > 0) {
+            // Salvar relacionamentos na tabela relatorio_notas apenas para notas novas
+            const notasRelacionamentos = notasNovas.map(nota => ({
+              relatorio_id: relatorioId,
+              nota_fiscal_id: nota.id
+            }))
+            
+            console.log('🔍 Relacionamentos de notas a serem salvos:', notasRelacionamentos)
+            
+            const { error: notasError } = await supabase
+              .from('relatorio_notas')
+              .insert(notasRelacionamentos)
+            
+            if (notasError) {
+              console.error('❌ Erro ao salvar relacionamentos de notas:', notasError)
+            } else {
+              console.log('✅ Relacionamentos de notas salvos:', notasRelacionamentos.length)
+            }
           } else {
-            console.log('✅ Relacionamentos de notas salvos:', notasRelacionamentos.length)
+            console.log('✅ Todas as notas já estão associadas ao relatório')
           }
           
-          // Salvar divergências se houver
-          const divergencias = notasValidas
+          // Salvar divergências se houver (apenas para notas novas)
+          const divergencias = notasNovas
             .filter(nota => nota.divergencia)
             .map(nota => ({
               nota_fiscal_id: nota.id,

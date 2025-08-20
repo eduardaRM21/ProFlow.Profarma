@@ -29,7 +29,7 @@ export class LocalAuthService {
 
   // Verificar se uma área usa autenticação no banco
   static isDatabaseAuthArea(area: string): boolean {
-    return ['custos', 'crdk'].includes(area)
+    return ['custos', 'crdk', 'admin-embalagem'].includes(area)
   }
 
   // Salvar sessão local

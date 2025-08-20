@@ -91,7 +91,7 @@ export default function CustosPage() {
 
   // Hooks do banco de dados
   const { getSession } = useSession();
-  const { getRelatorios, saveRelatorio } = useRelatorios();
+  const { getRelatorios, saveRelatorio, updateRelatorioStatus } = useRelatorios();
   const { addRealtimeEvent } = useRealtimeMonitoring();
   const { isMigrating, migrationComplete } = useDatabase();
 
@@ -898,12 +898,12 @@ NOTAS FISCAIS:`
     setRelatorios(relatoriosAtualizados)
 
     try {
-      // Salvar no banco de dados
+      // Atualizar apenas o status no banco de dados (mais eficiente)
+      await updateRelatorioStatus(relatorioId, novoStatus)
+
+      // Disparar evento em tempo real
       const relatorioAtualizado = relatoriosAtualizados.find(rel => rel.id === relatorioId)
       if (relatorioAtualizado) {
-        await saveRelatorio(relatorioAtualizado)
-
-        // Disparar evento em tempo real
         addRealtimeEvent({
           id: Date.now().toString(),
           timestamp: new Date().toISOString(),
@@ -914,8 +914,8 @@ NOTAS FISCAIS:`
         });
       }
     } catch (error) {
-      console.error("Erro ao salvar status no banco:", error)
-      alert("Erro ao salvar dados no banco. Verifique sua conexão.")
+      console.error("Erro ao atualizar status no banco:", error)
+      alert("Erro ao atualizar dados no banco. Verifique sua conexão.")
     }
   };
 

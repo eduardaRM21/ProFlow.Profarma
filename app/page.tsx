@@ -39,6 +39,7 @@ import {
   Square,
   ClipboardList,
   ChartColumnIncreasing,
+  Lock,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -75,6 +76,14 @@ export default function LoginPage() {
     { usuario: "rafael.lobo", senha: "crdkes2025" },
   ];
 
+  const usuariosAdminEmbalagem = [
+    { usuario: "Amanda", senha: "20252025" },
+    { usuario: "Eduarda", senha: "20252025" },
+    { usuario: "Philipe", senha: "20252025" },
+    { usuario: "Crispiniana", senha: "20252025" },
+    { usuario: "Miqueias", senha: "20252025" },
+  ];
+
   const validarUsuarioCustos = async () => {
     let usuarioValido = null;
     
@@ -84,6 +93,10 @@ export default function LoginPage() {
       );
     } else if (area === "crdk") {
       usuarioValido = usuariosCRDK.find(
+        (u: { usuario: string; senha: string }) => u.usuario === usuarioCustos && u.senha === senhaCustos
+      );
+    } else if (area === "admin-embalagem") {
+      usuarioValido = usuariosAdminEmbalagem.find(
         (u: { usuario: string; senha: string }) => u.usuario === usuarioCustos && u.senha === senhaCustos
       );
     }
@@ -144,7 +157,7 @@ export default function LoginPage() {
         console.log("✅ Login autorizado (local): setor", area, "->", colaborador);
       }
     } else if (LocalAuthService.isDatabaseAuthArea(area)) {
-      // Custos e CRDK: validação no banco
+      // Custos, CRDK e Admin Embalagem: validação no banco
       if (!usuarioCustos.trim() || !senhaCustos.trim()) {
         alert("Por favor, preencha o usuário e a senha.");
         return;
@@ -170,11 +183,13 @@ export default function LoginPage() {
 
     const loginData = {
       area,
-      colaboradores: area === "embalagem" ? colaboradoresPreenchidos : area === "custos" || area === "crdk" ? [usuarioCustos] : [colaborador],
+      colaboradores: area === "embalagem" ? 
+        (colaborador.trim() ? [...colaboradoresPreenchidos, colaborador.trim()] : colaboradoresPreenchidos) : 
+        area === "custos" || area === "crdk" || area === "admin-embalagem" ? [usuarioCustos] : [colaborador],
       data: LocalAuthService.isLocalAuthArea(area) && data ? format(data, "yyyy-MM-dd") : new Date().toISOString().split('T')[0],
       turno: LocalAuthService.isLocalAuthArea(area) ? turno : "N/A",
       loginTime: new Date().toISOString(),
-      usuarioCustos: area === "custos" || area === "crdk" ? usuarioCustos : undefined,
+      usuarioCustos: area === "custos" || area === "crdk" || area === "admin-embalagem" ? usuarioCustos : undefined,
     };
 
     try {
@@ -200,6 +215,9 @@ export default function LoginPage() {
       case "embalagem":
         router.push("/painel");
         break;
+      case "admin-embalagem":
+        router.push("/admin");
+        break;
       case "crdk":
         router.push("/crdk");
         break;
@@ -218,6 +236,7 @@ export default function LoginPage() {
     const icons: { [key: string]: JSX.Element } = {
       recebimento: <Package className="h-8 w-8 text-blue-600" />,
       embalagem: <Truck className="h-8 w-8 text-green-600" />,
+      "admin-embalagem": <Shield className="h-8 w-8 text-blue-600" />,
       crdk: <ChartColumnIncreasing className="h-8 w-8 text-yellow-600" />,
       custos: <Calculator className="h-8 w-8 text-orange-600" />,
       inventario: <ClipboardList className="h-8 w-8 text-purple-600" />,
@@ -229,6 +248,7 @@ export default function LoginPage() {
     const colors: { [key: string]: string } = {
       recebimento: "from-blue-50 to-blue-100",
       embalagem: "from-green-50 to-green-100",
+      "admin-embalagem": "from-blue-50 to-blue-100",
       crdk: "from-yellow-50 to-yellow-100",
       custos: "from-orange-50 to-yellow-100",
       inventario: "from-purple-50 to-purple-100",
@@ -267,6 +287,7 @@ export default function LoginPage() {
                 <div className="text-xl font-semibold text-gray-900">
                   {area === "recebimento" && "Recebimento"}
                   {area === "embalagem" && "Embalagem"}
+                  {area === "admin-embalagem" && "Admin Embalagem"}
                   {area === "crdk" && "CRDK"}
                   {area === "inventario" && "Inventário"}
                   {area === "custos" && "Custos"}
@@ -278,6 +299,7 @@ export default function LoginPage() {
           <CardDescription className="text-lg text-center mb-2 mt-2">
             {area === "recebimento" && "Recebimento de Notas Fiscais"}
             {area === "embalagem" && "Embalagem e Expedição"}
+            {area === "admin-embalagem" && "Administração do Setor de Embalagem"}
             {area === "crdk" && "CRDK e Controle"}
             {area === "inventario" && "Inventário por Rua"}
             {area === "custos" && "Custos e Relatórios"}
@@ -296,6 +318,7 @@ export default function LoginPage() {
                 <SelectItem value="recebimento" className="text-base py-3">📦 Recebimento</SelectItem>
                 <SelectItem value="custos" className="text-base py-3">💰 Custos</SelectItem>
                 <SelectItem value="embalagem" className="text-base py-3">🚚 Embalagem</SelectItem>
+                <SelectItem value="admin-embalagem" className="text-base py-3">🛡️ Admin Embalagem</SelectItem>
                 <SelectItem value="inventario" className="text-base py-3">📋 Inventário</SelectItem>
                 <SelectItem value="crdk" className="text-base py-3"> 📊 CRDK </SelectItem>
                 
@@ -325,6 +348,45 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <Label className="text-base font-medium">Senha *</Label>
                 <Input type="password" placeholder="Senha" value={senhaCustos} onChange={(e) => setSenhaCustos(e.target.value)} className="text-base h-12" />
+              </div>
+            </>
+          )}
+
+          {/* Login personalizado para Admin Embalagem */}
+          {area === "admin-embalagem" && (
+            <>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-base font-medium flex items-center space-x-2">
+                    <Shield className="h-4 w-4 text-blue-600" />
+                    <span>Usuário Admin *</span>
+                  </Label>
+                  <Input
+                    placeholder="Nome do usuário autorizado"
+                    value={usuarioCustos}
+                    onChange={(e) => setUsuarioCustos(e.target.value)}
+                    className="text-base h-12 border-blue-200 hover:border-blue-300"
+                    required
+                  />
+                  <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded-md">
+                    <strong>Apenas usuários autorizados</strong>
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label className="text-base font-medium flex items-center space-x-2">
+                    <Lock className="h-4 w-4 text-blue-600" />
+                    <span>Senha *</span>
+                  </Label>
+                  <Input
+                    type="password"
+                    placeholder="Digite a senha"
+                    value={senhaCustos}
+                    onChange={(e) => setSenhaCustos(e.target.value)}
+                    className="text-base h-12 border-blue-200 hover:border-blue-300"
+                    required
+                  />
+                </div>
               </div>
             </>
           )}
@@ -374,8 +436,8 @@ export default function LoginPage() {
             </>
           )}
 
-          {/* Áreas comuns (exceto custos e crdk) */}
-          {area !== "custos" && area !== "crdk" && (
+          {/* Áreas comuns (exceto custos, crdk e admin-embalagem) */}
+          {area !== "custos" && area !== "crdk" && area !== "admin-embalagem" && (
             <>
               {area !== "embalagem" && (
                 <div className="space-y-2">
@@ -423,6 +485,8 @@ export default function LoginPage() {
                 ? !usuarioCustos.trim() || !senhaCustos.trim()
                 : area === "embalagem"
                 ? colaboradoresPreenchidos.length === 0 || !data || !turno
+                : area === "admin-embalagem"
+                ? !usuarioCustos.trim() || !senhaCustos.trim()
                 : !colaborador.trim() || !data || !turno || !area
             }
           >

@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@supabase/supabase-js"
+import { getSupabase } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -28,8 +28,8 @@ import {
 
 import GerenciarCarrosSection from "./components/gerenciar-carros-section"
 
-// Cliente Supabase - será criado quando necessário
-let supabase: any = null;
+  // Cliente Supabase - será obtido quando necessário
+  let supabase: any = null;
 
 interface ChatMessage {
   id: string
@@ -72,10 +72,7 @@ export default function AdminPage() {
   useEffect(() => {
     // Inicializar cliente Supabase
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      );
+      supabase = getSupabase();
     }
     
     verificarAcessoAdmin()
@@ -94,14 +91,21 @@ export default function AdminPage() {
       const session = JSON.parse(sessionData)
       console.log("🔍 Verificando sessão:", session)
 
-      // Verificar se é do setor de embalagem
-      if (session.area !== "embalagem") {
-        console.log("❌ Acesso negado: usuário não é do setor de embalagem")
+      // Verificar se é do setor de embalagem ou admin embalagem
+      if (session.area !== "embalagem" && session.area !== "admin-embalagem") {
+        console.log("❌ Acesso negado: usuário não é do setor de embalagem ou admin embalagem")
         router.push("/")
         return
       }
 
-      // Verificar se há um usuário "admin_crdk" na lista de colaboradores
+      // Se for admin embalagem, não precisa verificar admin_crdk
+      if (session.area === "admin-embalagem") {
+        console.log("🔐 Usuário do setor Admin Embalagem detectado, solicitando senha...")
+        setShowPasswordPrompt(true)
+        return
+      }
+
+      // Verificar se há um usuário "admin_crdk" na lista de colaboradores (apenas para setor embalagem)
       const hasAdminUser = session.colaboradores.some((colab: string) => 
         colab.toLowerCase().includes("admin_crdk")
       )
