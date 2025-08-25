@@ -566,7 +566,7 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
     const verificarNota = await EmbalagemNotasBipadasService.verificarNotaJaBipada(codigoInput.trim())
     
     if (verificarNota.success && verificarNota.jaBipada) {
-      alert(`⚠️ Esta nota já foi bipada no carro "${verificarNota.carroInfo?.carro_nome}" em ${new Date(verificarNota.carroInfo?.timestamp_bipagem || '').toLocaleString()}. Não é possível bipar a mesma nota em outro carro.`)
+      alert(`⚠️ Esta nota já foi bipada no carro de "${verificarNota.carroInfo?.carro_nome}" em ${new Date(verificarNota.carroInfo?.timestamp_bipagem || '').toLocaleString()}. Não é possível bipar a mesma nota em outro carro.`)
       setCodigoInput("")
       return
     }
@@ -942,7 +942,12 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
         nfsValidas: carroFinalizado.nfs.filter(nf => nf.status === "valida").length
       })
 
-      alert(`${carroFinalizado.nome} finalizado com sucesso! Agora você pode embalar o carro.`)
+    // ... existing code ...
+    toast({
+      title: "Sucesso",
+      description: `${carroFinalizado.nome} finalizado com sucesso! Agora você pode embalar o carro.`
+    })
+// ... existing code ...
     }
   }
 
@@ -1009,7 +1014,10 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
           if (erros > 0) {
             alert(`⚠️ Carro marcado como "embalando", mas ${erros} notas não puderam ser salvas no banco. Verifique os logs para mais detalhes.`)
           } else {
-            alert(`✅ ${notasSalvas} notas salvas com sucesso no banco!`)
+            toast({
+              title: "Sucesso",
+              description: `✅ ${notasSalvas} notas salvas com sucesso no banco!`
+            })
           }
         } catch (error) {
           console.error('❌ Erro geral ao salvar notas no banco:', error)

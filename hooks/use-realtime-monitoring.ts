@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { getSupabase } from '@/lib/supabase-client'
 
 interface CrossSectorData {
   recebimento: {
@@ -37,7 +38,7 @@ interface RealtimeEvent {
   id: string
   timestamp: string
   sector: string
-  type: 'nf_scanned' | 'carro_created' | 'inventory_updated' | 'relatorio_finalized'
+  type: 'nf_scanned' | 'carro_created' | 'inventory_updated' | 'relatorio_finalized' | 'carro_excluido'
   message: string
   data: any
 }
@@ -52,6 +53,57 @@ export const useRealtimeMonitoring = (updateInterval: number = 30000) => {
 
   const [realtimeEvents, setRealtimeEvents] = useState<RealtimeEvent[]>([])
   const [isConnected, setIsConnected] = useState(false)
+  const [carroExcluidoEvent, setCarroExcluidoEvent] = useState<any>(null)
+
+  // Função para escutar eventos de exclusão de carros
+  const listenToCarroExclusion = useCallback(async () => {
+    try {
+      const supabase = getSupabase()
+      
+      // Escutar mudanças na tabela realtime_events
+      const subscription = supabase
+        .channel('carro_exclusion_events')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'realtime_events',
+            filter: `event_type=eq.carro_excluido`
+          },
+          (payload) => {
+            console.log('📡 [REALTIME] Evento de exclusão de carro recebido:', payload)
+            setCarroExcluidoEvent(payload.new)
+            
+            // Emitir evento customizado para outros componentes
+            window.dispatchEvent(new CustomEvent('carro_excluido', {
+              detail: payload.new
+            }))
+          }
+        )
+        .subscribe()
+
+      return subscription
+    } catch (error) {
+      console.error('❌ Erro ao configurar listener de exclusão de carros:', error)
+    }
+  }, [])
+
+  // Add real-time event
+  const addRealtimeEvent = useCallback((event: RealtimeEvent) => {
+    setRealtimeEvents(prev => [event, ...prev.slice(0, 49)]) // Keep last 50 events
+  }, [])
+
+  // Inicializar listener de exclusão de carros
+  useEffect(() => {
+    const subscription = listenToCarroExclusion()
+    
+    return () => {
+      if (subscription) {
+        subscription.then(sub => sub?.unsubscribe())
+      }
+    }
+  }, [listenToCarroExclusion])
 
   // Load data from all sectors
   const loadAllSectorData = useCallback(() => {
@@ -148,12 +200,7 @@ export const useRealtimeMonitoring = (updateInterval: number = 30000) => {
     })
 
     setIsConnected(true)
-  }, [])
-
-  // Add real-time event
-  const addRealtimeEvent = useCallback((event: RealtimeEvent) => {
-    setRealtimeEvents(prev => [event, ...prev.slice(0, 49)]) // Keep last 50 events
-  }, [])
+  }, [addRealtimeEvent])
 
   // Get sector efficiency metrics
   const getSectorEfficiency = useCallback(() => {
@@ -234,6 +281,7 @@ export const useRealtimeMonitoring = (updateInterval: number = 30000) => {
     crossSectorData,
     realtimeEvents,
     isConnected,
+    carroExcluidoEvent,
     loadAllSectorData,
     addRealtimeEvent,
     getSectorEfficiency,

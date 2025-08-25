@@ -18,6 +18,7 @@ export interface CarroStatus {
   status_carro: 'embalando' | 'divergencia' | 'aguardando_lancamento' | 'pronto' | 'em_producao' | 'finalizado' | 'lancado'
   nfs: any[]
   estimativa_pallets: number
+  palletes_reais?: number
   session_id: string
 }
 
@@ -91,63 +92,64 @@ export function useCarrosRealtime() {
       if (result.success && result.carros) {
         console.log('📋 Carros recebidos do banco:', result.carros.length)
         
-        // Converter para o formato esperado
-        const carrosConvertidos = result.carros.map(carro => {
-          console.log(`🔄 Convertendo carro ${carro.id} - Status: ${carro.status}`)
-          
-          return {
-            carro_id: carro.id,
-            nome_carro: `Carro ${carro.id}`,
-            colaboradores: carro.colaboradores,
-            data: carro.data,
-            turno: carro.turno,
-            destino_final: carro.destinoFinal,
-            quantidade_nfs: carro.quantidadeNFs,
-            total_volumes: carro.totalVolumes,
-            data_criacao: carro.dataProducao,
-            status_carro: carro.status as any || 'embalando',
-            nfs: carro.nfs.map(nf => ({
-              id: nf.id,
-              numeroNF: nf.numeroNF,
-              volume: nf.volume,
-              fornecedor: nf.fornecedor,
-              codigo: nf.codigo,
-              codigoDestino: nf.destino,
-              destinoFinal: nf.destino,
-              tipo: nf.tipoCarga,
-              codigoCompleto: nf.codigo,
-              timestamp: carro.dataProducao,
-              status: 'valida'
-            })),
-            estimativa_pallets: carro.estimativaPallets,
-            session_id: ''
-          }
-        })
+                 // Converter para o formato esperado
+         const carrosConvertidos = result.carros.map(carro => {
+           console.log(`🔄 Convertendo carro ${carro.id} - Status: ${carro.status}`)
+           console.log(`📋 NFs do carro:`, carro.nfs)
+           
+                       // Determinar o nome do carro baseado nos números SAP ou usar o padrão
+            let nomeCarro = `Carro ${carro.id}` // Nome padrão
+            
+            // Se o carro tem números SAP, usar o primeiro como nome
+            if (carro.numeros_sap && carro.numeros_sap.length > 0) {
+              const numeroSAP = carro.numeros_sap[0]
+              nomeCarro = `Carro ${numeroSAP}`
+              console.log(`🔄 Carro ${carro.id} tem número SAP: ${numeroSAP} - Nome: ${nomeCarro}`)
+            }
+            
+            // Se o carro já tem um nome personalizado no banco, usar esse nome
+            if (carro.nome_carro && carro.nome_carro !== `Carro ${carro.id}`) {
+              nomeCarro = carro.nome_carro
+              console.log(`🔄 Carro ${carro.id} já tem nome personalizado: ${nomeCarro}`)
+            }
+           
+                        return {
+               carro_id: carro.id,
+               nome_carro: nomeCarro, // Nome baseado nos números SAP ou padrão
+               colaboradores: carro.colaboradores,
+               data: carro.data,
+               turno: carro.turno,
+               destino_final: carro.destinoFinal,
+               quantidade_nfs: carro.quantidadeNFs,
+               total_volumes: carro.totalVolumes,
+               data_criacao: carro.dataProducao,
+               status_carro: carro.status as any || 'embalando',
+               numeros_sap: carro.numeros_sap || [], // Incluir números SAP
+               data_finalizacao: carro.dataFinalizacao,
+               nfs: carro.nfs.map(nf => ({
+                 id: nf.id,
+                 numeroNF: nf.numeroNF || '', // Campo principal
+                 volume: nf.volume || 0,
+                 fornecedor: nf.fornecedor || '',
+                 codigo: nf.codigo || '',
+                 codigoDestino: nf.destino || '',
+                 destinoFinal: nf.destino || '',
+                 tipo: nf.tipoCarga || '', // Campo principal
+                 codigoCompleto: nf.codigo || '',
+                 timestamp: carro.dataProducao,
+                 status: 'valida'
+               })),
+               estimativa_pallets: carro.estimativaPallets,
+               palletes_reais: carro.palletesReais,
+               session_id: ''
+             }
+         })
         
         console.log('✅ Carros convertidos:', carrosConvertidos.length)
         console.log('📊 Status dos carros convertidos:', carrosConvertidos.map(c => ({ id: c.carro_id, status: c.status_carro })))
         
-        // Preservar estado local de carros que foram recentemente atualizados
-        setCarros(prevCarros => {
-          const carrosAtualizados = carrosConvertidos.map(carroConvertido => {
-            const carroLocal = prevCarros.find(c => c.carro_id === carroConvertido.carro_id)
-            
-            // Se o carro local tem um status mais recente (lancado), preservar
-            if (carroLocal && carroLocal.status_carro === 'lancado' && carroConvertido.status_carro !== 'lancado') {
-              console.log(`🔄 Preservando status local 'lancado' para carro ${carroConvertido.carro_id}`)
-              return {
-                ...carroConvertido,
-                status_carro: carroLocal.status_carro,
-                numeros_sap: carroLocal.numeros_sap,
-                data_finalizacao: carroLocal.data_finalizacao
-              }
-            }
-            
-            return carroConvertido
-          })
-          
-          return carrosAtualizados
-        })
+                 // Usar diretamente os carros convertidos do banco (nome já está correto baseado nos números SAP)
+         setCarros(carrosConvertidos)
         
         setError(null)
         setLastUpdate(new Date())
@@ -193,7 +195,7 @@ export function useCarrosRealtime() {
     // Configurar heartbeat para verificar conectividade e sincronizar
     const heartbeat = setInterval(() => {
       carregarCarros()
-    }, 15000) // Verificar a cada 15 segundos para sincronização mais frequente
+    }, 30000) // Verificar a cada 30 segundos para melhor performance
 
     // Cleanup da subscription e heartbeat
     return () => {
@@ -254,7 +256,7 @@ export function useCarrosRealtime() {
         setTimeout(() => {
           console.log('🔄 Recarregando carros do banco para sincronização...')
           carregarCarros()
-        }, 3000) // Aumentado para 3 segundos
+        }, 5000) // Aumentado para 5 segundos para melhor performance
         
         return { success: true }
       } else {
@@ -270,14 +272,45 @@ export function useCarrosRealtime() {
 
   const excluirCarro = async (carroId: string) => {
     try {
-      // Para excluir um carro, precisamos remover todas as suas notas
+      console.log(`🗑️ [HOOK] Iniciando exclusão do carro ${carroId}`)
+      console.log(`🗑️ [HOOK] Excluindo carro ${carroId} do banco de dados`)
       
-      // Recarregar carros para refletir mudanças
-      await carregarCarros()
+      if (!carroId) {
+        console.error('❌ [HOOK] ID do carro é undefined ou vazio')
+        return { success: false, error: 'ID do carro é obrigatório' }
+      }
       
-      return { success: true }
+      // Usar o serviço para excluir o carro e todas as suas notas
+      console.log(`🔄 [HOOK] Chamando EmbalagemNotasBipadasService.excluirCarro(${carroId})`)
+      const result = await EmbalagemNotasBipadasService.excluirCarro(carroId)
+      console.log(`📊 [HOOK] Resultado do serviço:`, result)
+      
+      if (result.success) {
+        // Remover o carro do estado local imediatamente
+        console.log(`🔄 [HOOK] Removendo carro ${carroId} do estado local`)
+        setCarros(prevCarros => {
+          const carrosFiltrados = prevCarros.filter(carro => carro.carro_id !== carroId)
+          console.log(`📊 [HOOK] Estado local atualizado: ${prevCarros.length} -> ${carrosFiltrados.length} carros`)
+          return carrosFiltrados
+        })
+        
+        console.log('✅ [HOOK] Carro excluído com sucesso do banco e estado local')
+        
+        // Recarregar carros para sincronizar com outros usuários
+        setTimeout(() => {
+          console.log('🔄 [HOOK] Recarregando carros para sincronização global...')
+          carregarCarros()
+        }, 500)
+        
+        return { success: true }
+      } else {
+        console.error('❌ [HOOK] Erro ao excluir carro:', result.error)
+        setError(result.error || 'Erro ao excluir carro')
+        return { success: false, error: result.error }
+      }
     } catch (err) {
       const errorMsg = 'Erro interno ao excluir carro'
+      console.error('❌ [HOOK] Erro inesperado ao excluir carro:', err)
       setError(errorMsg)
       return { success: false, error: errorMsg }
     }
@@ -285,19 +318,71 @@ export function useCarrosRealtime() {
 
   const excluirNotaCarro = async (carroId: string, notaId: string) => {
     try {
+      console.log(`🗑️ [HOOK] Iniciando exclusão da nota ${notaId} do carro ${carroId}`)
+      
       // Remover nota específica da tabela embalagem_notas_bipadas
+      console.log(`🔄 [HOOK] Chamando EmbalagemNotasBipadasService.removerNotaBipada(${notaId})`)
       const result = await EmbalagemNotasBipadasService.removerNotaBipada(notaId)
+      console.log(`📊 [HOOK] Resultado da remoção da nota:`, result)
       
       if (result.success) {
+        console.log('✅ [HOOK] Nota removida com sucesso do banco, recarregando carros...')
         // Recarregar carros para refletir mudanças
         await carregarCarros()
+        console.log('✅ [HOOK] Carros recarregados com sucesso')
         return { success: true }
       } else {
+        console.error('❌ [HOOK] Erro ao remover nota:', result.error)
         setError(result.error || 'Erro ao excluir nota do carro')
         return { success: false, error: result.error }
       }
     } catch (err) {
       const errorMsg = 'Erro interno ao excluir nota do carro'
+      console.error('❌ [HOOK] Erro inesperado ao excluir nota:', err)
+      setError(errorMsg)
+      return { success: false, error: errorMsg }
+    }
+  }
+
+  const lancarCarro = async (carroId: string, numerosSAP: string[]) => {
+    try {
+      console.log(`🚀 Lançando carro ${carroId} com números SAP:`, numerosSAP)
+      
+      // Usar o serviço para lançar o carro
+      const result = await EmbalagemNotasBipadasService.lancarCarro(carroId, numerosSAP)
+      
+      if (result.success) {
+        // Atualizar o estado local imediatamente para feedback instantâneo
+        setCarros(prevCarros => 
+          prevCarros.map(carro => 
+            carro.carro_id === carroId 
+              ? { 
+                  ...carro, 
+                  status_carro: 'lancado',
+                  nome_carro: `Carro ${result.numeroCarro || carroId}`,
+                  numeros_sap: numerosSAP,
+                  data_finalizacao: new Date().toISOString()
+                }
+              : carro
+          )
+        )
+        
+        console.log('✅ Estado local atualizado com sucesso')
+        
+        // Recarregar carros do banco para sincronizar com outros usuários
+        // Reduzir o delay para sincronização mais rápida entre usuários
+        setTimeout(() => {
+          console.log('🔄 Recarregando carros do banco para sincronização global...')
+          carregarCarros()
+        }, 1000) // Reduzido para 1 segundo para sincronização mais rápida
+        
+        return { success: true, numeroCarro: result.numeroCarro }
+      } else {
+        setError(result.error || 'Erro ao lançar carro')
+        return { success: false, error: result.error }
+      }
+    } catch (err) {
+      const errorMsg = 'Erro interno ao lançar carro'
       setError(errorMsg)
       return { success: false, error: errorMsg }
     }
@@ -335,6 +420,7 @@ export function useCarrosRealtime() {
     atualizarStatusCarro,
     excluirCarro,
     excluirNotaCarro,
+    lancarCarro,
     carrosPorStatus,
     buscarCarroPorId,
     estatisticas,

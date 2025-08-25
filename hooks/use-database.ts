@@ -313,7 +313,13 @@ export const useRecebimento = (chave: string) => {
       
       if (isFullyConnected) {
         // Tentar limpar no banco também
-        await RecebimentoService.saveNotas(chave, [])
+        try {
+          await RecebimentoService.deleteNotas(chave)
+        } catch (deleteError) {
+          // Se falhar ao deletar, tentar salvar array vazio
+          console.warn('⚠️ Erro ao deletar notas, tentando salvar array vazio:', deleteError)
+          await RecebimentoService.saveNotas(chave, [])
+        }
       }
     } catch (error) {
       console.error('❌ Erro ao limpar notas:', error)

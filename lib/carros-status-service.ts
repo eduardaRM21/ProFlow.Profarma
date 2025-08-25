@@ -16,6 +16,7 @@ export interface CarroStatus {
   status_carro: 'embalando' | 'divergencia' | 'aguardando_lancamento' | 'pronto' | 'em_producao' | 'finalizado' | 'lancado'
   nfs: any[]
   estimativa_pallets: number
+  palletes_reais?: number
   session_id: string
 }
 
@@ -52,6 +53,7 @@ export const CarrosStatusService = {
           status_carro: carro.status_carro,
           nfs: carro.nfs,
           estimativa_pallets: carro.estimativa_pallets,
+          palletes_reais: carro.palletes_reais,
           session_id: carro.session_id
         }, {
           onConflict: 'carro_id'

@@ -24,9 +24,12 @@ import {
   Truck,
   Lock,
   AlertTriangle,
+  TrendingUp,
+  LogOut,
 } from "lucide-react"
 
 import GerenciarCarrosSection from "./components/gerenciar-carros-section"
+import { useEstatisticas } from "@/hooks/use-estatisticas"
 
   // Cliente Supabase - será obtido quando necessário
   let supabase: any = null;
@@ -126,7 +129,7 @@ export default function AdminPage() {
   }
 
   const verificarSenhaAdmin = () => {
-    if (adminPassword === "20252025") {
+    if (adminPassword === "crdkes2025") {
       setIsAuthenticated(true)
       setShowPasswordPrompt(false)
       setPasswordError("")
@@ -149,6 +152,22 @@ export default function AdminPage() {
       e.preventDefault()
       enviarMensagem()
     }
+  }
+
+  const handleLogout = () => {
+    // Limpar dados de autenticação
+    setIsAuthenticated(false)
+    setShowPasswordPrompt(false)
+    setAdminPassword("")
+    setPasswordError("")
+    
+    // Limpar dados da sessão
+    localStorage.removeItem("sistema_session")
+    
+    // Redirecionar para a página inicial
+    router.push("/")
+    
+    console.log("✅ Logout realizado com sucesso")
   }
 
   // useEffect para carregar conversas
@@ -224,6 +243,15 @@ export default function AdminPage() {
               className="w-full"
             >
               Voltar ao Login
+            </Button>
+            
+            <Button 
+              variant="outline"
+              onClick={handleLogout}
+              className="w-full border-red-200 text-red-700 hover:bg-red-50"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Sair do Sistema
             </Button>
           </CardContent>
         </Card>
@@ -536,18 +564,238 @@ export default function AdminPage() {
   }
 
   function RelatoriosSection() {
+    const {
+      estatisticasPorTurno,
+      estatisticasPorPeriodo,
+      estatisticasGerais,
+      loading,
+      error,
+      dataSelecionada,
+      periodoSelecionado,
+      setDataSelecionada,
+      setPeriodoSelecionado,
+      formatarTurno,
+      formatarData,
+      calcularPorcentagem
+    } = useEstatisticas()
+
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <BarChart3 className="h-6 w-6 text-green-600" />
-            <span>Relatórios</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-gray-600">Relatórios e estatísticas serão implementados aqui.</p>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        {/* Estatísticas Gerais */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <BarChart3 className="h-6 w-6 text-blue-600" />
+              <span>Estatísticas Gerais do Sistema</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : error ? (
+              <div className="text-red-600 text-center py-4">{error}</div>
+            ) : estatisticasGerais ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <div className="text-2xl font-bold text-blue-600">{estatisticasGerais.total_carros_sistema}</div>
+                  <div className="text-sm text-blue-800">Total de Carros</div>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                  <div className="text-2xl font-bold text-green-600">{estatisticasGerais.total_notas_sistema}</div>
+                  <div className="text-sm text-green-800">Total de Notas</div>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                  <div className="text-2xl font-bold text-purple-600">{estatisticasGerais.total_volumes_sistema}</div>
+                  <div className="text-sm text-purple-800">Total de Volumes</div>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                  <div className="text-2xl font-bold text-orange-600">{estatisticasGerais.produtividade_media_diaria}</div>
+                  <div className="text-sm text-orange-800">Produtividade Média</div>
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {/* Estatísticas por Turno */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Clock className="h-6 w-6 text-green-600" />
+              <span>Produtividade por Turno</span>
+            </CardTitle>
+            <div className="flex items-center space-x-4">
+              <input
+                type="date"
+                value={dataSelecionada}
+                onChange={(e) => setDataSelecionada(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+              </div>
+            ) : error ? (
+              <div className="text-red-600 text-center py-4">{error}</div>
+            ) : estatisticasPorTurno.length > 0 ? (
+              <div className="space-y-6">
+                {/* Gráfico de Barras por Turno */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-800">Carros por Status - {formatarData(dataSelecionada)}</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {estatisticasPorTurno.map((stats: any) => (
+                      <div key={stats.turno} className="bg-gray-50 p-4 rounded-lg border">
+                        <h4 className="font-semibold text-gray-800 mb-3">{formatarTurno(stats.turno)}</h4>
+                        
+                        {/* Barra de Progresso para Carros */}
+                        <div className="space-y-2 mb-4">
+                          <div className="flex justify-between text-sm">
+                            <span>Embalando: {stats.carros_embalando}</span>
+                            <span className="text-orange-600">{calcularPorcentagem(stats.carros_embalando, stats.total_carros)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-orange-500 h-2 rounded-full" 
+                              style={{ width: `${calcularPorcentagem(stats.carros_embalando, stats.total_carros)}%` }}
+                            ></div>
+                          </div>
+                          
+                          <div className="flex justify-between text-sm">
+                            <span>Lançados: {stats.carros_lancados}</span>
+                            <span className="text-blue-600">{calcularPorcentagem(stats.carros_lancados, stats.total_carros)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-500 h-2 rounded-full" 
+                              style={{ width: `${calcularPorcentagem(stats.carros_lancados, stats.total_carros)}%` }}
+                            ></div>
+                          </div>
+                          
+                          <div className="flex justify-between text-sm">
+                            <span>Finalizados: {stats.carros_finalizados}</span>
+                            <span className="text-green-600">{calcularPorcentagem(stats.carros_finalizados, stats.total_carros)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-green-500 h-2 rounded-full" 
+                              style={{ width: `${calcularPorcentagem(stats.carros_finalizados, stats.total_carros)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                        
+                        {/* Estatísticas do Turno */}
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div className="text-gray-600">Total Carros:</div>
+                          <div className="font-semibold">{stats.total_carros}</div>
+                          <div className="text-gray-600">Total Notas:</div>
+                          <div className="font-semibold">{stats.total_notas}</div>
+                          <div className="text-gray-600">Total Volumes:</div>
+                          <div className="font-semibold">{stats.total_volumes}</div>
+                          <div className="text-gray-600">Total Pallets Reais:</div>
+                          <div className="font-semibold">{stats.total_pallets}</div>
+                          <div className="text-gray-600">Produtividade/h:</div>
+                          <div className="font-semibold text-green-600">{stats.produtividade_por_hora}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-500 text-center py-8">Nenhuma estatística disponível para esta data</div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Estatísticas por Período */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <TrendingUp className="h-6 w-6 text-purple-600" />
+              <span>Produtividade por Período</span>
+            </CardTitle>
+            <div className="flex items-center space-x-4">
+              <select
+                value={periodoSelecionado}
+                onChange={(e) => setPeriodoSelecionado(Number(e.target.value))}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              >
+                <option value={7}>Últimos 7 dias</option>
+                <option value={15}>Últimos 15 dias</option>
+                <option value={30}>Últimos 30 dias</option>
+              </select>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+              </div>
+            ) : error ? (
+              <div className="text-red-600 text-center py-4">{error}</div>
+            ) : estatisticasPorPeriodo.length > 0 ? (
+              <div className="space-y-4">
+                {/* Gráfico de Linha por Período */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-800">Evolução da Produtividade</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg border">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {estatisticasPorPeriodo.slice(0, 4).map((stats: any) => (
+                        <div key={stats.periodo} className="text-center">
+                          <div className="text-lg font-bold text-purple-600">{stats.total_carros}</div>
+                          <div className="text-sm text-gray-600">Carros</div>
+                          <div className="text-xs text-gray-500">{formatarData(stats.periodo)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Tabela de Estatísticas */}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Carros</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notas</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volumes</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pallets Reais</th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produtividade</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {estatisticasPorPeriodo.map((stats: any) => (
+                          <tr key={stats.periodo} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {formatarData(stats.periodo)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats.total_carros}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats.total_notas}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats.total_volumes}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats.total_pallets}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                {stats.produtividade_media}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-500 text-center py-8">Nenhuma estatística disponível para este período</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     )
   }
 
@@ -561,7 +809,7 @@ export default function AdminPage() {
               <Shield className="h-8 w-8 text-blue-600" />
               <div>
                 <h1 className="text-xl font-bold text-gray-900">Painel Administrativo</h1>
-                <p className="text-sm text-gray-500">Sistema de Bipagem Profarma</p>
+                <p className="text-sm text-gray-500">Sistema de Bipagem Embalagem</p>
               </div>
             </div>
 
@@ -581,6 +829,17 @@ export default function AdminPage() {
                   </div>
                 )}
               </Button>
+
+              {/* Botão Sair */}
+              <Button
+                onClick={handleLogout}
+                variant="outline"
+                className="bg-red-50 hover:bg-red-100 border-red-200 text-red-700 hover:text-red-800 transition-all duration-200"
+                size="sm"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Sair
+              </Button>
             </div>
           </div>
         </div>
@@ -588,7 +847,7 @@ export default function AdminPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!activeSection ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6"> 
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> 
             {/* Gerenciar Carros */}
             <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-blue-300">
               <CardHeader className="text-center pb-4">
@@ -597,20 +856,39 @@ export default function AdminPage() {
                     <Truck className="h-12 w-12 text-blue-600" />
                   </div>
                 </div>
-                <CardTitle className="text-xl font-bold text-gray-900">Gerenciar Carros e Lançamentos</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900">Gerenciar Carros</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <p className="text-gray-600 mb-6">Visualizar, excluir, gerenciar carros e fazer lançamentos</p>
+                <p className="text-gray-600 mb-6">Visualizar, excluir, gerenciar e lançamentos</p>
                 <Button
                   className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700"
                   onClick={() => setActiveSection("gerenciar-carros")}
                 >
-                  Gerenciar Carros e Lançamentos
+                  Gerenciar Carros
                 </Button>
               </CardContent>
             </Card>
 
-
+            {/* Chat Interno */}
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-indigo-300">
+              <CardHeader className="text-center pb-4">
+                <div className="flex justify-center mb-4">
+                  <div className="p-4 bg-indigo-100 rounded-full">
+                    <MessageSquare className="h-12 w-12 text-indigo-600" />
+                  </div>
+                </div>
+                <CardTitle className="text-xl font-bold text-gray-900">Chat Interno</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center">
+                <p className="text-gray-600 mb-6">Comunicação e suporte em tempo real</p>
+                <Button
+                  className="w-full h-12 text-base font-semibold bg-indigo-600 hover:bg-indigo-700"
+                  onClick={() => setActiveSection("chat")}
+                >
+                  Abrir Chat Interno
+                </Button>
+              </CardContent>
+            </Card>
 
             {/* Relatórios */}
             <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-green-300">
@@ -623,7 +901,7 @@ export default function AdminPage() {
                 <CardTitle className="text-xl font-bold text-gray-900">Relatórios</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <p className="text-gray-600 mb-6">Visualizar relatórios e estatísticas do sistema</p>
+                <p className="text-gray-600 mb-6">Visualizar estatisticas e produtividade</p>
                 <Button
                   className="w-full h-12 text-base font-semibold bg-green-600 hover:bg-green-700"
                   onClick={() => setActiveSection("relatorios")}

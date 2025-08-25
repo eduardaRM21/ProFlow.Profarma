@@ -242,21 +242,64 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                     // 4. Para cada nota, buscar divergências se houver
                     const notasComDivergencias = await Promise.all(
                       notasData.map(async (nota: any) => {
+                        // Usar o status diretamente da tabela notas_fiscais
+                        console.log(`🔍 Processando nota ${nota.numero_nf} (ID: ${nota.id})...`)
+                        console.log(`🔍 Status na tabela notas_fiscais: ${nota.status}`)
+                        
+                        // Determinar se há divergência baseado no status
                         let divergencia = null
+                        let statusFinal = nota.status || 'ok'
                         
-                        // Buscar divergência da nota
-                        const { data: divergenciaData, error: divergenciaError } = await supabase
-                          .from('divergencias')
-                          .select('*')
-                          .eq('nota_fiscal_id', nota.id)
-                          .single()
-                        
-                        if (!divergenciaError && divergenciaData) {
-                          divergencia = {
-                            volumesInformados: divergenciaData.volumes_informados,
-                            observacoes: divergenciaData.observacoes
+                        if (statusFinal === 'divergencia') {
+                          // Se o status é divergencia, buscar os detalhes na tabela divergencias
+                          console.log(`🔍 Buscando detalhes da divergência para nota ${nota.numero_nf}...`)
+                          const { data: divergenciaData, error: divergenciaError } = await supabase
+                            .from('divergencias')
+                            .select('*')
+                            .eq('nota_fiscal_id', nota.id)
+                            .single()
+                          
+                          console.log(`🔍 Resultado busca divergencia:`, { divergenciaData, divergenciaError })
+                          
+                          if (!divergenciaError && divergenciaData) {
+                            divergencia = {
+                              volumesInformados: divergenciaData.volumes_informados,
+                              observacoes: divergenciaData.observacoes || 'Divergência registrada'
+                            }
+                            console.log(`✅ Detalhes da divergência encontrados para ${nota.numero_nf}:`, divergencia)
+                          } else {
+                            // Se não encontrar detalhes, criar divergência padrão
+                            divergencia = {
+                              volumesInformados: nota.volumes,
+                              observacoes: 'Divergência registrada'
+                            }
+                            console.log(`⚠️ Divergência sem detalhes para ${nota.numero_nf}, usando padrão`)
+                          }
+                        } else {
+                          // Verificar se há divergência na tabela divergencias mesmo com status 'ok'
+                          console.log(`🔍 Verificando se há divergência na tabela divergencias para nota ${nota.numero_nf}...`)
+                          const { data: divergenciaData, error: divergenciaError } = await supabase
+                            .from('divergencias')
+                            .select('*')
+                            .eq('nota_fiscal_id', nota.id)
+                            .single()
+                          
+                          if (!divergenciaError && divergenciaData) {
+                            // Se encontrou divergência na tabela, atualizar o status
+                            statusFinal = 'divergencia'
+                            divergencia = {
+                              volumesInformados: divergenciaData.volumes_informados,
+                              observacoes: divergenciaData.observacoes || 'Divergência registrada'
+                            }
+                            console.log(`✅ Divergência encontrada na tabela para ${nota.numero_nf}, atualizando status:`, divergencia)
                           }
                         }
+                        
+                        console.log(`🔍 Debug status da nota ${nota.numero_nf}:`, {
+                          statusOriginal: nota.status,
+                          statusFinal: statusFinal,
+                          temDivergencia: !!divergencia
+                        })
                         
                         const notaProcessada = {
                           id: nota.id,
@@ -266,7 +309,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                           fornecedor: nota.fornecedor,
                           clienteDestino: nota.cliente_destino,
                           tipoCarga: nota.tipo_carga,
-                          status: nota.status,
+                          status: statusFinal,
                           divergencia: divergencia
                         }
                         
@@ -721,10 +764,17 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                             )}
                           </div>
                           <div className="text-xs truncate" title={nota.divergencia ? `${nota.divergencia.volumesInformados} vol. - ${nota.divergencia.observacoes}` : ''}>
-                            {nota.divergencia && (
-                              <span className="text-orange-600">
-                                {nota.divergencia ? `${nota.divergencia.volumesInformados} vol. - ${nota.divergencia.observacoes}` : ''}
-                              </span>
+                            {nota.divergencia ? (
+                              <div className="text-orange-600">
+                                <div className="font-medium">{nota.divergencia.volumesInformados} vol.</div>
+                                {nota.divergencia.observacoes && (
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {nota.divergencia.observacoes}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
                             )}
                           </div>
                         </div>

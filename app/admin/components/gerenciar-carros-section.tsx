@@ -13,8 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
-import { useCarrosRealtime } from "@/hooks/use-carros-realtime"
-import { CarroStatus } from "@/lib/carros-status-service"
+import { useCarrosRealtime, CarroStatus } from "@/hooks/use-carros-realtime"
 import { getSupabase } from "@/lib/supabase-client"
 import {
   Truck,
@@ -89,6 +88,7 @@ interface CarroLancamento {
   }>
   status: "aguardando_lancamento" | "em_lancamento" | "lancado" | "erro_lancamento"
   estimativaPallets: number
+  palletesReais?: number
   numerosSAP?: string[]
   observacoes?: string
   dataLancamento?: string
@@ -109,6 +109,7 @@ export default function GerenciarCarrosSection() {
     atualizarStatusCarro,
     excluirCarro,
     excluirNotaCarro,
+    lancarCarro,
     estatisticas: estatisticasRealtime,
     recarregar
   } = useCarrosRealtime()
@@ -134,7 +135,18 @@ export default function GerenciarCarrosSection() {
 
   useEffect(() => {
     carregarCarrosLancamento()
-  }, [])
+    
+    // Sincronização automática a cada 45 segundos para melhor performance
+    const interval = setInterval(() => {
+      carregarCarrosLancamento()
+      // Recarregar carros em tempo real se necessário
+      if (recarregar) {
+        recarregar()
+      }
+    }, 45000)
+    
+    return () => clearInterval(interval)
+  }, [recarregar])
 
   const carregarCarrosLancamento = () => {
     const chaveCarrosLancamento = "profarma_carros_lancamento"
@@ -147,18 +159,48 @@ export default function GerenciarCarrosSection() {
   }
 
   const handleExcluirCarro = async (carro: CarroStatus) => {
-    const result = await excluirCarro(carro.carro_id)
-    if (result.success) {
-      toast({
-        title: "Carro Excluído",
-        description: "Carro excluído com sucesso!",
-        duration: 3000,
-      })
-      setCarroParaExcluir(null)
-    } else {
+    try {
+      console.log('🗑️ [COMPONENTE] Iniciando exclusão do carro:', carro)
+      console.log('🆔 [COMPONENTE] ID do carro:', carro.carro_id)
+      console.log('📋 [COMPONENTE] Dados completos do carro:', JSON.stringify(carro, null, 2))
+      
+      if (!carro.carro_id) {
+        console.error('❌ [COMPONENTE] ID do carro não encontrado')
+        toast({
+          title: "Erro",
+          description: "ID do carro não encontrado",
+          variant: "destructive",
+          duration: 3000,
+        })
+        return
+      }
+
+      console.log(`🔄 [COMPONENTE] Chamando excluirCarro(${carro.carro_id})`)
+      const result = await excluirCarro(carro.carro_id)
+      console.log('📊 [COMPONENTE] Resultado da exclusão:', result)
+      
+      if (result.success) {
+        console.log('✅ [COMPONENTE] Carro excluído com sucesso')
+        toast({
+          title: "Carro Excluído",
+          description: "Carro excluído com sucesso!",
+          duration: 3000,
+        })
+        setCarroParaExcluir(null)
+      } else {
+        console.error('❌ [COMPONENTE] Falha ao excluir carro:', result.error)
+        toast({
+          title: "Erro",
+          description: result.error || "Erro ao excluir carro",
+          variant: "destructive",
+          duration: 3000,
+        })
+      }
+    } catch (error) {
+      console.error('❌ [COMPONENTE] Erro inesperado ao excluir carro:', error)
       toast({
         title: "Erro",
-        description: result.error || "Erro ao excluir carro",
+        description: "Erro inesperado ao excluir carro",
         variant: "destructive",
         duration: 3000,
       })
@@ -383,28 +425,35 @@ export default function GerenciarCarrosSection() {
     }
   }
 
-  const excluirNotaIndividual = (carroId: string, notaId: string) => {
-    const chaveCarros = "profarma_carros_embalagem"
-    const carrosExistentes = localStorage.getItem(chaveCarros)
-    const carrosArray = carrosExistentes ? JSON.parse(carrosExistentes) : []
-
-    const carroIndex = carrosArray.findIndex((c: Carro) => c.id === carroId)
-    if (carroIndex !== -1) {
-      const carro = carrosArray[carroIndex]
-      const notaRemovida = carro.nfs.find((nf: any) => nf.id === notaId)
-
-      // Remover a nota
-      carro.nfs = carro.nfs.filter((nf: any) => nf.id !== notaId)
-
-      // Recalcular totais
-      carro.quantidadeNFs = carro.nfs.length
-      carro.totalVolumes = carro.nfs.reduce((sum: number, nf: any) => sum + nf.volume, 0)
-
-      localStorage.setItem(chaveCarros, JSON.stringify(carrosArray))
-
+  const excluirNotaIndividual = async (carroId: string, notaId: string) => {
+    try {
+      console.log(`🗑️ [COMPONENTE] Excluindo nota ${notaId} do carro ${carroId}`)
+      
+      // Usar a função do hook para excluir a nota do banco de dados
+      const result = await excluirNotaCarro(carroId, notaId)
+      
+      if (result.success) {
+        console.log('✅ [COMPONENTE] Nota excluída com sucesso do banco')
+        toast({
+          title: "Nota Removida!",
+          description: "Nota removida com sucesso!",
+          duration: 3000,
+        })
+      } else {
+        console.error('❌ [COMPONENTE] Erro ao excluir nota:', result.error)
+        toast({
+          title: "Erro",
+          description: result.error || "Erro ao excluir nota",
+          variant: "destructive",
+          duration: 3000,
+        })
+      }
+    } catch (error) {
+      console.error('❌ [COMPONENTE] Erro inesperado ao excluir nota:', error)
       toast({
-        title: "Nota Removida!",
-        description: `Nota ${notaRemovida?.numeroNF} removida com sucesso!`,
+        title: "Erro",
+        description: "Erro inesperado ao excluir nota",
+        variant: "destructive",
         duration: 3000,
       })
     }
@@ -504,12 +553,8 @@ export default function GerenciarCarrosSection() {
       console.log('🆔 ID do carro:', carroParaSAP.carro_id)
       console.log('🔑 Números SAP:', numerosSAP)
       
-      // 1. Atualizar o carro com os números SAP e status lancado
-      const result = await atualizarStatusCarro(carroParaSAP.carro_id, {
-        status_carro: "lancado",
-        numeros_sap: numerosSAP,
-        data_finalizacao: new Date().toISOString()
-      })
+      // 1. Lançar o carro (buscar número na tabela de finalizados e mudar status para "lancado")
+      const result = await lancarCarro(carroParaSAP.carro_id, numerosSAP)
 
       console.log('📊 Resultado da atualização:', result)
 
@@ -541,7 +586,7 @@ export default function GerenciarCarrosSection() {
         data_criacao: carroParaSAP.data_criacao || new Date().toISOString(),
         data_finalizacao: new Date().toISOString(),
         nfs: carroParaSAP.nfs || [],
-        status_carro: "lancado"
+        status_carro: "lancado" // Status "Lançado" após buscar número na tabela de finalizados
       }
 
       console.log('🚀 Tentando salvar carro na tabela embalagem_carros_finalizados:')
@@ -604,8 +649,8 @@ export default function GerenciarCarrosSection() {
 
       toast({
         title: "Carro Lançado!",
-        description: `Carro lançado com sucesso! Status alterado para "Lançado". Números SAP: ${numerosSAP.join(", ")}`,
-        duration: 4000,
+        description: `Carro lançado com sucesso! Status alterado para "Lançado". Números SAP: ${numerosSAP.join(", ")}. Número do carro: ${result.numeroCarro || carroParaSAP.carro_id}`,
+        duration: 5000,
       })
     } catch (error) {
       console.error('Erro ao lançar carro:', error)
@@ -658,8 +703,8 @@ export default function GerenciarCarrosSection() {
     ...estatisticasRealtime,
     lancados: carrosLancamento.filter((c) => c.status === "lancado").length,
     aguardandoLancamento: estatisticasRealtime.aguardandoLancamento + carrosLancamento.filter((c) => c.status === "aguardando_lancamento").length,
-    totalPallets: carros.reduce((total, carro) => total + (carro.estimativa_pallets || 0), 0) +
-      carrosLancamento.reduce((total, carro) => total + (carro.estimativaPallets || 0), 0),
+    totalPallets: carros.reduce((total, carro) => total + ((carro as any).palletes_reais || carro.estimativa_pallets || 0), 0) +
+      carrosLancamento.reduce((total, carro) => total + (carro.palletesReais || carro.estimativaPallets || 0), 0),
   }
 
   return (
@@ -746,12 +791,14 @@ export default function GerenciarCarrosSection() {
                   <SelectItem value="embalando">🟠 Embalando</SelectItem>
                   <SelectItem value="divergencia">🔴 Divergência</SelectItem>
                   <SelectItem value="aguardando_lancamento">⏳ Aguardando Lançamento</SelectItem>
+                  <SelectItem value="finalizado">✅ Finalizados</SelectItem>
                   <SelectItem value="lancado">🚀 Lançados</SelectItem>
-                  <SelectItem value="lancados">🚀 Lançados</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
+
+
         </CardContent>
       </Card>
 
@@ -844,8 +891,8 @@ export default function GerenciarCarrosSection() {
                         <div className="text-xs text-gray-500">Volumes</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-purple-600">{carro.estimativa_pallets}</div>
-                        <div className="text-xs text-gray-500">Pallets</div>
+                        <div className="text-lg font-bold text-purple-600">{carro.palletes_reais || carro.estimativa_pallets}</div>
+                        <div className="text-xs text-gray-500">{carro.palletes_reais ? 'Pallets Reais' : 'Estimativa'}</div>
                       </div>
                     </div>
 
@@ -871,11 +918,17 @@ export default function GerenciarCarrosSection() {
                           setNovoNumeroSAP("")
                           setModalSAP(true)
                         }}
-                        className="bg-green-600 hover:bg-green-700 text-white"
+                        disabled={carro.status_carro === "lancado"}
+                        className={`${
+                          carro.status_carro === "lancado" 
+                            ? "bg-gray-400 cursor-not-allowed" 
+                            : "bg-green-600 hover:bg-green-700"
+                        } text-white`}
                         size="sm"
+                        title={carro.status_carro === "lancado" ? "Carro já foi lançado" : "Lançar carro"}
                       >
                         <Send className="h-4 w-4 mr-2" />
-                        Lançar
+                        {carro.status_carro === "lancado" ? "Lançado" : "Lançar"}
                       </Button>
 
                       <Dialog>
@@ -1039,7 +1092,7 @@ export default function GerenciarCarrosSection() {
                                 value={carro.status_carro}
                                 onValueChange={(value) => alterarStatusCarroEmbalagem(carro.carro_id, value as CarroStatus["status_carro"])}
                               >
-                                <SelectTrigger className="w-full h-8 text-xs">
+                                <SelectTrigger className="w-full h-10 w-15 text-xs">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1092,7 +1145,7 @@ export default function GerenciarCarrosSection() {
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancelar</AlertDialogCancel>
                             <AlertDialogAction
-                              onClick={() => carroParaExcluir && excluirCarro(carroParaExcluir.carro_id)}
+                              onClick={() => carroParaExcluir && handleExcluirCarro(carroParaExcluir)}
                               className="bg-red-600 hover:bg-red-700"
                             >
                               Excluir Carro
@@ -1172,8 +1225,8 @@ export default function GerenciarCarrosSection() {
                         <div className="text-xs text-gray-500">Volumes</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-blue-600">{carro.estimativaPallets}</div>
-                        <div className="text-xs text-gray-500">Pallets</div>
+                        <div className="text-lg font-bold text-blue-600">{carro.palletesReais || carro.estimativaPallets}</div>
+                        <div className="text-xs text-gray-500">{carro.palletesReais ? 'Pallets Reais' : 'Estimativa'}</div>
                       </div>
                     </div>
 

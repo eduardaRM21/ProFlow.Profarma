@@ -240,7 +240,7 @@ export default function PainelPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-3 sm:p-4 rounded-lg shadow-md">
                 <div className="flex items-center justify-between">
                   <div>
@@ -273,7 +273,7 @@ export default function PainelPage() {
                   <Truck className="h-6 w-6 sm:h-8 sm:w-8 text-blue-200" />
                 </div>
               </div>
-            </div>
+            </div> */}
 
 
             {/* Cards de Ações Principais */}

@@ -105,7 +105,7 @@ interface CarroProduzido {
     tipoCarga: string;
   }>;
   estimativaPallets: number;
-  status?: "embalando" | "concluido" | "finalizado" | "pronto" | "liberado";
+  status?: "embalando" | "concluido" | "finalizado" | "pronto" | "liberado" | "lancado";
   palletesReais?: number;
   dataInicioEmbalagem?: string;
   dataFinalizacao?: string;
@@ -138,12 +138,11 @@ export default function CarrosProduzidosSection({
   }>({ aberto: false, carroId: "", nomeCarro: "" });
   const [quantidadePallets, setQuantidadePallets] = useState("");
 
-  const { addRealtimeEvent } = useRealtimeMonitoring();
+  const { addRealtimeEvent, carroExcluidoEvent } = useRealtimeMonitoring();
   const { toast } = useToast();
 
-  const conversaId = `${sessionData.colaboradores.join("_")}_${
-    sessionData.data
-  }_${sessionData.turno}`;
+  const conversaId = `${sessionData.colaboradores.join("_")}_${sessionData.data
+    }_${sessionData.turno}`;
 
   const verificarMensagensNaoLidas = async () => {
     try {
@@ -153,7 +152,7 @@ export default function CarrosProduzidosSection({
         .or(`remetente_id.eq.${conversaId},destinatario_id.eq.${conversaId}`)
         .eq('remetente_tipo', 'admin')
         .eq('lida', false)
-      
+
       if (data) {
         setMensagensNaoLidas(data.length)
       }
@@ -248,9 +247,9 @@ export default function CarrosProduzidosSection({
       });
 
       // 5. Atualizar o carro na lista atual
-      setCarros(prevCarros => 
-        prevCarros.map(carro => 
-          carro.id === modalPallets.carroId 
+      setCarros(prevCarros =>
+        prevCarros.map(carro =>
+          carro.id === modalPallets.carroId
             ? { ...carro, status: "finalizado", palletesReais: pallets, dataFinalizacao: new Date().toISOString() }
             : carro
         )
@@ -289,6 +288,8 @@ export default function CarrosProduzidosSection({
         return "Pronto";
       case "liberado":
         return "Liberado";
+      case "lancado":
+        return "Lançado";
       default:
         return "Finalizado";
     }
@@ -304,6 +305,8 @@ export default function CarrosProduzidosSection({
         return "bg-purple-100 text-purple-800";
       case "finalizado":
         return "bg-blue-100 text-blue-800";
+      case "lancado":
+        return "bg-emerald-100 text-emerald-800";
       default:
         return "bg-gray-100 text-gray-800";
     }
@@ -311,6 +314,13 @@ export default function CarrosProduzidosSection({
 
   useEffect(() => {
     carregarCarrosProduzidos();
+    
+    // Sincronização automática a cada 5 segundos para capturar mudanças do admin
+    const interval = setInterval(() => {
+      carregarCarrosProduzidos();
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -321,19 +331,45 @@ export default function CarrosProduzidosSection({
     return () => clearInterval(interval);
   }, [conversaId]);
 
+  // Escutar eventos de exclusão de carros em tempo real
+  useEffect(() => {
+    if (carroExcluidoEvent) {
+      console.log('📡 [CARROS_PRODUZIDOS] Evento de exclusão recebido:', carroExcluidoEvent)
+      
+      // Remover o carro excluído da lista local
+      setCarros(prevCarros => {
+        const carrosFiltrados = prevCarros.filter(carro => carro.id !== carroExcluidoEvent.carro_id)
+        console.log(`🗑️ [CARROS_PRODUZIDOS] Carro ${carroExcluidoEvent.carro_id} removido da lista. Total: ${prevCarros.length} -> ${carrosFiltrados.length}`)
+        return carrosFiltrados
+      })
+      
+      // Mostrar toast de confirmação
+      toast({
+        title: "Carro Excluído",
+        description: `Carro ${carroExcluidoEvent.carro_id} foi excluído e removido da lista`,
+        duration: 3000,
+      })
+      
+      // Recarregar carros para sincronização completa
+      setTimeout(() => {
+        carregarCarrosProduzidos()
+      }, 1000)
+    }
+  }, [carroExcluidoEvent, toast]);
+
   const carregarCarrosProduzidos = async () => {
     try {
       console.log('🚛 Carregando carros produzidos...')
-      
+
       const carrosEncontrados: CarroProduzido[] = [];
-      
+
       // 1. Buscar carros da tabela embalagem_notas_bipadas
       const resultado = await EmbalagemNotasBipadasService.buscarCarrosProduzidos()
       if (resultado.success && resultado.carros) {
         console.log(`✅ Carregados ${resultado.carros.length} carros da tabela embalagem_notas_bipadas`)
         carrosEncontrados.push(...(resultado.carros as CarroProduzido[]))
       }
-      
+
       // 2. Buscar carros em embalagem do localStorage (carros marcados como "Embalar carro")
       const carrosEmbalagem = localStorage.getItem("profarma_carros_embalagem");
       if (carrosEmbalagem) {
@@ -374,22 +410,22 @@ export default function CarrosProduzidosSection({
           console.error("Erro ao processar carros em embalagem:", error);
         }
       }
-      
+
       // 3. Fallback para outros carros do localStorage se necessário
       if (carrosEncontrados.length === 0) {
         console.log('🔄 Nenhum carro encontrado, carregando do localStorage como fallback...')
         carregarCarrosDoLocalStorage()
         return
       }
-      
+
       // Ordenar por data de produção (mais recente primeiro)
       carrosEncontrados.sort(
         (a, b) => new Date(b.dataProducao).getTime() - new Date(a.dataProducao).getTime()
       );
-      
+
       console.log(`✅ Total de ${carrosEncontrados.length} carros carregados`)
       setCarros(carrosEncontrados)
-      
+
     } catch (error) {
       console.error('❌ Erro inesperado ao carregar carros:', error)
       // Fallback para localStorage em caso de erro
@@ -731,7 +767,7 @@ export default function CarrosProduzidosSection({
                     >
                       {getStatusLabel(carro.status)}
                     </Badge>
-                    
+
                     {/* Indicador especial para carros prontos */}
                     {carro.status === "pronto" && (
                       <Badge className="text-xs bg-emerald-100 text-emerald-800 border-emerald-200">
@@ -739,8 +775,8 @@ export default function CarrosProduzidosSection({
                       </Badge>
                     )}
                     <Badge className={`text-xs ${getTurnoColor(carro.turno)}`}>
-                      <span className="hidden sm:inline">Turno </span>
-                      {carro.turno}
+                      <span className="hidden sm:inline">Turno</span>
+                      {" "} {carro.turno}
                       <span className="hidden sm:inline">
                         {" "}
                         - {getTurnoLabel(carro.turno)}
@@ -781,23 +817,15 @@ export default function CarrosProduzidosSection({
                   </div>
                   <div className="text-center">
                     <div className="text-lg font-bold text-blue-600">
-                      {carro.palletesReais !== null &&
-                      carro.palletesReais !== undefined
-                        ? carro.palletesReais
-                        : carro.estimativaPallets}
+                      {carro.estimativaPallets || 0}
                     </div>
-                    <div className="text-xs text-gray-500">
-                      {carro.palletesReais !== null &&
-                      carro.palletesReais !== undefined
-                        ? "Pallets Reais"
-                        : "Estimativa"}
-                    </div>
+                    <div className="text-xs text-gray-500">Estimativa</div>
                   </div>
                   <div className="text-center">
                     <div className="text-lg font-bold text-purple-600">
-                      {carro.estimativaPallets}
+                      {carro.palletesReais || 0}
                     </div>
-                    <div className="text-xs text-gray-500">Est. Pallets</div>
+                    <div className="text-xs text-gray-500">Palletes reais</div>
                   </div>
                 </div>
 
@@ -861,8 +889,8 @@ export default function CarrosProduzidosSection({
                             <table className="min-w-full text-sm text-left">
                               <thead className="bg-gray-50 text-gray-700 font-medium">
                                 <tr>
-                                  <th className="px-4 py-2">NF</th>
                                   <th className="px-4 py-2">Código</th>
+                                  <th className="px-4 py-2">NF</th>
                                   <th className="px-4 py-2">Forn</th>
                                   <th className="px-4 py-2">Destino</th>
                                   <th className="px-4 py-2">Tipo</th>
@@ -884,11 +912,11 @@ export default function CarrosProduzidosSection({
                                         : "bg-gray-50"
                                     }
                                   >
-                                    <td className="px-4 py-2 font-medium">
-                                      {nf.numeroNF}
-                                    </td>
                                     <td className="px-4 py-2 font-mono text-xs">
                                       {nf.codigo}
+                                    </td>
+                                    <td className="px-4 py-2 font-medium">
+                                      {nf.numeroNF}
                                     </td>
                                     <td
                                       className="px-4 py-2 truncate max-w-[120px]"
@@ -902,7 +930,7 @@ export default function CarrosProduzidosSection({
                                     <td className="px-4 py-2 truncate max-w-[120px]">
                                       {nf.tipoCarga}
                                     </td>
-                                   
+
                                     <td className="px-4 py-2 text-center">
                                       {nf.volume}
                                     </td>
@@ -930,7 +958,7 @@ export default function CarrosProduzidosSection({
                     </DialogContent>
                   </Dialog>
 
-                  {(carro.status === "embalando" || carro.status === "concluido" || carro.status === "finalizado") && (
+                  {(carro.status === "embalando" || carro.status === "concluido" || carro.status === "finalizado" || carro.status === "lancado") && (
                     <Button
                       onClick={() =>
                         abrirModalPallets(
@@ -938,20 +966,21 @@ export default function CarrosProduzidosSection({
                           `${carro.colaboradores.join(" + ")}`
                         )
                       }
-                      className={`${
-                        (carro.status as string) === "embalando" 
-                          ? "bg-green-600 hover:bg-green-700" 
-                          : (carro.status as string) === "pronto"
+                      className={`${(carro.status as string) === "embalando"
+                        ? "bg-green-600 hover:bg-green-700"
+                        : (carro.status as string) === "pronto"
                           ? "bg-emerald-600 hover:bg-emerald-700"
                           : (carro.status as string) === "finalizado"
-                          ? "bg-gray-600 hover:bg-gray-700"
-                          : "bg-blue-600 hover:bg-blue-700"
-                      } text-white`}
+                            ? "bg-gray-600 hover:bg-gray-700"
+                            : (carro.status as string) === "lancado"
+                              ? "bg-emerald-600 hover:bg-emerald-700"
+                              : "bg-blue-600 hover:bg-blue-700"
+                        } text-white`}
                       size="sm"
-                      disabled={(carro.status as string) === "finalizado" || (carro.status as string) === "pronto" || (carro.status as string) === "concluido"}
+                      disabled={(carro.status as string) === "finalizado" || (carro.status as string) === "pronto" || (carro.status as string) === "concluido" || (carro.status as string) === "lancado"}
                     >
                       <CheckCircle2 className="h-4 w-4 mr-1" />
-                                              {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "pronto" ? "Pronto ✓" : (carro.status as string) === "finalizado" ? "Finalizado" : "Atualizar Pallets"}
+                      {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "pronto" ? "Pronto ✓" : (carro.status as string) === "finalizado" ? "Finalizado" : (carro.status as string) === "lancado" ? "Lançado ✓" : "Atualizar Pallets"}
                     </Button>
                   )}
                 </div>

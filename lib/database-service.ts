@@ -337,6 +337,8 @@ export const RecebimentoService = {
   // Deletar notas de recebimento
   async deleteNotas(sessionId: string): Promise<void> {
     try {
+      console.log('🗑️ Tentando deletar notas do banco para sessão:', sessionId)
+      
       const { error } = await retryWithBackoff(async () => {
         return await getSupabase()
           .from('recebimento_notas')
@@ -344,9 +346,18 @@ export const RecebimentoService = {
           .eq('session_id', sessionId)
       })
 
-      if (error) throw error
+      if (error) {
+        // Se for erro de tabela não encontrada, não é um erro crítico
+        if (error.message?.includes('relation "recebimento_notas" does not exist')) {
+          console.log('ℹ️ Tabela recebimento_notas não existe no banco')
+          return
+        }
+        throw error
+      }
+      
+      console.log('✅ Notas deletadas com sucesso do banco')
     } catch (error) {
-      console.error('Erro ao deletar notas de recebimento:', error)
+      console.error('❌ Erro ao deletar notas de recebimento:', error)
       throw error
     }
   }
@@ -729,9 +740,34 @@ export const RelatoriosService = {
                 notaId = notaSalva.id
                 console.log(`✅ Nova nota fiscal ${index + 1} criada com ID: ${notaId}`)
               } else {
-                // Nota já existe, usar ID existente
+                // Nota já existe, atualizar status se necessário
                 notaId = notaExistente.id
                 console.log(`✅ Nota fiscal ${index + 1} já existe com ID: ${notaId}`)
+                
+                // Atualizar o status da nota se ela tem divergência
+                if (nota.divergencia) {
+                  const { error: updateError } = await supabase
+                    .from('notas_fiscais')
+                    .update({ status: 'divergencia' })
+                    .eq('id', notaId)
+                  
+                  if (updateError) {
+                    console.error(`❌ Erro ao atualizar status da nota ${index + 1}:`, updateError)
+                  } else {
+                    console.log(`✅ Status da nota ${index + 1} atualizado para "divergencia"`)
+                  }
+                } else if (nota.status === 'ok') {
+                  const { error: updateError } = await supabase
+                    .from('notas_fiscais')
+                    .update({ status: 'ok' })
+                    .eq('id', notaId)
+                  
+                  if (updateError) {
+                    console.error(`❌ Erro ao atualizar status da nota ${index + 1}:`, updateError)
+                  } else {
+                    console.log(`✅ Status da nota ${index + 1} atualizado para "ok"`)
+                  }
+                }
               }
               
               return { ...nota, id: notaId }
@@ -775,8 +811,8 @@ export const RelatoriosService = {
             console.log('✅ Todas as notas já estão associadas ao relatório')
           }
           
-          // Salvar divergências se houver (apenas para notas novas)
-          const divergencias = notasNovas
+          // Salvar divergências se houver (para todas as notas com divergência)
+          const divergencias = notasValidas
             .filter(nota => nota.divergencia)
             .map(nota => ({
               nota_fiscal_id: nota.id,
@@ -790,14 +826,38 @@ export const RelatoriosService = {
           if (divergencias.length > 0) {
             console.log('🔍 Salvando divergências:', divergencias)
             
-            const { error: divergenciasError } = await supabase
-              .from('divergencias')
-              .insert(divergencias)
+            // Verificar se as divergências já existem antes de inserir
+            const divergenciasParaSalvar = await Promise.all(
+              divergencias.map(async (divergencia) => {
+                const { data: divergenciaExistente, error: checkError } = await supabase
+                  .from('divergencias')
+                  .select('id')
+                  .eq('nota_fiscal_id', divergencia.nota_fiscal_id)
+                  .single()
+                
+                if (checkError || !divergenciaExistente) {
+                  return divergencia
+                } else {
+                  console.log(`ℹ️ Divergência já existe para nota ${divergencia.nota_fiscal_id}`)
+                  return null
+                }
+              })
+            )
             
-            if (divergenciasError) {
-              console.error('❌ Erro ao salvar divergências:', divergenciasError)
+            const divergenciasNovas = divergenciasParaSalvar.filter(d => d !== null)
+            
+            if (divergenciasNovas.length > 0) {
+              const { error: divergenciasError } = await supabase
+                .from('divergencias')
+                .insert(divergenciasNovas)
+              
+              if (divergenciasError) {
+                console.error('❌ Erro ao salvar divergências:', divergenciasError)
+              } else {
+                console.log('✅ Divergências salvas:', divergenciasNovas.length)
+              }
             } else {
-              console.log('✅ Divergências salvas:', divergencias.length)
+              console.log('ℹ️ Todas as divergências já existem')
             }
           }
         } else {

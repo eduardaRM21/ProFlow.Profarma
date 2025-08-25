@@ -116,20 +116,23 @@ export function useEmbalagem({ data, turno, sessionId }: UseEmbalagemProps) {
         return { valido: false, erro: resultado.erro }
       }
       
+      // TypeScript agora sabe que resultado.nf não é undefined
+      const nf = resultado.nf
+      
       // Atualizar carros
       const carrosAtualizados = carros.map(carro => {
         if (carro.id === carroId) {
           // Verificar se a NF já existe
-          const nfExistente = carro.nfs.find(nf => nf.numeroNF === resultado.nf!.numeroNF)
+          const nfExistente = carro.nfs.find(nfItem => nfItem.numeroNF === nf.numeroNF)
           if (nfExistente) {
-            throw new Error(`NF ${resultado.nf.numeroNF} já foi adicionada a este carro`)
+            throw new Error(`NF ${nf.numeroNF} já foi adicionada a este carro`)
           }
           
           return {
             ...carro,
-            nfs: [...carro.nfs, resultado.nf!],
+            nfs: [...carro.nfs, nf],
             quantidadeNFs: carro.nfs.length + 1,
-            totalVolumes: carro.totalVolumes + resultado.nf.volume
+            totalVolumes: carro.totalVolumes + nf.volume
           }
         }
         return carro

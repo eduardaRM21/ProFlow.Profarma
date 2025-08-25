@@ -460,6 +460,73 @@ export default function RecebimentoPage() {
   const confirmarNota = async () => {
     if (!notaAtual) return
     
+    // Garantir que a nota tenha status "ok"
+    const notaComStatus: NotaFiscal = {
+      ...notaAtual,
+      status: "ok"
+    }
+    
+    // Atualizar status da nota na tabela notas_fiscais se conectado
+    try {
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      // Buscar a nota na tabela notas_fiscais
+      const { data: notaExistente, error: buscaError } = await supabase
+        .from('notas_fiscais')
+        .select('id')
+        .eq('numero_nf', notaAtual.numeroNF)
+        .eq('codigo_completo', notaAtual.codigoCompleto)
+        .single()
+      
+      if (!buscaError && notaExistente) {
+        // Atualizar o status da nota para "ok"
+        const { error: updateError } = await supabase
+          .from('notas_fiscais')
+          .update({ status: 'ok' })
+          .eq('id', notaExistente.id)
+        
+        if (updateError) {
+          console.error('❌ Erro ao atualizar status da nota na tabela notas_fiscais:', updateError)
+        } else {
+          console.log('✅ Status da nota atualizado para "ok" na tabela notas_fiscais')
+        }
+      } else {
+        console.log('⚠️ Nota não encontrada na tabela notas_fiscais para atualização de status')
+        
+        // Se a nota não existe, criar na tabela notas_fiscais
+        try {
+          const novaNota = {
+            codigo_completo: notaAtual.codigoCompleto,
+            numero_nf: notaAtual.numeroNF,
+            data: sessionData?.data || new Date().toISOString().split('T')[0],
+            volumes: notaAtual.volumes,
+            destino: notaAtual.destino,
+            fornecedor: notaAtual.fornecedor,
+            cliente_destino: notaAtual.clienteDestino,
+            tipo_carga: notaAtual.tipoCarga,
+            status: 'ok'
+          }
+          
+          const { data: notaCriada, error: createError } = await supabase
+            .from('notas_fiscais')
+            .insert(novaNota)
+            .select()
+            .single()
+          
+          if (createError) {
+            console.error('❌ Erro ao criar nota na tabela notas_fiscais:', createError)
+          } else {
+            console.log('✅ Nota criada na tabela notas_fiscais com ID:', notaCriada.id)
+          }
+        } catch (error) {
+          console.error('❌ Erro ao criar nota:', error)
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status da nota:', error)
+    }
+    
     // Salvar nota bipada na tabela centralizada
     try {
       const notaBipada = {
@@ -477,7 +544,7 @@ export default function RecebimentoPage() {
         fornecedor: notaAtual.fornecedor,
         cliente_destino: notaAtual.clienteDestino,
         tipo_carga: notaAtual.tipoCarga,
-        status: 'bipada',
+        status: 'ok',
         observacoes: 'NF recebida no setor de Recebimento'
       };
 
@@ -488,7 +555,7 @@ export default function RecebimentoPage() {
       // Continuar com o processo mesmo se falhar ao salvar na tabela centralizada
     }
     
-    const notasAtualizadas = [notaAtual, ...notas]
+    const notasAtualizadas = [notaComStatus, ...notas]
     saveNotas(chaveNotas, notasAtualizadas)
     
     // Disparar evento em tempo real
@@ -532,6 +599,115 @@ export default function RecebimentoPage() {
         observacoes: `${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`,
         volumesInformados,
       },
+    }
+    
+    // Atualizar status da nota na tabela notas_fiscais se conectado
+    try {
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      // Buscar a nota na tabela notas_fiscais
+      const { data: notaExistente, error: buscaError } = await supabase
+        .from('notas_fiscais')
+        .select('id')
+        .eq('numero_nf', notaAtual.numeroNF)
+        .eq('codigo_completo', notaAtual.codigoCompleto)
+        .single()
+      
+      if (!buscaError && notaExistente) {
+        // Atualizar o status da nota para "divergencia"
+        const { error: updateError } = await supabase
+          .from('notas_fiscais')
+          .update({ status: 'divergencia' })
+          .eq('id', notaExistente.id)
+        
+        if (updateError) {
+          console.error('❌ Erro ao atualizar status da nota na tabela notas_fiscais:', updateError)
+        } else {
+          console.log('✅ Status da nota atualizado para "divergencia" na tabela notas_fiscais')
+        }
+        
+        // Salvar divergência na tabela divergencias
+        try {
+          const divergenciaData = {
+            nota_fiscal_id: notaExistente.id,
+            tipo: 'volumes',
+            descricao: 'Divergência de volumes',
+            volumes_informados: volumesInformados,
+            volumes_reais: notaAtual.volumes,
+            observacoes: `${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`
+          }
+          
+          const { error: divergenciaError } = await supabase
+            .from('divergencias')
+            .insert(divergenciaData)
+          
+          if (divergenciaError) {
+            console.error('❌ Erro ao salvar divergência na tabela divergencias:', divergenciaError)
+          } else {
+            console.log('✅ Divergência salva na tabela divergencias')
+          }
+        } catch (error) {
+          console.error('❌ Erro ao salvar divergência:', error)
+        }
+      } else {
+        console.log('⚠️ Nota não encontrada na tabela notas_fiscais para atualização de status')
+        
+        // Se a nota não existe, criar na tabela notas_fiscais
+        try {
+          const novaNota = {
+            codigo_completo: notaAtual.codigoCompleto,
+            numero_nf: notaAtual.numeroNF,
+            data: sessionData?.data || new Date().toISOString().split('T')[0],
+            volumes: notaAtual.volumes,
+            destino: notaAtual.destino,
+            fornecedor: notaAtual.fornecedor,
+            cliente_destino: notaAtual.clienteDestino,
+            tipo_carga: notaAtual.tipoCarga,
+            status: 'divergencia'
+          }
+          
+          const { data: notaCriada, error: createError } = await supabase
+            .from('notas_fiscais')
+            .insert(novaNota)
+            .select()
+            .single()
+          
+          if (createError) {
+            console.error('❌ Erro ao criar nota na tabela notas_fiscais:', createError)
+          } else {
+            console.log('✅ Nota criada na tabela notas_fiscais com ID:', notaCriada.id)
+            
+            // Salvar divergência na tabela divergencias
+            try {
+              const divergenciaData = {
+                nota_fiscal_id: notaCriada.id,
+                tipo: 'volumes',
+                descricao: 'Divergência de volumes',
+                volumes_informados: volumesInformados,
+                volumes_reais: notaAtual.volumes,
+                observacoes: `${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`
+              }
+              
+              const { error: divergenciaError } = await supabase
+                .from('divergencias')
+                .insert(divergenciaData)
+              
+              if (divergenciaError) {
+                console.error('❌ Erro ao salvar divergência na tabela divergencias:', divergenciaError)
+              } else {
+                console.log('✅ Divergência salva na tabela divergencias')
+              }
+            } catch (error) {
+              console.error('❌ Erro ao salvar divergência:', error)
+            }
+          }
+        } catch (error) {
+          console.error('❌ Erro ao criar nota:', error)
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status da nota:', error)
     }
     
     // Salvar nota bipada na tabela centralizada
@@ -991,6 +1167,8 @@ export default function RecebimentoPage() {
           finalizarRelatorio={finalizarRelatorio}
           setModalRelatorios={setModalRelatorios}
           inputRef={inputRef}
+          sessionData={sessionData}
+          clearNotas={clearNotas}
         />
       )}
 

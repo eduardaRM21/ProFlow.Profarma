@@ -35,7 +35,7 @@ export function useEmbalagemStats(data: string, turno: string) {
         
         if (resultadoEstatisticas.success && resultadoEstatisticas.estatisticas) {
           const { total_notas, total_volumes, carros_utilizados } = resultadoEstatisticas.estatisticas
-          const carrosProntos = resultadoCarrosProntos.success ? resultadoCarrosProntos.carrosProntos || 0 : 0
+          const carrosProntos = resultadoCarrosProntos.success ? (resultadoCarrosProntos.carrosProntos?.length || 0) : 0
           
           setStats({
             nfsBipadas: total_notas,

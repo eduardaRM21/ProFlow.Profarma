@@ -16,6 +16,7 @@ import {
   FileText,
   Eye,
   X,
+  Trash2,
 } from "lucide-react"
 import BarcodeScanner from "./barcode-scanner"
 import type { NotaFiscal } from "@/lib/database-service"
@@ -35,6 +36,8 @@ interface ColetorViewProps {
   finalizarRelatorio: () => void
   setModalRelatorios: (value: boolean) => void
   inputRef: React.RefObject<HTMLInputElement>
+  sessionData: any
+  clearNotas: (chave: string) => Promise<void>
 }
 
 export default function ColetorView({
@@ -50,7 +53,9 @@ export default function ColetorView({
   notas,
   finalizarRelatorio,
   setModalRelatorios,
-  inputRef
+  inputRef,
+  clearNotas,
+  sessionData
 }: ColetorViewProps) {
   return (
     <div className="min-h-screen bg-gray-50 p-2 coletor-container">
@@ -150,7 +155,7 @@ export default function ColetorView({
       </Card>
 
       {/* Botões de ação - otimizados para coletor */}
-      <div className="grid grid-cols-2 gap-2 mb-3 coletor-button-grid">
+      <div className="grid grid-cols-3 gap-2 mb-3 coletor-button-grid">
         <Button
           onClick={finalizarRelatorio}
           disabled={notas.length === 0}
@@ -166,6 +171,48 @@ export default function ColetorView({
         >
           <Eye className="h-4 w-4 mr-2" />
           Relatórios
+        </Button>
+
+                 <Button
+           onClick={async () => {
+             if (notas.length === 0) {
+               alert("Não há notas para limpar!")
+               return
+             }
+             
+             // Confirmação mais clara
+             const confirmacao = confirm(
+               `🗑️ LIMPAR BIPAGEM\n\n` +
+               `Tem certeza que deseja limpar todas as ${notas.length} notas bipadas?\n\n` +
+               `⚠️ ATENÇÃO: Esta ação não pode ser desfeita!\n` +
+               `📝 As notas serão removidas da sessão atual.`
+             )
+             
+             if (confirmacao) {
+               try {
+                 console.log('🗑️ Iniciando limpeza das notas...')
+                 
+                 // Limpar notas usando a função do hook
+                 const chaveNotas = `recebimento_${Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0 
+                   ? sessionData?.colaboradores.join('_') 
+                   : 'sem_colaborador'}_${sessionData?.data}_${sessionData?.turno}`
+                 
+                 console.log('🗑️ Chave das notas:', chaveNotas)
+                 await clearNotas(chaveNotas)
+                 
+                 console.log('✅ Notas limpas com sucesso!')
+                 // Mostrar mensagem de sucesso
+                 alert(`✅ SUCESSO!\n\n${notas.length} notas foram limpas com sucesso!`)
+               } catch (error) {
+                 console.error('❌ Erro ao limpar notas:', error)
+                 alert('❌ Erro ao limpar as notas. Tente novamente.')
+               }
+             }
+           }}
+          className="h-12 bg-red-50 hover:bg-red-100 text-red-700 border-red-200 hover:border-red-300 coletor-button"
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Limpar ({notas.length})
         </Button>
       </div>
 
