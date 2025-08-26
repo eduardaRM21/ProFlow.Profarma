@@ -284,7 +284,6 @@ export function BarcodeScanner({ onScan, isLoading = false }: BarcodeScannerProp
           <ul className="text-sm text-gray-600 space-y-1">
             <li>• <strong>Modo Manual:</strong> Digite o código ou use um scanner USB</li>
             <li>• <strong>Modo Câmera:</strong> Aponte a câmera para o código de barras</li>
-            <li>• Produtos duplicados incrementam a quantidade automaticamente</li>
             <li>• Pressione Enter para confirmar no modo manual</li>
           </ul>
         </CardContent>

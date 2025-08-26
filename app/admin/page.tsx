@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { getSupabase } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
@@ -19,20 +19,26 @@ import {
   MessageSquare,
   User,
   CheckCircle2,
-  FileText,
   BarChart3,
   Truck,
   Lock,
   AlertTriangle,
   TrendingUp,
   LogOut,
+  Search,
 } from "lucide-react"
 
 import GerenciarCarrosSection from "./components/gerenciar-carros-section"
 import { useEstatisticas } from "@/hooks/use-estatisticas"
 
-  // Cliente Supabase - será obtido quando necessário
-  let supabase: any = null;
+// Função para gerar ID único
+const gerarIdUnico = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  // Fallback para navegadores mais antigos
+  return Date.now().toString() + Math.random().toString(36).substr(2, 9)
+}
 
 interface ChatMessage {
   id: string
@@ -56,6 +62,10 @@ interface Conversa {
 }
 
 export default function AdminPage() {
+  // Estado de autenticação (sempre true para acesso direto)
+  const [isAuthenticated, setIsAuthenticated] = useState(true)
+
+  // TODOS os outros Hooks vêm DEPOIS da verificação de autenticação
   const [conversas, setConversas] = useState<Conversa[]>([])
   const [conversaSelecionada, setConversaSelecionada] = useState<Conversa | null>(null)
   const [mensagens, setMensagens] = useState<ChatMessage[]>([])
@@ -63,20 +73,22 @@ export default function AdminPage() {
   const [filtro, setFiltro] = useState("")
   const [enviando, setEnviando] = useState(false)
   const [activeSection, setActiveSection] = useState<string | null>(null)
+
   
-  // Estados para verificação de acesso admin
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [showPasswordPrompt, setShowPasswordPrompt] = useState(false)
-  const [adminPassword, setAdminPassword] = useState("")
-  const [passwordError, setPasswordError] = useState("")
+  // Cliente Supabase - será obtido quando necessário
+  const [supabase, setSupabase] = useState<any>(null)
+  
+  // Referência para o input de mensagem
+  const inputRef = useRef<HTMLInputElement>(null)
   
   const router = useRouter()
 
   useEffect(() => {
     // Inicializar cliente Supabase
-    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      supabase = getSupabase();
-    }
+    console.log('🔄 Inicializando cliente Supabase...')
+    const supabaseClient = getSupabase();
+    setSupabase(supabaseClient);
+    console.log('✅ Cliente Supabase inicializado:', !!supabaseClient)
     
     verificarAcessoAdmin()
   }, [])
@@ -101,10 +113,9 @@ export default function AdminPage() {
         return
       }
 
-      // Se for admin embalagem, não precisa verificar admin_crdk
+      // Se for admin embalagem, acesso direto permitido
       if (session.area === "admin-embalagem") {
-        console.log("🔐 Usuário do setor Admin Embalagem detectado, solicitando senha...")
-        setShowPasswordPrompt(true)
+        console.log("🔐 Usuário do setor Admin Embalagem detectado, acesso liberado")
         return
       }
 
@@ -119,33 +130,17 @@ export default function AdminPage() {
         return
       }
 
-      // Se chegou até aqui, mostrar prompt de senha
-      setShowPasswordPrompt(true)
-      console.log("🔐 Usuário admin_crdk detectado, solicitando senha...")
+      // Se chegou até aqui, acesso direto permitido
+      console.log("🔐 Usuário admin_crdk detectado, acesso liberado")
     } catch (error) {
       console.error("❌ Erro ao verificar acesso admin:", error)
       router.push("/")
     }
   }
 
-  const verificarSenhaAdmin = () => {
-    if (adminPassword === "crdkes2025") {
-      setIsAuthenticated(true)
-      setShowPasswordPrompt(false)
-      setPasswordError("")
-      console.log("✅ Senha admin correta, acesso liberado")
-    } else {
-      setPasswordError("Senha incorreta. Tente novamente.")
-      setAdminPassword("")
-      console.log("❌ Senha admin incorreta")
-    }
-  }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      verificarSenhaAdmin()
-    }
-  }
+
+
 
   const handleChatKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -154,13 +149,12 @@ export default function AdminPage() {
     }
   }
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const valor = e.target.value
+    setNovaMensagem(valor)
+  }
+
   const handleLogout = () => {
-    // Limpar dados de autenticação
-    setIsAuthenticated(false)
-    setShowPasswordPrompt(false)
-    setAdminPassword("")
-    setPasswordError("")
-    
     // Limpar dados da sessão
     localStorage.removeItem("sistema_session")
     
@@ -170,118 +164,171 @@ export default function AdminPage() {
     console.log("✅ Logout realizado com sucesso")
   }
 
+  const carregarConversasDoSupabase = useCallback(async () => {
+    try {
+      console.log('🔍 Carregando conversas do Supabase...')
+
+      // **Padrão seguro**: use client local
+      const client = supabase ?? getSupabase()
+      if (!supabase) setSupabase(client)
+      
+      // Buscar todas as mensagens únicas para criar conversas
+      const { data: allMessages, error } = await client
+        .from('messages')
+        .select('*')
+        .order('timestamp', { ascending: false })
+
+      if (error) {
+        console.error('❌ Erro ao buscar mensagens do Supabase:', error)
+        console.log('🔄 Tentando usar localStorage como fallback...')
+        return
+      }
+
+      if (!allMessages || allMessages.length === 0) {
+        console.log('ℹ️ Nenhuma mensagem encontrada no Supabase')
+        return
+      }
+
+      console.log('📊 Mensagens encontradas:', allMessages.length)
+
+      // Agrupar mensagens por conversa
+      const conversasMap = new Map()
+
+      allMessages.forEach((msg: any) => {
+        const conversaId = msg.remetente_id === 'admin' ? msg.destinatario_id : msg.remetente_id
+        
+        if (!conversasMap.has(conversaId)) {
+          conversasMap.set(conversaId, {
+            id: conversaId,
+            colaboradores: [msg.remetente_nome || 'Colaborador'],
+            data: new Date(msg.timestamp).toISOString().split('T')[0],
+            turno: 'manhã', // Default
+            ultimaMensagem: msg.mensagem,
+            ultimoTimestamp: msg.timestamp,
+            mensagensNaoLidas: msg.remetente_tipo === 'colaborador' && !msg.lida ? 1 : 0
+          })
+        } else {
+          const conversa = conversasMap.get(conversaId)
+          if (msg.timestamp > conversa.ultimoTimestamp) {
+            conversa.ultimaMensagem = msg.mensagem
+            conversa.ultimoTimestamp = msg.timestamp
+          }
+          if (msg.remetente_tipo === 'colaborador' && !msg.lida) {
+            conversa.mensagensNaoLidas++
+          }
+        }
+      })
+
+      const conversasArray = Array.from(conversasMap.values())
+      console.log('📊 Conversas criadas:', conversasArray.length)
+      console.log('📋 Conversas:', conversasArray)
+
+      // Salvar no localStorage
+      const chaveListaGeral = "profarma_conversas_admin"
+      localStorage.setItem(chaveListaGeral, JSON.stringify(conversasArray))
+      
+      // Preservar a conversa selecionada se ela ainda existir
+      if (conversaSelecionada) {
+        const conversaAtualizada = conversasArray.find((c: Conversa) => c.id === conversaSelecionada.id)
+        if (conversaAtualizada) {
+          console.log('🔄 Atualizando conversa selecionada do Supabase:', conversaAtualizada)
+          setConversaSelecionada(conversaAtualizada)
+        } else {
+          console.log('⚠️ Conversa selecionada não encontrada nas conversas do Supabase')
+          setConversaSelecionada(null)
+        }
+      }
+      
+      setConversas(conversasArray)
+      
+    } catch (error) {
+      console.error('❌ Erro ao carregar conversas do Supabase:', error)
+    }
+  }, [supabase])
+
+  const carregarConversas = useCallback(() => {
+    const chaveListaGeral = "profarma_conversas_admin"
+    const conversasSalvas = localStorage.getItem(chaveListaGeral)
+
+    console.log('🔍 Carregando conversas do localStorage...')
+    console.log('📋 Chave:', chaveListaGeral)
+    console.log('📋 Dados salvos:', conversasSalvas)
+
+    if (conversasSalvas) {
+      const conversasArray = JSON.parse(conversasSalvas)
+      console.log('📊 Conversas carregadas:', conversasArray.length)
+      console.log('📋 Conversas:', conversasArray)
+      
+      // Preservar a conversa selecionada se ela ainda existir
+      if (conversaSelecionada) {
+        const conversaAtualizada = conversasArray.find((c: Conversa) => c.id === conversaSelecionada.id)
+        if (conversaAtualizada) {
+          console.log('🔄 Atualizando conversa selecionada:', conversaAtualizada)
+          setConversaSelecionada(conversaAtualizada)
+        } else {
+          console.log('⚠️ Conversa selecionada não encontrada nas conversas atualizadas')
+          setConversaSelecionada(null)
+        }
+      }
+      
+      setConversas(conversasArray)
+    } else {
+      console.log('⚠️ Nenhuma conversa encontrada no localStorage')
+      // Não carregar do Supabase aqui para evitar loop infinito
+      setConversas([])
+    }
+  }, [conversaSelecionada])
+
   // useEffect para carregar conversas
   useEffect(() => {
     if (isAuthenticated) {
       carregarConversas()
-      // Polling para atualizações em tempo real
-      const interval = setInterval(carregarConversas, 60000)
+      // Polling para atualizações em tempo real (a cada 5 minutos)
+      const interval = setInterval(carregarConversas, 300000)
       return () => clearInterval(interval)
     }
   }, [isAuthenticated])
 
-  // useEffect para carregar mensagens da conversa selecionada
-  useEffect(() => {
-    if (isAuthenticated && conversaSelecionada) {
-      carregarMensagens(conversaSelecionada.id)
-      // Polling para mensagens da conversa selecionada
-      const interval = setInterval(() => carregarMensagens(conversaSelecionada.id), 1000)
-      return () => clearInterval(interval)
-    }
-  }, [isAuthenticated, conversaSelecionada])
 
-  // Se não estiver autenticado, mostrar prompt de senha
-  if (showPasswordPrompt && !isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100">
-              <Lock className="h-8 w-8 text-blue-600" />
-            </div>
-            <CardTitle className="text-2xl font-bold text-gray-900">
-              Acesso Administrativo
-            </CardTitle>
-            <p className="text-sm text-gray-600 mt-2">
-              Digite a senha para acessar o painel administrativo
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="admin-password">Senha Administrativa</Label>
-              <Input
-                id="admin-password"
-                type="password"
-                placeholder="Digite a senha"
-                value={adminPassword}
-                onChange={(e) => setAdminPassword(e.target.value)}
-                onKeyPress={handleKeyPress}
-                className="text-center text-lg tracking-widest"
-                autoFocus
-              />
-            </div>
-            
-            {passwordError && (
-              <div className="flex items-center gap-2 text-red-600 text-sm">
-                <AlertTriangle className="h-4 w-4" />
-                {passwordError}
-              </div>
-            )}
-            
-            <Button 
-              onClick={verificarSenhaAdmin}
-              className="w-full"
-              size="lg"
-            >
-              <Shield className="h-4 w-4 mr-2" />
-              Acessar Painel Admin
-            </Button>
-            
-            <Button 
-              variant="outline"
-              onClick={() => router.push("/")}
-              className="w-full"
-            >
-              Voltar ao Login
-            </Button>
-            
-            <Button 
-              variant="outline"
-              onClick={handleLogout}
-              className="w-full border-red-200 text-red-700 hover:bg-red-50"
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              Sair do Sistema
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
 
-  // Se não estiver autenticado, não mostrar nada (está verificando)
-  if (!isAuthenticated) {
-    return null
-  }
-
-  const carregarConversas = () => {
+  const atualizarContadorConversa = (conversaId: string) => {
     const chaveListaGeral = "profarma_conversas_admin"
     const conversasSalvas = localStorage.getItem(chaveListaGeral)
 
     if (conversasSalvas) {
       const conversasArray = JSON.parse(conversasSalvas)
-      setConversas(conversasArray)
+      const conversaIndex = conversasArray.findIndex((c: Conversa) => c.id === conversaId)
+
+      if (conversaIndex !== -1) {
+        conversasArray[conversaIndex].mensagensNaoLidas = 0
+        localStorage.setItem(chaveListaGeral, JSON.stringify(conversasArray))
+        setConversas(conversasArray)
+      }
     }
   }
 
-  const carregarMensagens = async (conversaId: string) => {
+  const carregarMensagens = useCallback(async (conversaId: string) => {
     try {
+
+      // **Padrão seguro**: use client local
+      const client = supabase ?? getSupabase()
+      if (!supabase) setSupabase(client)
+      
       // Primeiro, tentar carregar do Supabase
-      const { data: supabaseMessages, error } = await supabase
+      console.log('🔍 Executando consulta para conversa:', conversaId)
+      
+      const { data: supabaseMessages, error } = await client
         .from('messages')
         .select('*')
         .or(`remetente_id.eq.${conversaId},destinatario_id.eq.${conversaId}`)
         .order('timestamp', { ascending: true })
+
+      console.log('🔍 Buscando mensagens para conversa:', conversaId)
+      console.log('📊 Mensagens encontradas no Supabase:', supabaseMessages?.length || 0)
+      if (supabaseMessages && supabaseMessages.length > 0) {
+        console.log('📋 Primeira mensagem:', supabaseMessages[0])
+        console.log('📋 Última mensagem:', supabaseMessages[supabaseMessages.length - 1])
+      }
 
       if (error) {
         console.error('Erro ao carregar mensagens do Supabase:', error)
@@ -314,10 +361,25 @@ export default function AdminPage() {
         }
       }
 
+      console.log('📊 Mensagens processadas:', mensagensArray.length)
+      
       if (mensagensArray.length > 0) {
+        console.log('📋 Primeira mensagem:', mensagensArray[0])
+        console.log('📋 Última mensagem:', mensagensArray[mensagensArray.length - 1])
+        
+        // Verificar se o input está focado antes de atualizar as mensagens
+        const inputFocado = document.activeElement === inputRef.current
+        
         setMensagens(mensagensArray)
+        
+        // Restaurar o foco se estava focado antes
+        if (inputFocado && inputRef.current) {
+          setTimeout(() => {
+            inputRef.current?.focus()
+          }, 0)
+        }
 
-        // Marcar mensagens dos colaboradores como lidas
+        // Marcar mensagens dos colaboradores como lida
         const mensagensAtualizadas = mensagensArray.map((msg: ChatMessage) => {
           if (msg.remetenteTipo === "colaborador" && !msg.lida) {
             return { ...msg, lida: true }
@@ -331,7 +393,29 @@ export default function AdminPage() {
 
           // Atualizar contador na lista de conversas
           atualizarContadorConversa(conversaId)
+
+          // Marcar como lida no Supabase também
+          const mensagensParaMarcar = mensagensAtualizadas.filter((msg: ChatMessage) => 
+            msg.remetenteTipo === "colaborador" && !msg.lida
+          )
+
+          if (mensagensParaMarcar.length > 0) {
+            console.log('📝 Marcando mensagens como lidas no Supabase:', mensagensParaMarcar.length)
+            
+            for (const msg of mensagensParaMarcar) {
+              const { error: updateError } = await client
+                .from('messages')
+                .update({ lida: true })
+                .eq('id', msg.id)
+              
+              if (updateError) {
+                console.error('❌ Erro ao marcar mensagem como lida:', updateError)
+              }
+            }
+          }
         }
+      } else {
+        console.log('⚠️ Nenhuma mensagem encontrada para exibir')
       }
     } catch (error) {
       console.error('Erro ao carregar mensagens:', error)
@@ -343,69 +427,109 @@ export default function AdminPage() {
         setMensagens(mensagensArray)
       }
     }
-  }
+  // deps atualizados para refletir usos reais
+  }, [supabase, atualizarContadorConversa, /* setSupabase/setMensagens são estáveis */])
 
-  const atualizarContadorConversa = (conversaId: string) => {
-    const chaveListaGeral = "profarma_conversas_admin"
-    const conversasSalvas = localStorage.getItem(chaveListaGeral)
-
-    if (conversasSalvas) {
-      const conversasArray = JSON.parse(conversasSalvas)
-      const conversaIndex = conversasArray.findIndex((c: Conversa) => c.id === conversaId)
-
-      if (conversaIndex !== -1) {
-        conversasArray[conversaIndex].mensagensNaoLidas = 0
-        localStorage.setItem(chaveListaGeral, JSON.stringify(conversasArray))
-        setConversas(conversasArray)
-      }
+  // useEffect para carregar mensagens da conversa selecionada
+  useEffect(() => {
+    if (isAuthenticated && conversaSelecionada) {
+      carregarMensagens(conversaSelecionada.id)
+      // Polling para mensagens da conversa selecionada (a cada 3 segundos)
+      const interval = setInterval(() => {
+        if (conversaSelecionada) {
+          carregarMensagens(conversaSelecionada.id)
+        }
+      }, 3000)
+      return () => clearInterval(interval)
     }
-  }
+  }, [isAuthenticated, conversaSelecionada?.id])
 
   const enviarMensagem = async () => {
     if (!novaMensagem.trim() || !conversaSelecionada || enviando) return
 
     setEnviando(true)
 
-    const mensagem: ChatMessage = {
-      id: Date.now().toString(),
-      remetenteId: "admin",
-      remetenteNome: "Administrador",
-      remetenteTipo: "admin",
-      destinatarioId: conversaSelecionada.id,
-      mensagem: novaMensagem.trim(),
-      timestamp: new Date().toISOString(),
-      lida: false,
-    }
+    try {
+      // **Padrão seguro**: use client local
+      const client = supabase ?? getSupabase()
+      if (!supabase) setSupabase(client)
 
-    // Adicionar à lista local
-    const novasMensagens = [...mensagens, mensagem]
-    setMensagens(novasMensagens)
-
-    // Salvar no localStorage
-    const chaveStorage = `profarma_chat_${conversaSelecionada.id}`
-    localStorage.setItem(chaveStorage, JSON.stringify(novasMensagens))
-
-    // Atualizar lista de conversas
-    const chaveListaGeral = "profarma_conversas_admin"
-    const conversasSalvas = localStorage.getItem(chaveListaGeral)
-
-    if (conversasSalvas) {
-      const conversasArray = JSON.parse(conversasSalvas)
-      const conversaIndex = conversasArray.findIndex((c: Conversa) => c.id === conversaSelecionada.id)
-
-      if (conversaIndex !== -1) {
-        conversasArray[conversaIndex].ultimaMensagem = mensagem.mensagem
-        conversasArray[conversaIndex].ultimoTimestamp = mensagem.timestamp
-        localStorage.setItem(chaveListaGeral, JSON.stringify(conversasArray))
-        setConversas(conversasArray)
+      const mensagem: ChatMessage = {
+        id: gerarIdUnico(),
+        remetenteId: "admin",
+        remetenteNome: "Administrador",
+        remetenteTipo: "admin",
+        destinatarioId: conversaSelecionada.id,
+        mensagem: novaMensagem.trim(),
+        timestamp: new Date().toISOString(),
+        lida: false,
       }
+
+      // Salvar no Supabase primeiro
+      const mensagemParaSupabase = {
+        id: mensagem.id,
+        remetente_id: mensagem.remetenteId,
+        remetente_nome: mensagem.remetenteNome,
+        remetente_tipo: mensagem.remetenteTipo,
+        destinatario_id: mensagem.destinatarioId,
+        mensagem: mensagem.mensagem,
+        timestamp: mensagem.timestamp,
+        lida: mensagem.lida,
+      }
+
+      console.log('📤 Enviando mensagem para o Supabase:', mensagemParaSupabase)
+      
+      const { error } = await client
+        .from('messages')
+        .insert([mensagemParaSupabase])
+
+      if (error) {
+        console.error('❌ Erro ao enviar mensagem para o Supabase:', error)
+        alert('Erro ao enviar mensagem: ' + error.message)
+        setEnviando(false)
+        return
+      }
+
+      console.log('✅ Mensagem enviada com sucesso para o Supabase')
+
+      // Adicionar à lista local
+      const novasMensagens = [...mensagens, mensagem]
+      setMensagens(novasMensagens)
+
+      // Salvar no localStorage
+      const chaveStorage = `profarma_chat_${conversaSelecionada.id}`
+      localStorage.setItem(chaveStorage, JSON.stringify(novasMensagens))
+
+      // Atualizar lista de conversas
+      const chaveListaGeral = "profarma_conversas_admin"
+      const conversasSalvas = localStorage.getItem(chaveListaGeral)
+
+      if (conversasSalvas) {
+        const conversasArray = JSON.parse(conversasSalvas)
+        const conversaIndex = conversasArray.findIndex((c: Conversa) => c.id === conversaSelecionada.id)
+
+        if (conversaIndex !== -1) {
+          conversasArray[conversaIndex].ultimaMensagem = mensagem.mensagem
+          conversasArray[conversaIndex].ultimoTimestamp = mensagem.timestamp
+          localStorage.setItem(chaveListaGeral, JSON.stringify(conversasArray))
+          setConversas(conversasArray)
+        }
+      }
+
+      setNovaMensagem("")
+      console.log('✅ Mensagem processada com sucesso')
+      
+      // Restaurar foco no input após enviar mensagem
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 100)
+    } catch (error) {
+      console.error('❌ Erro ao enviar mensagem:', error)
+      alert('Erro ao enviar mensagem. Tente novamente.')
+    } finally {
+      setEnviando(false)
     }
-
-    setNovaMensagem("")
-    setEnviando(false)
   }
-
-
 
   const formatarHora = (timestamp: string) => {
     return new Date(timestamp).toLocaleTimeString("pt-BR", {
@@ -448,118 +572,200 @@ export default function AdminPage() {
     return grupos
   }, {})
 
+  console.log('🔍 Debug - Estado atual:')
+  console.log('📊 Total de mensagens:', mensagens.length)
+  console.log('📊 Mensagens agrupadas:', Object.keys(mensagensAgrupadas).length)
+  console.log('📊 Conversa selecionada:', conversaSelecionada?.id)
+  console.log('📊 Conversas disponíveis:', conversas.length)
+
   function ChatSection() {
-    // Todo o código atual do chat vai aqui
     return (
-      <Card className="lg:col-span-2">
-        {conversaSelecionada ? (
-          <>
-            <CardHeader className="border-b">
-              <CardTitle className="flex items-center space-x-2">
-                <User className="h-5 w-5 text-green-600" />
-                <span>{conversaSelecionada.colaboradores.join(" + ")}</span>
-              </CardTitle>
-              <div className="text-sm text-gray-600">
-                {conversaSelecionada.data} • Turno {conversaSelecionada.turno}
-              </div>
-            </CardHeader>
-
-            <CardContent className="p-0 flex flex-col h-[500px]">
-              {/* Mensagens */}
-              <ScrollArea className="flex-1 p-4">
-                {Object.keys(mensagensAgrupadas).length === 0 ? (
-                  <div className="text-center py-8 text-gray-500">
-                    <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                    <p>Nenhuma mensagem ainda.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {Object.entries(mensagensAgrupadas).map(([data, mensagensData]: [string, any]) => (
-                      <div key={data}>
-                        {/* Separador de data */}
-                        <div className="flex items-center justify-center my-4">
-                          <div className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full">{data}</div>
-                        </div>
-
-                        {/* Mensagens do dia */}
-                        <div className="space-y-3">
-                          {mensagensData.map((mensagem: ChatMessage) => (
-                            <div
-                              key={mensagem.id}
-                              className={`flex ${mensagem.remetenteTipo === "admin" ? "justify-end" : "justify-start"}`}
-                            >
-                              <div
-                                className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                                  mensagem.remetenteTipo === "admin"
-                                    ? "bg-blue-600 text-white"
-                                    : "bg-gray-100 text-gray-900"
-                                }`}
-                              >
-                                {mensagem.remetenteTipo === "colaborador" && (
-                                  <div className="flex items-center space-x-1 mb-1">
-                                    <User className="h-3 w-3" />
-                                    <span className="text-xs font-medium">{mensagem.remetenteNome}</span>
-                                  </div>
-                                )}
-                                <p className="text-sm whitespace-pre-wrap">{mensagem.mensagem}</p>
-                                <div
-                                  className={`flex items-center justify-end space-x-1 mt-1 text-xs ${
-                                    mensagem.remetenteTipo === "admin" ? "text-blue-100" : "text-gray-500"
-                                  }`}
-                                >
-                                  <Clock className="h-3 w-3" />
-                                  <span>{formatarHora(mensagem.timestamp)}</span>
-                                  {mensagem.remetenteTipo === "admin" && mensagem.lida && (
-                                    <CheckCircle2 className="h-3 w-3" />
-                                  )}
-                                </div>
-                              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
+        {/* Lista de Conversas */}
+        <Card className="lg:col-span-1">
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center space-x-2">
+              <MessageSquare className="h-5 w-5 text-blue-600" />
+              <span>Conversas</span>
+              {totalMensagensNaoLidas > 0 && (
+                <Badge variant="destructive" className="ml-2">
+                  {totalMensagensNaoLidas}
+                </Badge>
+              )}
+            </CardTitle>
+            <div className="relative">
+              <Input
+                placeholder="Filtrar conversas..."
+                value={filtro}
+                onChange={(e) => setFiltro(e.target.value)}
+                className="pl-8"
+              />
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ScrollArea className="h-[500px]">
+              {conversasFiltradas.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p>Nenhuma conversa encontrada</p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {conversasFiltradas.map((conversa) => (
+                    <div
+                      key={conversa.id}
+                      onClick={() => setConversaSelecionada(conversa)}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 border-l-4 transition-all ${
+                        conversaSelecionada?.id === conversa.id
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-transparent"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center space-x-2">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {conversa.colaboradores.join(" + ")}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {conversa.data} • Turno {conversa.turno}
+                              </p>
                             </div>
-                          ))}
+                            {conversa.mensagensNaoLidas > 0 && (
+                              <Badge variant="destructive" className="ml-2">
+                                {conversa.mensagensNaoLidas}
+                              </Badge>
+                            )}
+                          </div>
+                          {conversa.ultimaMensagem && (
+                            <p className="text-xs text-gray-600 mt-1 truncate">
+                              {conversa.ultimaMensagem}
+                            </p>
+                          )}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-
-              {/* Campo de envio */}
-              <div className="p-4 border-t bg-gray-50">
-                <div className="flex space-x-2">
-                  <Input
-                    placeholder="Digite sua resposta..."
-                    value={novaMensagem}
-                    onChange={(e) => setNovaMensagem(e.target.value)}
-                    onKeyPress={handleChatKeyPress}
-                    disabled={enviando}
-                    className="flex-1"
-                  />
-                  <Button
-                    onClick={enviarMensagem}
-                    disabled={!novaMensagem.trim() || enviando}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    {enviando ? (
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                  </Button>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Pressione Enter para enviar</p>
+              )}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+
+        {/* Área de Chat */}
+        <Card className="lg:col-span-2">
+          {conversaSelecionada ? (
+            <>
+              <CardHeader className="border-b">
+                <CardTitle className="flex items-center space-x-2">
+                  <User className="h-5 w-5 text-green-600" />
+                  <span>{conversaSelecionada.colaboradores.join(" + ")}</span>
+                </CardTitle>
+                <div className="text-sm text-gray-600">
+                  {conversaSelecionada.data} • Turno {conversaSelecionada.turno}
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-0 flex flex-col h-[500px]">
+                {/* Mensagens */}
+                <ScrollArea className="flex-1 p-4">
+                  {Object.keys(mensagensAgrupadas).length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p>Nenhuma mensagem ainda.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {Object.entries(mensagensAgrupadas).map(([data, mensagensData]: [string, any]) => (
+                        <div key={data}>
+                          {/* Separador de data */}
+                          <div className="flex items-center justify-center my-4">
+                            <div className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full">{data}</div>
+                          </div>
+
+                          {/* Mensagens do dia */}
+                          <div className="space-y-3">
+                            {mensagensData.map((mensagem: ChatMessage) => (
+                              <div
+                                key={mensagem.id}
+                                className={`flex ${mensagem.remetenteTipo === "admin" ? "justify-end" : "justify-start"}`}
+                              >
+                                <div
+                                  className={`max-w-[80%] rounded-lg px-3 py-2 ${
+                                    mensagem.remetenteTipo === "admin"
+                                      ? "bg-blue-600 text-white"
+                                      : "bg-gray-100 text-gray-900"
+                                  }`}
+                                >
+                                  {mensagem.remetenteTipo === "colaborador" && (
+                                    <div className="flex items-center space-x-1 mb-1">
+                                      <User className="h-3 w-3" />
+                                      <span className="text-xs font-medium">{mensagem.remetenteNome}</span>
+                                    </div>
+                                  )}
+                                  <p className="text-sm whitespace-pre-wrap">{mensagem.mensagem}</p>
+                                  <div
+                                    className={`flex items-center justify-end space-x-1 mt-1 text-xs ${
+                                      mensagem.remetenteTipo === "admin" ? "text-blue-100" : "text-gray-500"
+                                    }`}
+                                  >
+                                    <Clock className="h-3 w-3" />
+                                    <span>{formatarHora(mensagem.timestamp)}</span>
+                                    {mensagem.remetenteTipo === "admin" && mensagem.lida && (
+                                      <CheckCircle2 className="h-3 w-3" />
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+
+                {/* Campo de envio */}
+                <div className="p-4 border-t bg-gray-50">
+                  <div className="flex space-x-2">
+                    <Input
+                      ref={inputRef}
+                      placeholder="Digite sua resposta..."
+                      value={novaMensagem}
+                      onChange={handleInputChange}
+                      onKeyDown={handleChatKeyPress}
+                      disabled={enviando}
+                      className="flex-1"
+                    />
+                    <Button
+                      onClick={enviarMensagem}
+                      disabled={!novaMensagem.trim() || enviando}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {enviando ? (
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">Pressione Enter para enviar</p>
+                </div>
+              </CardContent>
+            </>
+          ) : (
+            <CardContent className="flex items-center justify-center h-[500px]">
+              <div className="text-center text-gray-500">
+                <MessageCircle className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                <h3 className="text-lg font-medium mb-2">Selecione uma conversa</h3>
+                <p>Escolha uma conversa da lista ao lado para começar a responder</p>
               </div>
             </CardContent>
-          </>
-        ) : (
-          <CardContent className="flex items-center justify-center h-[500px]">
-            <div className="text-center text-gray-500">
-              <MessageCircle className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-medium mb-2">Selecione uma conversa</h3>
-              <p>Escolha uma conversa da lista ao lado para começar a responder</p>
-            </div>
-          </CardContent>
-        )}
-      </Card>
+          )}
+        </Card>
+      </div>
     )
   }
 
@@ -808,8 +1014,8 @@ export default function AdminPage() {
             <div className="flex items-center space-x-4">
               <Shield className="h-8 w-8 text-blue-600" />
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Painel Administrativo</h1>
-                <p className="text-sm text-gray-500">Sistema de Bipagem Embalagem</p>
+                <h1 className="text-lg font-bold text-gray-900">Painel Administrativo</h1>
+                <p className="text-sm text-gray-500 hidden sm:inline">Sistema de Bipagem Embalagem</p>
               </div>
             </div>
 
@@ -925,4 +1131,9 @@ export default function AdminPage() {
       </main>
     </div>
   )
+
+  // Se não estiver autenticado, não mostrar nada (está verificando)
+  if (!isAuthenticated) {
+    return null
+  }
 }

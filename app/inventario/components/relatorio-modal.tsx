@@ -38,9 +38,9 @@ interface ItemInventario {
   fornecedor: string;
   clienteDestino: string;
   tipoCarga: string;
-  quantidade: number;
   rua: string;
   timestamp: string;
+  status?: 'valida' | 'duplicata' | 'erro_localizacao';
 }
 
 interface RelatorioInventario {
@@ -73,7 +73,7 @@ export function RelatorioModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [observacoes, setObservacoes] = useState("");
 
-  const totalItens = itens.reduce((total, item) => total + (item.volumes * item.quantidade), 0);
+  const totalItens = itens.reduce((total, item) => total + (item.volumes || 0), 0);
   const tempoInicio = session?.loginTime || new Date().toISOString();
   const tempoFim = new Date().toISOString();
 
@@ -111,12 +111,12 @@ export function RelatorioModal({
       Turno: ${session?.turno}
       Colaborador: ${session?.colaboradores?.join(", ")}
       
-      Total de Itens: ${totalItens}
-      Produtos Únicos: ${itens.length}
+      Total de Volumes: ${totalItens}
+      Notas Fiscais Únicas: ${itens.length}
       
       ITENS INVENTARIADOS:
       ${itens.map(item => 
-        `NF: ${item.numeroNF} - ${item.fornecedor} → ${item.clienteDestino} - Quantidade: ${item.quantidade}`
+        `NF: ${item.numeroNF} - ${item.fornecedor} → ${item.clienteDestino} - Volumes: ${item.volumes}`
       ).join('\n')}
       
       Observações: ${observacoes}
@@ -243,7 +243,7 @@ export function RelatorioModal({
                       </div>
                       <div className="text-right">
                         <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                          Qtd: {item.quantidade}
+                          Volumes: {item.volumes}
                         </span>
                       </div>
                     </div>

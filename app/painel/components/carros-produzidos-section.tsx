@@ -48,6 +48,24 @@ const supabaseUrl = 'https://auiidcxarcjjxvyswwhf.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1aWlkY3hhcmNqanh2eXN3d2hmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMzMjcxNjAsImV4cCI6MjA2ODkwMzE2MH0.KCMuEq5p1UHtZp-mJc5RKozEyWhpZg8J023lODrr3rY'
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+// Função para determinar o tipo do carro baseado nas NFs
+const determinarTipoCarro = (nfs: Array<{ tipoCarga: string }>): "ROD" | "CON" => {
+  // Verificar se há pelo menos uma NF com tipo "ROD"
+  const temROD = nfs.some(nf => nf.tipoCarga?.toUpperCase().includes('ROD'));
+  // Verificar se há pelo menos uma NF com tipo "CON" ou "CONTROLADO"
+  const temCON = nfs.some(nf => 
+    nf.tipoCarga?.toUpperCase().includes('CON') || 
+    nf.tipoCarga?.toUpperCase().includes('CONTROLADO')
+  );
+  
+  // Priorizar ROD se existir, senão CON
+  if (temROD) return "ROD";
+  if (temCON) return "CON";
+  
+  // Padrão: ROD (assumindo que a maioria é rodoviária)
+  return "ROD";
+};
+
 const copiarNFsParaSAP = (nfs: Array<{ numeroNF: string }>) => {
   // Manter o formato original das NFs com zeros à esquerda
   const nfsTexto = nfs.map((nf) => nf.numeroNF.toString()).join("\n");
@@ -78,11 +96,11 @@ const copiarNFsParaSAP = (nfs: Array<{ numeroNF: string }>) => {
     textArea.value = nfsTexto;
     document.body.appendChild(textArea);
     textArea.select();
-    document.execCommand("copy");
-    document.body.removeChild(textArea);
-    alert(
-      `${nfs.length} NFs copiadas para a área de transferência!\n\nFormato: com zeros à esquerda\nPronto para colar no SAP.`
-    );
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+        alert(
+          `${nfs.length} NFs copiadas para a área de transferência!\n\nFormato: com zeros à esquerda\nPronto para colar no SAP.`
+        );
   }
 };
 
@@ -109,6 +127,7 @@ interface CarroProduzido {
   palletesReais?: number;
   dataInicioEmbalagem?: string;
   dataFinalizacao?: string;
+  tipoCarro?: "ROD" | "CON";
 }
 
 interface SessionData {
@@ -178,16 +197,33 @@ export default function CarrosProduzidosSection({
 
     const pallets = Number(quantidadePallets);
 
-    try {
-      // 1. Finalizar o carro no banco de dados
-      const resultado = await EmbalagemNotasBipadasService.finalizarCarro(
-        modalPallets.carroId,
-        pallets
-      );
+    // Verificar se o carro já está lançado
+    const carroAtual = carros.find(c => c.id === modalPallets.carroId);
+    const carroJaLancado = carroAtual?.status === "lancado";
 
-      if (!resultado.success) {
-        alert(`Erro ao finalizar carro: ${resultado.error}`);
-        return;
+    try {
+      // 1. Se o carro já estiver lançado, apenas atualizar pallets sem alterar status
+      if (carroJaLancado) {
+        const resultado = await EmbalagemNotasBipadasService.atualizarPalletsCarro(
+          modalPallets.carroId,
+          pallets
+        );
+
+        if (!resultado.success) {
+          alert(`Erro ao atualizar pallets: ${resultado.error}`);
+          return;
+        }
+      } else {
+        // 2. Se não estiver lançado, finalizar normalmente
+        const resultado = await EmbalagemNotasBipadasService.finalizarCarro(
+          modalPallets.carroId,
+          pallets
+        );
+
+        if (!resultado.success) {
+          alert(`Erro ao finalizar carro: ${resultado.error}`);
+          return;
+        }
       }
 
       // 2. Atualizar o carro na lista de embalagem
@@ -201,7 +237,7 @@ export default function CarrosProduzidosSection({
         if (carroIndex !== -1) {
           carros[carroIndex] = {
             ...carros[carroIndex],
-            status: "finalizado",
+            status: carroJaLancado ? "lancado" : "finalizado",
             palletesReais: pallets,
             dataFinalizacao: new Date().toISOString(),
           };
@@ -224,7 +260,7 @@ export default function CarrosProduzidosSection({
         if (carroIndex !== -1) {
           carros[carroIndex] = {
             ...carros[carroIndex],
-            status: "finalizado",
+            status: carroJaLancado ? "lancado" : "finalizado",
             palletesReais: pallets,
             dataFinalizacao: new Date().toISOString(),
           };
@@ -250,7 +286,7 @@ export default function CarrosProduzidosSection({
       setCarros(prevCarros =>
         prevCarros.map(carro =>
           carro.id === modalPallets.carroId
-            ? { ...carro, status: "finalizado", palletesReais: pallets, dataFinalizacao: new Date().toISOString() }
+            ? { ...carro, status: carroJaLancado ? "lancado" : "finalizado", palletesReais: pallets, dataFinalizacao: new Date().toISOString() }
             : carro
         )
       );
@@ -263,7 +299,9 @@ export default function CarrosProduzidosSection({
       setQuantidadePallets("");
 
       alert(
-        `${modalPallets.nomeCarro} finalizado com sucesso!\nPallets informados: ${pallets}`
+        carroJaLancado 
+          ? `${modalPallets.nomeCarro} - Pallets atualizados com sucesso!\nPallets informados: ${pallets}`
+          : `${modalPallets.nomeCarro} finalizado com sucesso!\nPallets informados: ${pallets}`
       );
     } catch (error) {
       console.error('Erro ao finalizar carro:', error);
@@ -725,7 +763,7 @@ export default function CarrosProduzidosSection({
                 variant="outline"
                 onClick={() => carregarCarrosProduzidos()}
                 size="sm"
-                className="w-full sm:w-auto text-xs sm:text-sm"
+                className="w-full sm:w-auto text-xs sm:text-sm px-3 sm:px-4"
               >
                 <span className="hidden sm:inline">Atualizar Lista</span>
                 <span className="sm:hidden">Atualizar</span>
@@ -736,7 +774,7 @@ export default function CarrosProduzidosSection({
       </Card>
 
       {/* Lista de carros */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3 md:gap-4">
         {carrosFiltrados.length === 0 ? (
           <Card className="col-span-full">
             <CardContent className="text-center py-8 text-gray-500 text-sm">
@@ -751,7 +789,7 @@ export default function CarrosProduzidosSection({
               key={carro.id}
               className="border-emerald-200 hover:shadow-md transition-shadow"
             >
-              <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6 pt-3 sm:pt-6">
+              <CardHeader className="pb-2 sm:pb-3 px-2 sm:px-4 md:px-6 pt-2 sm:pt-4 md:pt-6">
                 <div className="space-y-2">
                   <div className="flex items-center space-x-2">
                     <Truck className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-600 flex-shrink-0" />
@@ -782,11 +820,22 @@ export default function CarrosProduzidosSection({
                         - {getTurnoLabel(carro.turno)}
                       </span>
                     </Badge>
+                    
+                    {/* Badge do tipo do carro */}
+                    <Badge 
+                      className={`text-xs ${
+                        determinarTipoCarro(carro.nfs) === "ROD" 
+                          ? "bg-blue-100 text-blue-800 border-blue-200" 
+                          : "bg-orange-100 text-orange-800 border-orange-200"
+                      }`}
+                    >
+                      {determinarTipoCarro(carro.nfs) === "ROD" ? "🚛 ROD" : "📦 CON"}
+                    </Badge>
                   </div>
                 </div>
               </CardHeader>
 
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-2 sm:space-y-3 px-2 sm:px-4 md:px-6">
                 <div className="flex items-center space-x-2 text-sm text-gray-600">
                   <Calendar className="h-4 w-4" />
                   <span>{carro.data}</span>
@@ -802,46 +851,47 @@ export default function CarrosProduzidosSection({
                   <span>{carro.destinoFinal}</span>
                 </div>
 
-                <div className="grid grid-cols-4 gap-4 py-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 py-2">
                   <div className="text-center">
-                    <div className="text-lg font-bold text-emerald-600">
+                    <div className="text-base sm:text-lg font-bold text-emerald-600">
                       {carro.quantidadeNFs}
                     </div>
                     <div className="text-xs text-gray-500">NFs</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-lg font-bold text-green-600">
+                    <div className="text-base sm:text-lg font-bold text-green-600">
                       {carro.totalVolumes}
                     </div>
                     <div className="text-xs text-gray-500">Volumes</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-lg font-bold text-blue-600">
+                    <div className="text-base sm:text-lg font-bold text-blue-600">
                       {carro.estimativaPallets || 0}
                     </div>
                     <div className="text-xs text-gray-500">Estimativa</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-lg font-bold text-purple-600">
+                    <div className="text-base sm:text-lg font-bold text-purple-600">
                       {carro.palletesReais || 0}
                     </div>
                     <div className="text-xs text-gray-500">Palletes reais</div>
                   </div>
                 </div>
 
-                <div className="flex space-x-2">
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-2">
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button
                         variant="outline"
-                        className="flex-1 bg-transparent"
+                        className="flex-2 bg-transparent text-xs sm:text-sm"
                         size="sm"
                       >
-                        <Eye className="h-4 w-4 mr-2" />
-                        Ver NFs do Carro
+                        <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        <span className="hidden sm:inline">Ver NFs do Carro</span>
+                        <span className="sm:hidden">Ver NFs</span>
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] md:max-h-[80vh] overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle className="flex items-center space-x-2">
                           <Package className="h-5 w-5 text-emerald-600" />
@@ -852,7 +902,7 @@ export default function CarrosProduzidosSection({
                       </DialogHeader>
 
                       <div className="space-y-4">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 p-2 sm:p-4 bg-gray-50 rounded-lg">
                           <div>
                             <div className="text-sm text-gray-600">Data</div>
                             <div className="font-medium">{carro.data}</div>
@@ -886,18 +936,18 @@ export default function CarrosProduzidosSection({
                             Lista de NFs ({carro.quantidadeNFs} itens)
                           </h4>
                           <div className="overflow-x-auto border rounded-lg">
-                            <table className="min-w-full text-sm text-left">
+                            <table className="min-w-full text-xs sm:text-sm text-left">
                               <thead className="bg-gray-50 text-gray-700 font-medium">
                                 <tr>
-                                  <th className="px-4 py-2">Código</th>
-                                  <th className="px-4 py-2">NF</th>
-                                  <th className="px-4 py-2">Forn</th>
-                                  <th className="px-4 py-2">Destino</th>
-                                  <th className="px-4 py-2">Tipo</th>
-                                  <th className="px-4 py-2 text-center">
+                                  <th className="px-2 sm:px-4 py-1 sm:py-2">Código</th>
+                                  <th className="px-2 sm:px-4 py-1 sm:py-2">NF</th>
+                                  <th className="px-2 sm:px-4 py-1 sm:py-2">Forn</th>
+                                  <th className="px-2 sm:px-4 py-1 sm:py-2">Destino</th>
+                                  <th className="px-2 sm:px-4 py-1 sm:py-2">Tipo</th>
+                                  <th className="px-2 sm:px-4 py-1 sm:py-2 text-center">
                                     Volume
                                   </th>
-                                  <th className="px-4 py-2 text-center">
+                                  <th className="px-2 sm:px-4 py-1 sm:py-2 text-center">
                                     Total
                                   </th>
                                 </tr>
@@ -912,41 +962,41 @@ export default function CarrosProduzidosSection({
                                         : "bg-gray-50"
                                     }
                                   >
-                                    <td className="px-4 py-2 font-mono text-xs">
+                                    <td className="px-2 sm:px-4 py-1 sm:py-2 font-mono text-xs">
                                       {nf.codigo}
                                     </td>
-                                    <td className="px-4 py-2 font-medium">
+                                    <td className="px-2 sm:px-4 py-1 sm:py-2 font-medium">
                                       {nf.numeroNF}
                                     </td>
                                     <td
-                                      className="px-4 py-2 truncate max-w-[120px]"
+                                      className="px-2 sm:px-4 py-1 sm:py-2 truncate max-w-[80px] sm:max-w-[120px]"
                                       title={nf.fornecedor}
                                     >
                                       {nf.fornecedor}
                                     </td>
-                                    <td className="px-4 py-2 truncate max-w-[120px]">
+                                    <td className="px-2 sm:px-4 py-1 sm:py-2 truncate max-w-[80px] sm:max-w-[120px]">
                                       {nf.destino}
                                     </td>
-                                    <td className="px-4 py-2 truncate max-w-[120px]">
+                                    <td className="px-2 sm:px-4 py-1 sm:py-2 truncate max-w-[80px] sm:max-w-[120px]">
                                       {nf.tipoCarga}
                                     </td>
 
-                                    <td className="px-4 py-2 text-center">
+                                    <td className="px-2 sm:px-4 py-1 sm:py-2 text-center">
                                       {nf.volume}
                                     </td>
-                                    <td className="px-4 py-2 text-center font-semibold">
+                                    <td className="px-2 sm:px-4 py-1 sm:py-2 text-center font-semibold">
                                       {nf.volume}
                                     </td>
                                   </tr>
                                 ))}
                                 <tr className="bg-emerald-100 text-emerald-800 font-bold">
                                   <td
-                                    className="px-4 py-2 text-right"
+                                    className="px-2 sm:px-4 py-1 sm:py-2 text-right"
                                     colSpan={6}
                                   >
                                     Total do Carro:
                                   </td>
-                                  <td className="px-4 py-2 text-center">
+                                  <td className="px-2 sm:px-4 py-1 sm:py-2 text-center">
                                     {carro.totalVolumes}
                                   </td>
                                 </tr>
@@ -966,7 +1016,7 @@ export default function CarrosProduzidosSection({
                           `${carro.colaboradores.join(" + ")}`
                         )
                       }
-                      className={`${(carro.status as string) === "embalando"
+                      className={`flex-2 ${(carro.status as string) === "embalando"
                         ? "bg-green-600 hover:bg-green-700"
                         : (carro.status as string) === "pronto"
                           ? "bg-emerald-600 hover:bg-emerald-700"
@@ -975,12 +1025,17 @@ export default function CarrosProduzidosSection({
                             : (carro.status as string) === "lancado"
                               ? "bg-emerald-600 hover:bg-emerald-700"
                               : "bg-blue-600 hover:bg-blue-700"
-                        } text-white`}
+                        } text-white text-xs sm:text-sm`}
                       size="sm"
-                      disabled={(carro.status as string) === "finalizado" || (carro.status as string) === "pronto" || (carro.status as string) === "concluido" || (carro.status as string) === "lancado"}
+                      disabled={(carro.status as string) === "finalizado" || (carro.status as string) === "pronto" || (carro.status as string) === "concluido"}
                     >
-                      <CheckCircle2 className="h-4 w-4 mr-1" />
-                      {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "pronto" ? "Pronto ✓" : (carro.status as string) === "finalizado" ? "Finalizado" : (carro.status as string) === "lancado" ? "Lançado ✓" : "Atualizar Pallets"}
+                      <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      <span className="hidden sm:inline">
+                        {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "pronto" ? "Pronto ✓" : (carro.status as string) === "finalizado" ? "Finalizado" : (carro.status as string) === "lancado" ? "Atualizar Pallets" : "Atualizar Pallets"}
+                      </span>
+                      <span className="sm:hidden">
+                        {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "pronto" ? "✓" : (carro.status as string) === "finalizado" ? "Finalizado" : (carro.status as string) === "lancado" ? "Pallets" : "Pallets"}
+                      </span>
                     </Button>
                   )}
                 </div>
@@ -991,16 +1046,16 @@ export default function CarrosProduzidosSection({
       </div>
 
       {/* Botões de Ajuda e Chat Flutuantes */}
-      <div className="fixed bottom-6 right-6 flex flex-col space-y-3 z-50">
+      <div className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 flex flex-col space-y-2 sm:space-y-3 z-50">
         {/* Botão Chat */}
         <button
           onClick={abrirChat}
-          className="relative bg-green-600 hover:bg-green-700 text-white rounded-full p-4 shadow-lg transition-all duration-200 hover:scale-110"
+          className="relative bg-green-600 hover:bg-green-700 text-white rounded-full p-3 sm:p-4 shadow-lg transition-all duration-200 hover:scale-110"
           title="Chat Interno"
         >
-          <MessageSquare className="h-6 w-6" />
+          <MessageSquare className="h-5 w-5 sm:h-6 sm:w-6" />
           {mensagensNaoLidas > 0 && (
-            <span className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full h-6 w-6 flex items-center justify-center text-xs font-bold">
+            <span className="absolute -top-1 sm:-top-2 -right-1 sm:-right-2 bg-red-500 text-white rounded-full h-5 w-5 sm:h-6 sm:w-6 flex items-center justify-center text-xs font-bold">
               {mensagensNaoLidas}
             </span>
           )}
@@ -1009,16 +1064,16 @@ export default function CarrosProduzidosSection({
         {/* Botão Ajuda */}
         <button
           onClick={() => setAjudaVisivel(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg transition-all duration-200 hover:scale-110"
+          className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-3 sm:p-4 shadow-lg transition-all duration-200 hover:scale-110"
           title="Ajuda"
         >
-          <HelpCircle className="h-6 w-6" />
+          <HelpCircle className="h-5 w-5 sm:h-6 sm:w-6" />
         </button>
       </div>
 
       {/* Modal de Ajuda */}
       <Dialog open={ajudaVisivel} onOpenChange={setAjudaVisivel}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] md:max-w-2xl max-h-[90vh] md:max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <HelpCircle className="h-6 w-6 text-blue-600" />
@@ -1056,7 +1111,7 @@ export default function CarrosProduzidosSection({
                   <h4 className="font-medium text-gray-900">
                     3. Detalhes do Carro
                   </h4>
-                  <p className="text-sm text-gray-600 mt-1">
+                  <p className="text-sm text-gray-600 mt-1 j">
                     Clique em "Ver NFs do Carro" para visualizar todas as notas
                     fiscais incluídas no carro.
                   </p>
@@ -1147,11 +1202,17 @@ export default function CarrosProduzidosSection({
           setModalPallets({ aberto: false, carroId: "", nomeCarro: "" })
         }
       >
-        <DialogContent>
+        <DialogContent className="max-w-[95vw] sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <Package className="h-6 w-6 text-green-600" />
-              <span>Finalizar Embalagem - {modalPallets.nomeCarro}</span>
+              <span>
+                {carros.find(c => c.id === modalPallets.carroId)?.status === "lancado" 
+                  ? "Atualizar Pallets - " 
+                  : "Finalizar Embalagem - "
+                }
+                {modalPallets.nomeCarro}
+              </span>
             </DialogTitle>
           </DialogHeader>
 
@@ -1179,17 +1240,23 @@ export default function CarrosProduzidosSection({
             <div className="text-sm text-gray-600">
               <p>• Informe a quantidade real de pallets que foram utilizados</p>
               <p>• Esta informação será registrada para controle</p>
-              <p>• Após confirmar, o carro será marcado como concluído</p>
+              <p>• {carros.find(c => c.id === modalPallets.carroId)?.status === "lancado" 
+                  ? "Após confirmar, os pallets serão atualizados sem alterar o status do carro" 
+                  : "Após confirmar, o carro será marcado como concluído"
+                }</p>
             </div>
 
-            <div className="flex space-x-4">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
               <Button
                 onClick={() => finalizarEmbalagem()}
                 disabled={!quantidadePallets.trim()}
-                className="flex-1 bg-green-600 hover:bg-green-700"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-sm"
               >
                 <CheckCircle2 className="h-4 w-4 mr-2" />
-                Finalizar Embalagem
+                {carros.find(c => c.id === modalPallets.carroId)?.status === "lancado" 
+                  ? "Atualizar Pallets" 
+                  : "Finalizar Embalagem"
+                }
               </Button>
               <Button
                 variant="outline"
@@ -1201,6 +1268,7 @@ export default function CarrosProduzidosSection({
                   });
                   setQuantidadePallets("");
                 }}
+                className="text-sm"
               >
                 Cancelar
               </Button>

@@ -62,6 +62,7 @@ interface Carro {
     status: "valida" | "invalida"
   }>
   estimativaPallets: number
+  tipoCarro?: "ROD" | "CON"
 }
 
 interface CarroLancamento {
@@ -94,7 +95,26 @@ interface CarroLancamento {
   dataLancamento?: string
   numeroLancamento?: string
   responsavelLancamento?: string
+  tipoCarro?: "ROD" | "CON"
 }
+
+// Função para determinar o tipo do carro baseado nas NFs
+const determinarTipoCarro = (nfs: Array<{ tipo: string }>): "ROD" | "CON" => {
+  // Verificar se há pelo menos uma NF com tipo "ROD"
+  const temROD = nfs.some(nf => nf.tipo?.toUpperCase().includes('ROD'));
+  // Verificar se há pelo menos uma NF com tipo "CON" ou "CONTROLADO"
+  const temCON = nfs.some(nf => 
+    nf.tipo?.toUpperCase().includes('CON') || 
+    nf.tipo?.toUpperCase().includes('CONTROLADO')
+  );
+  
+  // Priorizar ROD se existir, senão CON
+  if (temROD) return "ROD";
+  if (temCON) return "CON";
+  
+  // Padrão: ROD (assumindo que a maioria é rodoviária)
+  return "ROD";
+};
 
 export default function GerenciarCarrosSection() {
   const { toast } = useToast()
@@ -733,57 +753,57 @@ export default function GerenciarCarrosSection() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4 mb-6">
-            <div className="text-center p-3 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{estatisticasCombinadas.total}</div>
-              <div className="text-sm text-gray-600">Total</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-2 sm:gap-4 mb-6">
+            <div className="text-center p-2 sm:p-3 bg-blue-50 rounded-lg">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-blue-600">{estatisticasCombinadas.total}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Total</div>
             </div>
-            <div className="text-center p-3 bg-orange-50 rounded-lg">
-              <div className="text-2xl font-bold text-orange-600">{estatisticasCombinadas.embalando}</div>
-              <div className="text-sm text-gray-600">Embalando</div>
+            <div className="text-center p-2 sm:p-3 bg-orange-50 rounded-lg">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-orange-600">{estatisticasCombinadas.embalando}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Embalando</div>
             </div>
 
-            <div className="text-center p-3 bg-yellow-50 rounded-lg">
-              <div className="text-2xl font-bold text-yellow-600">{estatisticasCombinadas.aguardandoLancamento}</div>
-              <div className="text-sm text-gray-600">Aguardando Lançamento</div>
+            <div className="text-center p-2 sm:p-3 bg-yellow-50 rounded-lg">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-yellow-600">{estatisticasCombinadas.aguardandoLancamento}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Aguardando Lançamento</div>
             </div>
-            <div className="text-center p-3 bg-red-50 rounded-lg">
-              <div className="text-2xl font-bold text-red-600">{estatisticasCombinadas.divergencia}</div>
-              <div className="text-sm text-gray-600">Divergências</div>
+            <div className="text-center p-2 sm:p-3 bg-red-50 rounded-lg">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-red-600">{estatisticasCombinadas.divergencia}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Divergências</div>
             </div>
-            <div className="text-center p-3 bg-teal-50 rounded-lg">
-              <div className="text-2xl font-bold text-teal-600">{estatisticasCombinadas.lancados}</div>
-              <div className="text-sm text-gray-600">Lançados</div>
+            <div className="text-center p-2 sm:p-3 bg-teal-50 rounded-lg">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-teal-600">{estatisticasCombinadas.lancados}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Lançados</div>
             </div>
-            <div className="text-center p-3 bg-purple-50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-600">{estatisticasCombinadas.finalizados}</div>
-              <div className="text-sm text-gray-600">Finalizados</div>
+            <div className="text-center p-2 sm:p-3 bg-purple-50 rounded-lg">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-purple-600">{estatisticasCombinadas.finalizados}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Finalizados</div>
             </div>
-            <div className="text-center p-3 bg-indigo-50 rounded-lg">
-              <div className="text-2xl font-bold text-indigo-600">{estatisticasCombinadas.totalNFs}</div>
-              <div className="text-sm text-gray-600">Total NFs</div>
+            <div className="text-center p-2 sm:p-3 bg-indigo-50 rounded-lg">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-indigo-600">{estatisticasCombinadas.totalNFs}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Total NFs</div>
             </div>
-            <div className="text-center p-3 bg-sky-50 rounded-lg">
-              <div className="text-2xl font-bold text-sky-600">{estatisticasCombinadas.totalPallets}</div>
-              <div className="text-sm text-gray-600">Total Pallets</div>
+            <div className="text-center p-2 sm:p-3 bg-sky-50 rounded-lg">
+              <div className="text-lg sm:text-xl md:text-2xl font-bold text-sky-600">{estatisticasCombinadas.totalPallets}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Total Pallets</div>
             </div>
           </div>
 
           {/* Filtros */}
           <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4">
-            <div className="flex items-center space-x-2">
-              <Search className="h-4 w-4 text-gray-400" />
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <Search className="h-4 w-4 text-gray-400 flex-shrink-0" />
               <Input
                 placeholder="Buscar por carro, colaborador ou destino..."
                 value={filtroBusca}
                 onChange={(e) => setFiltroBusca(e.target.value)}
-                className="w-64"
+                className="w-full sm:w-64 text-sm"
               />
             </div>
-            <div className="flex items-center space-x-2">
-              <Filter className="h-4 w-4 text-gray-400" />
+            <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <Filter className="h-4 w-4 text-gray-400 flex-shrink-0" />
               <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-                <SelectTrigger className="w-48">
+                <SelectTrigger className="w-full sm:w-48 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -836,10 +856,10 @@ export default function GerenciarCarrosSection() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
               {carrosFiltrados.map((carro) => (
                 <Card key={carro.carro_id} className="border-green-200 hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-2 sm:pb-3 px-2 sm:px-4 pt-2 sm:pt-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <Truck className="h-5 w-5 text-green-600" />
@@ -851,14 +871,27 @@ export default function GerenciarCarrosSection() {
                         </span>
 
                       </div>
-                      <Badge className={`text-xs ${getStatusColor(carro.status_carro)}`}>
-                        {getStatusIcon(carro.status_carro)}
-                        <span className="ml-1">{getStatusLabel(carro.status_carro)}</span>
-                      </Badge>
+                      <div className="flex items-center space-x-2">
+                        <Badge className={`text-xs ${getStatusColor(carro.status_carro)}`}>
+                          {getStatusIcon(carro.status_carro)}
+                          <span className="ml-1">{getStatusLabel(carro.status_carro)}</span>
+                        </Badge>
+                        
+                        {/* Badge do tipo do carro */}
+                        <Badge 
+                          className={`text-xs ${
+                            determinarTipoCarro(carro.nfs) === "ROD" 
+                              ? "bg-blue-100 text-blue-800 border-blue-200" 
+                              : "bg-orange-100 text-orange-800 border-orange-200"
+                          }`}
+                        >
+                          {determinarTipoCarro(carro.nfs) === "ROD" ? "ROD" : "CON"}
+                        </Badge>
+                      </div>
                     </div>
                   </CardHeader>
 
-                  <CardContent className="space-y-3">
+                  <CardContent className="space-y-2 sm:space-y-3 px-2 sm:px-4">
                     <div className="flex items-center space-x-2 text-sm text-gray-600">
                       <Users className="h-4 w-4" />
                       <span>
@@ -908,7 +941,7 @@ export default function GerenciarCarrosSection() {
                       </div>
                     )}
 
-                    <div className="flex space-x-4 items-center justify-center">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-center justify-center">
 
                       <Button
                         onClick={() => {
@@ -919,7 +952,7 @@ export default function GerenciarCarrosSection() {
                           setModalSAP(true)
                         }}
                         disabled={carro.status_carro === "lancado"}
-                        className={`${
+                        className={`flex-1 w-full sm:w-auto text-xs sm:text-sm ${
                           carro.status_carro === "lancado" 
                             ? "bg-gray-400 cursor-not-allowed" 
                             : "bg-green-600 hover:bg-green-700"
@@ -927,8 +960,9 @@ export default function GerenciarCarrosSection() {
                         size="sm"
                         title={carro.status_carro === "lancado" ? "Carro já foi lançado" : "Lançar carro"}
                       >
-                        <Send className="h-4 w-4 mr-2" />
-                        {carro.status_carro === "lancado" ? "Lançado" : "Lançar"}
+                        <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        <span className="hidden sm:inline">{carro.status_carro === "lancado" ? "Lançado" : "Lançar"}</span>
+                        <span className="sm:hidden">{carro.status_carro === "lancado" ? "✓" : "🚀"}</span>
                       </Button>
 
                       <Dialog>
@@ -936,16 +970,18 @@ export default function GerenciarCarrosSection() {
                           <Button
                             variant="outline"
                             size="sm"
+                            className="flex-1 w-full sm:w-auto text-xs sm:text-sm"
                             onClick={() => setCarroSelecionado(carro)}
                           >
-                            <Eye className="h-4 w-4" />
-                            Detalhes
+                            <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            <span className="hidden sm:inline">Detalhes</span>
+                            <span className="sm:hidden">👁️</span>
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] md:max-h-[80vh] overflow-y-auto">
                           <DialogHeader>
-                            <DialogTitle className="flex items-center space-x-2">
-                              <Package className="h-5 w-5 text-green-600" />
+                            <DialogTitle className="flex items-center space-x-2 text-sm sm:text-base">
+                              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
                               <span>
                                 Detalhes do {carro.numeros_sap && carro.numeros_sap.length > 0 
                                   ? `Carro SAP: ${carro.numeros_sap.join(', ')}`
@@ -963,7 +999,17 @@ export default function GerenciarCarrosSection() {
                                   <Badge className={`${getStatusColor(carro.status_carro)}`}>
                                     {getStatusLabel(carro.status_carro)}
                                   </Badge>
-
+                                  
+                                  {/* Badge do tipo do carro */}
+                                  <Badge 
+                                    className={`${
+                                      determinarTipoCarro(carro.nfs) === "ROD" 
+                                        ? "bg-blue-100 text-blue-800 border-blue-200" 
+                                        : "bg-orange-100 text-orange-800 border-orange-200"
+                                    }`}
+                                  >
+                                    {determinarTipoCarro(carro.nfs) === "ROD" ? "ROD" : "CON"}
+                                  </Badge>
                                 </div>
                               </div>
                               <div>
@@ -998,7 +1044,7 @@ export default function GerenciarCarrosSection() {
 
                             <ScrollArea className="h-96">
                               <div className="border rounded-lg overflow-hidden">
-                                <div className="bg-gray-50 px-4 py-2 grid grid-cols-7 gap-4 text-sm font-medium text-gray-700">
+                                <div className="bg-gray-50 px-2 sm:px-4 py-2 grid grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700">
                                   <div>NF</div>
                                   <div>Fornecedor</div>
                                   <div>Destino</div>
@@ -1010,7 +1056,7 @@ export default function GerenciarCarrosSection() {
                                 {carro.nfs.map((nf, index) => (
                                   <div
                                     key={nf.id}
-                                    className={`px-4 py-2 grid grid-cols-7 gap-4 text-sm ${index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                                    className={`px-2 sm:px-4 py-2 grid grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm ${index % 2 === 0 ? "bg-white" : "bg-gray-50"
                                       }`}
                                   >
                                     <div className="font-medium">{nf.numeroNF}</div>
@@ -1106,15 +1152,15 @@ export default function GerenciarCarrosSection() {
                           </div>
                         </DialogContent>
                       </Dialog>
-
                       <Button
                         onClick={() => copiarNFsParaSAP(carro.nfs)}
                         variant="outline"
-                        className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+                        className="flex-1 w-full sm:w-auto text-xs sm:text-sm bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
                         size="sm"
                       >
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copiar NFs
+                        <Copy className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        <span className="hidden sm:inline">Copiar NFs</span>
+                        <span className="sm:hidden">📋</span>
                       </Button>
 
                       <AlertDialog>
@@ -1122,11 +1168,12 @@ export default function GerenciarCarrosSection() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            className="flex-1 w-full sm:w-auto text-xs sm:text-sm text-red-600 border-red-200 hover:bg-red-50"
                             onClick={() => setCarroParaExcluir(carro)}
                           >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Excluir
+                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            <span className="hidden sm:inline">Excluir</span>
+                            <span className="sm:hidden">🗑️</span>
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
@@ -1172,10 +1219,10 @@ export default function GerenciarCarrosSection() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
               {carrosLancamentoFiltrados.map((carro) => (
                 <Card key={carro.id} className="border-purple-200 hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-3">
+                  <CardHeader className="pb-2 sm:pb-3 px-2 sm:px-4 pt-2 sm:pt-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <Truck className="h-5 w-5 text-purple-600" />
@@ -1186,14 +1233,27 @@ export default function GerenciarCarrosSection() {
                             : `${carro.colaboradores.join(" + ")} (Dupla)`}
                         </span>
                       </div>
-                      <Badge className={`text-xs ${getStatusColor(carro.status)}`}>
-                        {getStatusIcon(carro.status)}
-                        <span className="ml-1">{getStatusLabel(carro.status)}</span>
-                      </Badge>
+                      <div className="flex items-center space-x-2">
+                        <Badge className={`text-xs ${getStatusColor(carro.status)}`}>
+                          {getStatusIcon(carro.status)}
+                          <span className="ml-1">{getStatusLabel(carro.status)}</span>
+                        </Badge>
+                        
+                        {/* Badge do tipo do carro */}
+                        <Badge 
+                          className={`text-xs ${
+                            determinarTipoCarro(carro.nfs) === "ROD" 
+                              ? "bg-blue-100 text-blue-800 border-blue-200" 
+                              : "bg-orange-100 text-orange-800 border-orange-200"
+                          }`}
+                        >
+                          {determinarTipoCarro(carro.nfs) === "ROD" ? "🚛 ROD" : "📦 CON"}
+                        </Badge>
+                      </div>
                     </div>
                   </CardHeader>
 
-                  <CardContent className="space-y-3">
+                  <CardContent className="space-y-2 sm:space-y-3 px-2 sm:px-4">
                     <div className="flex items-center space-x-2 text-sm text-gray-600">
                       <Calendar className="h-4 w-4" />
                       <span>
@@ -1234,45 +1294,50 @@ export default function GerenciarCarrosSection() {
                       Finalizado em: {new Date(carro.dataFinalizacao).toLocaleString("pt-BR")}
                     </div>
 
-                    <div className="flex space-x-2">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-2">
                       {carro.status === "aguardando_lancamento" && (
                         <Button
                           onClick={() => iniciarLancamento(carro)}
-                          className="flex-1 bg-purple-600 hover:bg-purple-700"
+                          className="flex-1 w-full sm:w-auto text-xs sm:text-sm bg-purple-600 hover:bg-purple-700"
                           size="sm"
                         >
-                          <Send className="h-4 w-4 mr-2" />
-                          Fazer Lançamento
+                          <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                          <span className="hidden sm:inline">Fazer Lançamento</span>
+                          <span className="sm:hidden">🚀</span>
                         </Button>
                       )}
 
                       {carro.status === "em_lancamento" && (
-                        <div className="flex space-x-2 w-full">
-                          <Button onClick={() => iniciarLancamento(carro)} variant="outline" className="flex-1" size="sm">
-                            <FileText className="h-4 w-4 mr-2" />
-                            Continuar
+                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-2 w-full">
+                          <Button onClick={() => iniciarLancamento(carro)} variant="outline" className="flex-1 w-full sm:w-auto text-xs sm:text-sm" size="sm">
+                            <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            <span className="hidden sm:inline">Continuar</span>
+                            <span className="sm:hidden">📄</span>
                           </Button>
                           <Button
                             onClick={() => alterarStatusCarro(carro.id, "aguardando_lancamento")}
                             variant="outline"
+                            className="flex-1 w-full sm:w-auto text-xs sm:text-sm"
                             size="sm"
                           >
-                            Cancelar
+                            <span className="hidden sm:inline">Cancelar</span>
+                            <span className="sm:hidden">❌</span>
                           </Button>
                         </div>
                       )}
 
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button variant="outline" size="sm">
-                            <Eye className="h-4 w-4 mr-2" />
-                            Ver NFs
+                          <Button variant="outline" size="sm" className="flex-1 w-full sm:w-auto text-xs sm:text-sm">
+                            <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            <span className="hidden sm:inline">Ver NFs</span>
+                            <span className="sm:hidden">👁️</span>
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] md:max-h-[80vh] overflow-y-auto">
                           <DialogHeader>
-                            <DialogTitle className="flex items-center space-x-2">
-                              <Package className="h-5 w-5 text-purple-600" />
+                            <DialogTitle className="flex items-center space-x-2 text-sm sm:text-base">
+                              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
                               <span>
                                 NFs do {carro.nomeCarro || "Carro"} - {carro.colaboradores.join(" + ")}
                               </span>
@@ -1303,7 +1368,7 @@ export default function GerenciarCarrosSection() {
 
                             <ScrollArea className="h-96">
                               <div className="border rounded-lg overflow-hidden">
-                                <div className="bg-gray-50 px-4 py-2 grid grid-cols-6 gap-4 text-sm font-medium text-gray-700">
+                                <div className="bg-gray-50 px-2 sm:px-4 py-2 grid grid-cols-6 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700">
                                   <div>NF</div>
                                   <div>Código</div>
                                   <div>Fornecedor</div>
@@ -1314,7 +1379,7 @@ export default function GerenciarCarrosSection() {
                                 {carro.nfs.map((nf, index) => (
                                   <div
                                     key={nf.id}
-                                    className={`px-4 py-2 grid grid-cols-6 gap-4 text-sm ${index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                                    className={`px-2 sm:px-4 py-2 grid grid-cols-6 gap-2 sm:gap-4 text-xs sm:text-sm ${index % 2 === 0 ? "bg-white" : "bg-gray-50"
                                       }`}
                                   >
                                     <div className="font-medium">{nf.numeroNF}</div>
@@ -1388,10 +1453,10 @@ export default function GerenciarCarrosSection() {
 
       {/* Modal de Lançamento */}
       <Dialog open={modalLancamento} onOpenChange={setModalLancamento}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2">
-              <Send className="h-5 w-5 text-purple-600" />
+            <DialogTitle className="flex items-center space-x-2 text-sm sm:text-base">
+              <Send className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
               <span>
                 Fazer Lançamento - {carroLancamentoSelecionado?.nomeCarro || "Carro"} (
                 {carroLancamentoSelecionado?.colaboradores.join(" + ")})
@@ -1449,11 +1514,11 @@ export default function GerenciarCarrosSection() {
               </div>
 
               {/* Botões */}
-              <div className="flex space-x-4">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
                 <Button
                   onClick={processarLancamento}
                   disabled={!numeroLancamento.trim() || processandoLancamento}
-                  className="flex-1 bg-purple-600 hover:bg-purple-700"
+                  className="flex-1 w-full sm:w-auto text-sm bg-purple-600 hover:bg-purple-700"
                 >
                   {processandoLancamento ? (
                     <>
@@ -1467,7 +1532,7 @@ export default function GerenciarCarrosSection() {
                     </>
                   )}
                 </Button>
-                <Button variant="outline" onClick={() => setModalLancamento(false)} disabled={processandoLancamento}>
+                <Button variant="outline" onClick={() => setModalLancamento(false)} disabled={processandoLancamento} className="w-full sm:w-auto text-sm">
                   Cancelar
                 </Button>
               </div>
@@ -1478,10 +1543,10 @@ export default function GerenciarCarrosSection() {
 
       {/* Modal de Lançamento com Números SAP */}
       <Dialog open={modalSAP} onOpenChange={setModalSAP}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2">
-              <Send className="h-5 w-5 text-green-600" />
+            <DialogTitle className="flex items-center space-x-2 text-sm sm:text-base">
+              <Send className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
               <span>
                 Lançar Carro - {carroParaSAP?.numeros_sap && carroParaSAP.numeros_sap.length > 0 
                   ? `Carro SAP: ${carroParaSAP.numeros_sap.join(', ')}`

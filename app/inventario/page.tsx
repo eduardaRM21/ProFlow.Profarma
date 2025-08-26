@@ -21,14 +21,15 @@ import {
   Square,
   RotateCcw,
   LogOut,
-  AlertTriangle,
   CheckCircle,
   Clock,
+  Trash2,
 } from "lucide-react";
 import { useSession, useInventario } from "@/hooks/use-database";
 import { useRealtimeMonitoring } from "@/hooks/use-realtime-monitoring";
 import { BarcodeScanner } from "./components/barcode-scanner";
 import { RelatorioModal } from "./components/relatorio-modal";
+import { InventarioNotasBipadasService } from "@/lib/inventario-notas-bipadas-service";
 
 interface NotaFiscalInventario {
   id: string;
@@ -139,21 +140,64 @@ export default function InventarioPage() {
       // Simular busca de produto (em produção, isso viria do banco)
       const produto = await buscarProduto(codigo);
       
-              if (produto) {
-          const novaNota: NotaFiscalInventario = {
-            id: Date.now().toString(),
-            codigoCompleto: codigo,
-            data: produto.data,
-            numeroNF: produto.numeroNF,
-            volumes: produto.volumes,
-            destino: produto.destino,
-            fornecedor: produto.fornecedor,
-            clienteDestino: produto.clienteDestino,
-            tipoCarga: produto.tipoCarga,
-            rua: rua,
-            timestamp: new Date().toISOString(),
-            status: 'valida',
-          };
+      if (produto) {
+        // VERIFICAÇÃO CRÍTICA: Verificar se a nota já foi bipada em algum setor
+        console.log("🔍 Verificando se nota já foi bipada em algum setor...");
+        const verificarNota = await InventarioNotasBipadasService.verificarNotaJaBipada(codigo.trim());
+        
+        if (verificarNota.success && verificarNota.jaBipada) {
+          // Nota já foi bipada em outro setor - ALERTA CRÍTICO
+            const setorInfo = verificarNota.setorInfo;
+          const confirmarOutroSetor = confirm(
+            `🚨 ALERTA CRÍTICO!\n\n` +
+            `NOTA JÁ FOI BIPADA NO SETOR DE EMBALAGEM!\n\n` +
+            `NF: ${produto.numeroNF}\n` +
+            `Código: ${codigo}\n` +
+            `Colaborador que bipou: ${setorInfo?.colaboradores || 'Não informado'}\n` +
+            `Data/Hora: ${setorInfo?.timestamp_bipagem}\n\n` +
+            `Rua Atual: ${rua}\n` +
+            `Esta nota já foi processada na embalagem.\n` +
+            `Verifique se não há erro!\n\n` +
+            `Deseja continuar mesmo assim?\n\n` +
+            `• OK = Adicionar no inventário\n` +
+            `• Cancelar = Rejeitar`
+          );
+          
+          if (!confirmarOutroSetor) {
+            console.log("❌ Nota rejeitada - já bipada em outro setor:", produto.numeroNF);
+            
+            addRealtimeEvent({
+              id: Date.now().toString(),
+              timestamp: new Date().toISOString(),
+              sector: 'inventario',
+              type: 'inventory_updated',
+              message: `NF ${produto.numeroNF} rejeitada - já bipada em outro setor`,
+              data: { 
+                numeroNF: produto.numeroNF, 
+                ruaAtual: rua, 
+                setorAnterior: setorInfo?.setor,
+                motivo: 'ja_bipada_outro_setor' 
+              }
+            });
+            
+            return;
+          }
+        }
+        
+        const novaNota: NotaFiscalInventario = {
+          id: Date.now().toString(),
+          codigoCompleto: codigo,
+          data: produto.data,
+          numeroNF: produto.numeroNF,
+          volumes: produto.volumes,
+          destino: produto.destino,
+          fornecedor: produto.fornecedor,
+          clienteDestino: produto.clienteDestino,
+          tipoCarga: produto.tipoCarga,
+          rua: rua,
+          timestamp: new Date().toISOString(),
+          status: 'valida',
+        };
 
         // Verificar se a nota já existe na mesma rua
         const notaExistenteMesmaRua = notasInventario.find(nota => 
@@ -237,6 +281,35 @@ export default function InventarioPage() {
 
         // Salvar no localStorage
         await saveInventario(session.id, notasAtualizadas);
+        
+        // Salvar nota bipada na tabela centralizada
+        try {
+          const notaBipada = {
+            numero_nf: produto.numeroNF,
+            codigo_completo: produto.codigoCompleto,
+            rua: rua,
+            session_id: `inventario_${session.data}_${session.turno}`,
+            colaboradores: Array.isArray(session.colaboradores) && session.colaboradores.length > 0
+              ? session.colaboradores
+              : ['Não informado'],
+            data: session.data || new Date().toISOString().split('T')[0],
+            turno: session.turno || '',
+            volumes: produto.volumes,
+            destino: produto.destino,
+            fornecedor: produto.fornecedor,
+            cliente_destino: produto.clienteDestino,
+            tipo_carga: produto.tipoCarga,
+            status: 'bipada',
+            observacoes: `NF bipada na rua ${rua} do setor de inventário`,
+            timestamp_bipagem: new Date().toISOString()
+          };
+
+          await InventarioNotasBipadasService.salvarNotaBipada(notaBipada);
+          console.log('✅ Nota bipada salva na tabela centralizada');
+        } catch (error) {
+          console.error('❌ Erro ao salvar nota bipada na tabela centralizada:', error);
+          // Continuar com o processo mesmo se falhar ao salvar na tabela centralizada
+        }
         
         // Disparar evento em tempo real
         addRealtimeEvent({
@@ -403,35 +476,35 @@ export default function InventarioPage() {
                 
                 <Button
                   onClick={() => {
-                    const duplicatas = notasInventario.filter(nota => 
-                      notasInventario.filter(n => n.codigoCompleto === nota.codigoCompleto && n.rua === nota.rua).length > 1
+                    if (notasInventario.length === 0) {
+                      alert("ℹ️ Nenhuma nota fiscal para limpar!");
+                      return;
+                    }
+
+                    const confirmar = confirm(
+                      `🧹 LIMPAR TODAS AS NOTAS BIPADAS!\n\n` +
+                      `Rua: ${rua || 'Não selecionada'}\n` +
+                      `Notas: ${notasInventario.length}\n` +
+                      `Total de Volumes: ${notasInventario.reduce((total, nota) => total + nota.volumes, 0)}\n\n` +
+                      `Deseja limpar todas as notas bipadas nesta sessão?\n\n` +
+                      `• OK = Limpar todas as notas\n` +
+                      `• Cancelar = Manter como está`
                     );
-                    if (duplicatas.length > 0) {
-                      const confirmar = confirm(
-                        `🔍 ENCONTRADAS ${duplicatas.length} DUPLICATAS!\n\n` +
-                        `Deseja remover todas as duplicatas?\n\n` +
-                        `• OK = Remover duplicatas\n` +
-                        `• Cancelar = Manter como está`
-                      );
-                      if (confirmar) {
-                        const notasUnicas = notasInventario.filter((nota, index, self) => 
-                          index === self.findIndex(n => n.codigoCompleto === nota.codigoCompleto && n.rua === nota.rua)
-                        );
-                        setNotasInventario(notasUnicas);
-                        if (session) {
-                          saveInventario(session.id, notasUnicas);
-                        }
-                        console.log("🧹 Duplicatas removidas:", duplicatas.length);
+                    
+                    if (confirmar) {
+                      setNotasInventario([]);
+                      if (session) {
+                        saveInventario(session.id, []);
                       }
-                    } else {
-                      alert("✅ Nenhuma duplicata encontrada!");
+                      console.log("🧹 Todas as notas bipadas foram limpas da sessão ativa");
+                      alert("✅ Todas as notas bipadas foram limpas da sessão ativa!");
                     }
                   }}
                   variant="outline"
-                  className="w-full bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200"
+                  className="w-full bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
                 >
-                  <AlertTriangle className="h-4 w-4 mr-2" />
-                  Limpar Duplicatas
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Limpar Notas Bipadas
                 </Button>
               </div>
             </CardContent>
@@ -461,33 +534,11 @@ export default function InventarioPage() {
                 </span>
               </div>
               
-              {/* Estatísticas de Duplicatas */}
-              {(() => {
-                const duplicatasMesmaRua = notasInventario.filter(nota => 
-                  notasInventario.filter(n => n.codigoCompleto === nota.codigoCompleto && n.rua === nota.rua).length > 1
-                ).length;
-                
-                const duplicatasOutrasRuas = notasInventario.filter(nota => 
-                  notasInventario.some(n => n.codigoCompleto === nota.codigoCompleto && n.rua !== nota.rua)
-                ).length;
-                
-                return (
-                  <>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Duplicatas (mesma rua):</span>
-                      <span className={`font-medium ${duplicatasMesmaRua > 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                        {duplicatasMesmaRua}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Possíveis erros de localização:</span>
-                      <span className={`font-medium ${duplicatasOutrasRuas > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {duplicatasOutrasRuas}
-                      </span>
-                    </div>
-                  </>
-                );
-              })()}
+              {/* Estatísticas de Sessão */}
+              <div className="flex justify-between">
+                <span className="text-gray-600">Sessão Ativa:</span>
+                <span className="font-medium">{session?.id ? 'Sim' : 'Não'}</span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">Status:</span>
                 <span className={`font-medium ${isScanning ? 'text-green-600' : 'text-gray-600'}`}>
@@ -582,7 +633,7 @@ export default function InventarioPage() {
       {showRelatorio && (
         <RelatorioModal
           rua={rua}
-          itens={notasInventario as any}
+          itens={notasInventario}
           session={session}
           onClose={() => setShowRelatorio(false)}
           onSave={handleGerarRelatorio}

@@ -1208,4 +1208,64 @@ export class EmbalagemNotasBipadasService {
       }
     }
   }
+
+  /**
+   * Atualiza apenas os pallets reais de um carro já lançado sem alterar o status
+   */
+  static async atualizarPalletsCarro(carroId: string, palletsReais: number): Promise<{
+    success: boolean
+    error?: string
+  }> {
+    try {
+      console.log(`📦 Atualizando pallets reais do carro ${carroId} para ${palletsReais}`)
+
+      // 1. Atualizar apenas os pallets reais na tabela carros_status
+      const { error: carroError } = await retryWithBackoff(async () => {
+        return await getSupabase()
+          .from('carros_status')
+          .update({
+            palletes_reais: palletsReais,
+            updated_at: new Date().toISOString()
+          })
+          .eq('carro_id', carroId)
+      })
+
+      if (carroError) {
+        console.error('❌ Erro ao atualizar pallets reais do carro:', carroError)
+        return {
+          success: false,
+          error: `Erro ao atualizar pallets reais: ${carroError.message}`
+        }
+      }
+
+      // 2. Atualizar também os pallets reais das notas
+      const { error: notasError } = await retryWithBackoff(async () => {
+        return await getSupabase()
+          .from('embalagem_notas_bipadas')
+          .update({
+            palletes_reais: palletsReais,
+            updated_at: new Date().toISOString()
+          })
+          .eq('carro_id', carroId)
+      })
+
+      if (notasError) {
+        console.error('❌ Erro ao atualizar pallets reais das notas:', notasError)
+        // Não retornar erro aqui, pois o carro já foi atualizado
+        console.warn('⚠️ Aviso: Pallets reais do carro atualizados mas falha ao atualizar notas')
+      }
+
+      console.log(`✅ Pallets reais do carro ${carroId} atualizados com sucesso! Pallets: ${palletsReais}`)
+      return {
+        success: true
+      }
+
+    } catch (error) {
+      console.error('❌ Erro inesperado ao atualizar pallets reais:', error)
+      return {
+        success: false,
+        error: `Erro interno: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
+      }
+    }
+  }
 }
