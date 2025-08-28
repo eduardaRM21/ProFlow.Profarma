@@ -78,7 +78,10 @@ export const getSupabase = () => {
         },
         global: {
           headers: {
-            'X-Client-Info': 'profarma-system'
+            'X-Client-Info': 'profarma-system',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
           }
         }
       }

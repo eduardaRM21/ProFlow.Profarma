@@ -77,6 +77,7 @@ export default function RecebimentoPage() {
   const [modalFinalizacao, setModalFinalizacao] = useState(false)
   const [nomeTransportadora, setNomeTransportadora] = useState("")
   const [modalRelatorios, setModalRelatorios] = useState(false)
+  const [finalizando, setFinalizando] = useState(false)
 
   // Lógica de sessão e carregamento inicial
   useEffect(() => {
@@ -471,20 +472,20 @@ export default function RecebimentoPage() {
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
       
-      // Buscar a nota na tabela notas_fiscais
-      const { data: notaExistente, error: buscaError } = await supabase
-        .from('notas_fiscais')
-        .select('id')
-        .eq('numero_nf', notaAtual.numeroNF)
-        .eq('codigo_completo', notaAtual.codigoCompleto)
-        .single()
+              // Buscar a nota na tabela notas_fiscais
+        const { data: notaExistente, error: buscaError } = await supabase
+          .from('notas_fiscais')
+          .select('id')
+          .eq('numero_nf', notaAtual.numeroNF)
+          .eq('codigo_completo', notaAtual.codigoCompleto)
+          .single()
       
       if (!buscaError && notaExistente) {
         // Atualizar o status da nota para "ok"
         const { error: updateError } = await supabase
           .from('notas_fiscais')
           .update({ status: 'ok' })
-          .eq('id', notaExistente.id)
+          .eq('id', notaExistente.id as string)
         
         if (updateError) {
           console.error('❌ Erro ao atualizar status da nota na tabela notas_fiscais:', updateError)
@@ -606,20 +607,20 @@ export default function RecebimentoPage() {
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
       
-      // Buscar a nota na tabela notas_fiscais
-      const { data: notaExistente, error: buscaError } = await supabase
-        .from('notas_fiscais')
-        .select('id')
-        .eq('numero_nf', notaAtual.numeroNF)
-        .eq('codigo_completo', notaAtual.codigoCompleto)
-        .single()
+              // Buscar a nota na tabela notas_fiscais
+        const { data: notaExistente, error: buscaError } = await supabase
+          .from('notas_fiscais')
+          .select('id')
+          .eq('numero_nf', notaAtual.numeroNF)
+          .eq('codigo_completo', notaAtual.codigoCompleto)
+          .single()
       
       if (!buscaError && notaExistente) {
         // Atualizar o status da nota para "divergencia"
         const { error: updateError } = await supabase
           .from('notas_fiscais')
           .update({ status: 'divergencia' })
-          .eq('id', notaExistente.id)
+          .eq('id', notaExistente.id as string)
         
         if (updateError) {
           console.error('❌ Erro ao atualizar status da nota na tabela notas_fiscais:', updateError)
@@ -777,6 +778,9 @@ export default function RecebimentoPage() {
       return
     }
 
+    // Ativar estado de loading
+    setFinalizando(true)
+
     try {
       const somaVolumes = notas.reduce((sum, nota) => sum + (nota.divergencia?.volumesInformados || nota.volumes), 0)
       
@@ -825,6 +829,9 @@ export default function RecebimentoPage() {
     } catch (error) {
       console.error('❌ Erro ao salvar relatório:', error)
       alert('Erro ao salvar relatório. Tente novamente.')
+    } finally {
+      // Sempre desativar o estado de loading
+      setFinalizando(false)
     }
   } 
 
@@ -1064,12 +1071,21 @@ export default function RecebimentoPage() {
         <div className="mb-5 flex flex-col sm:flex-row space-x-0 sm:space-x-4">
           <Button
             onClick={finalizarRelatorio}
-            disabled={notas.length === 0}
+            disabled={notas.length === 0 || finalizando}
             className="mb-3 bg-orange-600 hover:bg-orange-700 text-white"
             size="sm"
           >
-            <FileText className="h-4 w-4 mr-2" />
-            Finalizar Relatório ({notas.length} notas)
+            {finalizando ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Finalizando...
+              </>
+            ) : (
+              <>
+                <FileText className="h-4 w-4 mr-2" />
+                Finalizar Relatório ({notas.length} notas)
+              </>
+            )}
           </Button>
 
           <Button
@@ -1169,6 +1185,7 @@ export default function RecebimentoPage() {
           inputRef={inputRef}
           sessionData={sessionData}
           clearNotas={clearNotas}
+          handleLogout={handleLogout}
         />
       )}
 
@@ -1221,7 +1238,12 @@ export default function RecebimentoPage() {
             <DialogHeader className={`${isColetor ? 'coletor-modal-header' : ''}`}>
               <DialogTitle className="flex items-center space-x-2">
                 <FileText className="h-5 w-5 text-orange-600" />
-                <span>Finalizar Relatório</span>
+                <span>
+                  {finalizando ? 'Finalizando Relatório...' : 'Finalizar Relatório'}
+                </span>
+                {finalizando && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
+                )}
               </DialogTitle>
             </DialogHeader>
 
@@ -1252,6 +1274,19 @@ export default function RecebimentoPage() {
                 </div>
               </div>
 
+              {/* Status de Finalização */}
+              {finalizando && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-orange-600"></div>
+                    <div>
+                      <h4 className="font-medium text-orange-800">Finalizando Relatório...</h4>
+                      <p className="text-sm text-orange-600">Aguarde, não feche esta janela.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <Label htmlFor="transportadora">Nome da Transportadora *</Label>
                 <Input
@@ -1265,6 +1300,7 @@ export default function RecebimentoPage() {
                       confirmarFinalizacao()
                     }
                   }}
+                  disabled={finalizando} // ⬅️ trava o input durante loading
                 />
                 <p className={`${isColetor ? 'text-xs' : 'text-xs'} text-gray-500 mt-1`}>Este será o nome do relatório na área de Custos</p>
               </div>
@@ -1272,11 +1308,20 @@ export default function RecebimentoPage() {
               <div className={`flex ${isColetor ? 'flex-col space-y-2 coletor-modal-buttons' : 'space-x-4'}`}>
                 <Button
                   onClick={confirmarFinalizacao}
-                  disabled={!nomeTransportadora.trim()}
+                  disabled={!nomeTransportadora.trim() || finalizando}
                   className={`flex-1 bg-orange-600 hover:bg-orange-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}
                 >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Finalizar Relatório
+                  {finalizando ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Finalizando...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Finalizar Relatório
+                    </>
+                  )}
                 </Button>
                 <Button
                   onClick={() => {
@@ -1285,6 +1330,7 @@ export default function RecebimentoPage() {
                     
                     // Não reativar a câmera automaticamente ao cancelar finalização
                   }}
+                  disabled={finalizando}
                   variant="outline"
                   className={`flex-1 ${isColetor ? 'h-12 text-sm' : ''}`}
                 >
