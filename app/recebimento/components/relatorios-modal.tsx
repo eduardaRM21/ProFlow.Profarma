@@ -35,77 +35,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
   // Hook do banco de dados
   const { getRelatoriosRecebimento } = useRelatorios()
 
-  useEffect(() => {
-    if (isOpen) {
-      // Usar setTimeout para não bloquear a renderização inicial do modal
-      const timer = setTimeout(() => {
-        carregarRelatorios()
-      }, 100)
-      return () => clearTimeout(timer)
-    }
-  }, [isOpen])
-
-  const aplicarFiltros = useCallback(() => {
-    // Usar useMemo seria melhor, mas mantendo compatibilidade
-    let relatoriosFiltrados = [...relatorios]
-
-    // Filtro por texto (otimizado)
-    if (filtroTexto.trim()) {
-      const termo = filtroTexto.toLowerCase().trim()
-      relatoriosFiltrados = relatoriosFiltrados.filter((rel) => {
-        const nomeMatch = rel.nome.toLowerCase().includes(termo)
-        const colabMatch = Array.isArray(rel.colaboradores) && 
-          rel.colaboradores.length > 0 &&
-          rel.colaboradores.some(colab => colab && colab.toLowerCase().includes(termo))
-        
-        // Verificar se é um número (possivelmente NF)
-        const isNumero = /^\d+$/.test(termo)
-        let nfMatch = false
-        
-        if (isNumero && Array.isArray(rel.notas) && rel.notas.length > 0) {
-          nfMatch = rel.notas.some(nota => 
-            nota.numeroNF && nota.numeroNF.includes(termo)
-          )
-        }
-        
-        return nomeMatch || colabMatch || nfMatch
-      })
-    }
-
-    // Filtro por data
-    if (dataFiltro) {
-      const dataFormatada = format(dataFiltro, "dd/MM/yyyy")
-      
-      relatoriosFiltrados = relatoriosFiltrados.filter((rel) => {
-        const dataRelatorio = rel.data
-        
-        // Comparação simples de string
-        const match = dataRelatorio === dataFormatada
-        
-        return match
-      })
-    }
-
-    // Ordenar (otimizado - evitar recálculos desnecessários)
-    if (relatoriosFiltrados.length > 1) {
-      relatoriosFiltrados.sort((a, b) => {
-        const timeA = new Date(a.dataFinalizacao).getTime()
-        const timeB = new Date(b.dataFinalizacao).getTime()
-        return timeB - timeA
-      })
-    }
-
-    setRelatoriosFiltrados(relatoriosFiltrados)
-  }, [relatorios, filtroTexto, dataFiltro])
-
-  useEffect(() => {
-    // Debounce para evitar re-renderizações excessivas
-    const timer = setTimeout(() => {
-      aplicarFiltros()
-    }, 150)
-    return () => clearTimeout(timer)
-  }, [relatorios, filtroTexto, dataFiltro])
-
+  // Memoizar função de carregamento de relatórios
   const carregarRelatorios = useCallback(async () => {
     // Evitar múltiplas chamadas simultâneas
     if (carregando) return
@@ -211,20 +141,20 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                   }
                 }
               }
-              
+
               // 2. Buscar as notas relacionadas ao relatório
               console.log(`🔍 Buscando notas para relatório ${relatorio.id}...`)
               const { data: relatorioNotasData, error: relatorioNotasError } = await supabase
                 .from('relatorio_notas')
                 .select('nota_fiscal_id')
                 .eq('relatorio_id', relatorio.id)
-              
+
               console.log(`🔍 Resultado busca relatorio_notas:`, { relatorioNotasData, relatorioNotasError })
-              
+
               if (!relatorioNotasError && relatorioNotasData && relatorioNotasData.length > 0) {
                 const notaIds = relatorioNotasData.map((rn: any) => rn.nota_fiscal_id)
                 console.log(`✅ Relatório ${relatorio.id} tem ${notaIds.length} notas relacionadas:`, notaIds)
-                
+
                 if (notaIds.length > 0) {
                   // 3. Buscar os detalhes das notas fiscais
                   console.log(`🔍 Buscando detalhes das notas fiscais...`)
@@ -232,144 +162,177 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                     .from('notas_fiscais')
                     .select('*')
                     .in('id', notaIds)
-                  
+
                   console.log(`🔍 Resultado busca notas_fiscais:`, { notasData, notasError })
-                  
+
                   if (!notasError && notasData) {
                     console.log(`✅ Notas fiscais carregadas para relatório ${relatorio.id}:`, notasData.length)
                     console.log(`🔍 Dados das notas:`, notasData)
-                    
+
                     // 4. Para cada nota, buscar divergências se houver
                     const notasComDivergencias = await Promise.all(
                       notasData.map(async (nota: any) => {
-                        // Usar o status diretamente da tabela notas_fiscais
-                        console.log(`🔍 Processando nota ${nota.numero_nf} (ID: ${nota.id})...`)
-                        console.log(`🔍 Status na tabela notas_fiscais: ${nota.status}`)
-                        
-                        // Determinar se há divergência baseado no status
                         let divergencia = null
-                        let statusFinal = nota.status || 'ok'
-                        
-                        if (statusFinal === 'divergencia') {
-                          // Se o status é divergencia, buscar os detalhes na tabela divergencias
-                          console.log(`🔍 Buscando detalhes da divergência para nota ${nota.numero_nf}...`)
-                          const { data: divergenciaData, error: divergenciaError } = await supabase
-                            .from('divergencias')
-                            .select('*')
-                            .eq('nota_fiscal_id', nota.id)
-                            .single()
-                          
-                          console.log(`🔍 Resultado busca divergencia:`, { divergenciaData, divergenciaError })
-                          
-                          if (!divergenciaError && divergenciaData) {
-                            divergencia = {
-                              volumesInformados: divergenciaData.volumes_informados,
-                              observacoes: divergenciaData.observacoes || 'Divergência registrada'
-                            }
-                            console.log(`✅ Detalhes da divergência encontrados para ${nota.numero_nf}:`, divergencia)
-                          } else {
-                            // Se não encontrar detalhes, criar divergência padrão
-                            divergencia = {
-                              volumesInformados: nota.volumes,
-                              observacoes: 'Divergência registrada'
-                            }
-                            console.log(`⚠️ Divergência sem detalhes para ${nota.numero_nf}, usando padrão`)
-                          }
-                        } else {
-                          // Verificar se há divergência na tabela divergencias mesmo com status 'ok'
-                          console.log(`🔍 Verificando se há divergência na tabela divergencias para nota ${nota.numero_nf}...`)
-                          const { data: divergenciaData, error: divergenciaError } = await supabase
-                            .from('divergencias')
-                            .select('*')
-                            .eq('nota_fiscal_id', nota.id)
-                            .single()
-                          
-                          if (!divergenciaError && divergenciaData) {
-                            // Se encontrou divergência na tabela, atualizar o status
-                            statusFinal = 'divergencia'
-                            divergencia = {
-                              volumesInformados: divergenciaData.volumes_informados,
-                              observacoes: divergenciaData.observacoes || 'Divergência registrada'
-                            }
-                            console.log(`✅ Divergência encontrada na tabela para ${nota.numero_nf}, atualizando status:`, divergencia)
+
+                        // Buscar divergência da nota
+                        const { data: divergenciaData, error: divergenciaError } = await supabase
+                          .from('divergencias')
+                          .select('*')
+                          .eq('nota_fiscal_id', nota.id)
+                          .single()
+
+                        if (!divergenciaError && divergenciaData) {
+                          divergencia = {
+                            volumesInformados: divergenciaData.volumes_informados,
+                            observacoes: divergenciaData.observacoes
                           }
                         }
-                        
-                        console.log(`🔍 Debug status da nota ${nota.numero_nf}:`, {
-                          statusOriginal: nota.status,
-                          statusFinal: statusFinal,
-                          temDivergencia: !!divergencia
-                        })
-                        
-                        const notaProcessada = {
+
+                        return {
                           id: nota.id,
-                          numeroNF: nota.numero_nf,
-                          volumes: nota.volumes,
-                          destino: nota.destino,
-                          fornecedor: nota.fornecedor,
-                          clienteDestino: nota.cliente_destino,
-                          tipoCarga: nota.tipo_carga,
-                          status: statusFinal,
+                          numeroNF: nota.numero_nf || nota.codigo_completo,
+                          volumes: nota.volumes || 0,
+                          destino: nota.destino || 'Não informado',
+                          fornecedor: nota.fornecedor || 'Não informado',
+                          clienteDestino: nota.cliente_destino || 'Não informado',
+                          status: divergencia ? 'divergencia' : 'ok',
                           divergencia: divergencia
                         }
-                        
-                        console.log(`🔍 Nota processada:`, notaProcessada)
-                        return notaProcessada
                       })
                     )
-                    
+
                     notas = notasComDivergencias
-                    console.log(`✅ Notas com divergências processadas:`, notas.length)
-                    console.log(`🔍 Array final de notas:`, notas)
+                    console.log(`✅ Notas processadas para relatório ${relatorio.id}:`, notas.length)
                   } else {
-                    console.error(`❌ Erro ao buscar notas fiscais para relatório ${relatorio.id}:`, notasError)
+                    console.log(`⚠️ Erro ao buscar notas fiscais:`, notasError)
+                    notas = []
                   }
+                } else {
+                  console.log(`⚠️ Nenhum ID de nota válido encontrado`)
+                  notas = []
                 }
               } else {
-                console.log(`ℹ️ Relatório ${relatorio.id} não tem notas relacionadas ou erro:`, relatorioNotasError)
-                console.log(`🔍 Dados de relatorio_notas:`, relatorioNotasData)
+                console.log(`⚠️ Relatório ${relatorio.id} não tem notas relacionadas ou erro:`, relatorioNotasError)
+                notas = []
               }
+
             } catch (error) {
-              console.error(`❌ Erro ao buscar dados para relatório ${relatorio.id}:`, error)
+              console.error(`❌ Erro ao processar relatório ${relatorio.id}:`, error)
+              colaboradores = []
+              notas = []
             }
-            
+
+            // Mapear os dados para garantir compatibilidade
             const relatorioCompleto = {
               id: relatorio.id,
-              nome: relatorio.nome ?? 'Relatório sem nome',
+              nome: relatorio.nome || 'Relatório sem nome',
               colaboradores: colaboradores,
               data: relatorio.data,
-              turno: relatorio.turno,
-              area: relatorio.area ?? 'recebimento',
-              quantidadeNotas: relatorio.quantidade_notas ?? 0,
-              somaVolumes: relatorio.soma_volumes ?? 0,
+              turno: relatorio.turno || 'Não informado',
+              area: relatorio.area || 'recebimento',
+              quantidadeNotas: relatorio.quantidade_notas || 0,
+              somaVolumes: relatorio.soma_volumes || 0,
               notas: notas,
-              dataFinalizacao: relatorio.data_finalizacao ?? new Date().toISOString(),
-              status: relatorio.status ?? 'liberado',
+              dataFinalizacao: relatorio.data_finalizacao || new Date().toISOString(),
+              status: relatorio.status || 'liberado',
             }
-            
+
             console.log(`✅ Relatório completo processado:`, relatorioCompleto)
+            console.log(`🔍 Colaboradores no relatório completo:`, relatorioCompleto.colaboradores)
             console.log(`🔍 Notas no relatório completo:`, relatorioCompleto.notas)
-            console.log(`🔍 Tipo das notas:`, typeof relatorioCompleto.notas)
-            console.log(`🔍 É array:`, Array.isArray(relatorioCompleto.notas))
-            console.log(`🔍 Quantidade de notas:`, relatorioCompleto.notas ? relatorioCompleto.notas.length : 'undefined')
             return relatorioCompleto
           })
         )
-        
-        console.log('✅ Relatórios completos carregados com sucesso:', relatoriosCompletos.length)
-        console.log('🔍 Primeiro relatório completo:', relatoriosCompletos[0])
+
+        console.log("✅ Relatórios completos carregados com sucesso:", relatoriosCompletos.length)
+        console.log("🔍 Primeiro relatório completo:", relatoriosCompletos[0])
         setRelatorios(relatoriosCompletos)
+        return
       } else {
-        console.log("⚠️ Nenhum relatório de recebimento encontrado no banco")
+        console.log("⚠️ Nenhum relatório encontrado no banco")
         setRelatorios([])
       }
+
     } catch (error) {
-      console.error('❌ Erro ao carregar relatórios:', error)
-      setErro('Erro ao carregar relatórios')
+      console.error("❌ Erro ao carregar relatórios:", error)
+      setErro(`Erro ao carregar relatórios: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
     } finally {
       setCarregando(false)
     }
   }, [carregando])
+
+  const aplicarFiltros = useCallback(() => {
+    // Usar useMemo seria melhor, mas mantendo compatibilidade
+    let relatoriosFiltrados = [...relatorios]
+
+    // Filtro por texto (otimizado)
+    if (filtroTexto.trim()) {
+      const termo = filtroTexto.toLowerCase().trim()
+      relatoriosFiltrados = relatoriosFiltrados.filter((rel) => {
+        const nomeMatch = rel.nome.toLowerCase().includes(termo)
+        const colabMatch = Array.isArray(rel.colaboradores) && 
+          rel.colaboradores.length > 0 &&
+          rel.colaboradores.some(colab => colab && colab.toLowerCase().includes(termo))
+        
+        // Verificar se é um número (possivelmente NF)
+        const isNumero = /^\d+$/.test(termo)
+        let nfMatch = false
+        
+        if (isNumero && Array.isArray(rel.notas) && rel.notas.length > 0) {
+          nfMatch = rel.notas.some(nota => 
+            nota.numeroNF && nota.numeroNF.includes(termo)
+          )
+        }
+        
+        return nomeMatch || colabMatch || nfMatch
+      })
+    }
+
+    // Filtro por data
+    if (dataFiltro) {
+      const dataFormatada = format(dataFiltro, "dd/MM/yyyy")
+      
+      relatoriosFiltrados = relatoriosFiltrados.filter((rel) => {
+        const dataRelatorio = rel.data
+        
+        // Comparação simples de string
+        const match = dataRelatorio === dataFormatada
+        
+        return match
+      })
+    }
+
+    // Ordenar (otimizado - evitar recálculos desnecessários)
+    if (relatoriosFiltrados.length > 1) {
+      relatoriosFiltrados.sort((a, b) => {
+        const timeA = new Date(a.dataFinalizacao).getTime()
+        const timeB = new Date(b.dataFinalizacao).getTime()
+        return timeB - timeA
+      })
+    }
+
+    setRelatoriosFiltrados(relatoriosFiltrados)
+  }, [relatorios, filtroTexto, dataFiltro])
+
+  // Carregar relatórios quando o modal abrir
+  useEffect(() => {
+    if (isOpen) {
+      // Usar setTimeout para não bloquear a renderização inicial do modal
+      const timer = setTimeout(() => {
+        carregarRelatorios()
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen, carregarRelatorios])
+
+  // Aplicar filtros quando dados mudarem
+  useEffect(() => {
+    // Debounce para evitar re-renderizações excessivas
+    const timer = setTimeout(() => {
+      aplicarFiltros()
+    }, 150)
+    return () => clearTimeout(timer)
+  }, [relatorios, filtroTexto, dataFiltro, aplicarFiltros])
 
   const getStatusColor = (status: string) => {
     switch (status) {

@@ -2,6 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Importar animações de loading personalizadas */
+@import '../styles/loading-animations.css';
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;

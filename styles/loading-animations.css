@@ -1,0 +1,206 @@
+/* =====================================================
+   ANIMAÇÕES DE LOADING PERSONALIZADAS
+   ===================================================== */
+
+/* Spinner de loading principal */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Pulsação suave */
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Fade in/out para transições */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Shimmer effect para botões de loading */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+/* Loading dots animados */
+@keyframes loadingDots {
+  0%, 80%, 100% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* =====================================================
+   CLASSES DE ANIMAÇÃO
+   ===================================================== */
+
+/* Spinner principal */
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* Pulsação suave */
+.loading-pulse {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* Fade in */
+.loading-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Shimmer effect */
+.loading-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  background-size: 200px 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Loading dots */
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.loading-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: loadingDots 1.4s ease-in-out infinite both;
+}
+
+.loading-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+.loading-dots span:nth-child(3) {
+  animation-delay: 0s;
+}
+
+/* =====================================================
+   ESTADOS DE LOADING PARA BOTÕES
+   ===================================================== */
+
+/* Botão em estado de loading */
+.btn-loading {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.btn-loading:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+/* Overlay de loading */
+.btn-loading::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+/* =====================================================
+   COMPONENTES DE LOADING ESPECÍFICOS
+   ===================================================== */
+
+/* Loading para área de recebimento */
+.recebimento-loading {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: white;
+}
+
+/* Loading para área de custos */
+.custos-loading {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+}
+
+/* Loading para área de embalagem */
+.embalagem-loading {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+/* =====================================================
+   RESPONSIVIDADE
+   ===================================================== */
+
+@media (max-width: 640px) {
+  .loading-dots span {
+    width: 4px;
+    height: 4px;
+  }
+  
+  .loading-dots {
+    gap: 2px;
+  }
+}
+
+/* =====================================================
+   ACESSIBILIDADE
+   ===================================================== */
+
+/* Reduzir animações para usuários que preferem */
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner,
+  .loading-pulse,
+  .loading-shimmer,
+  .loading-dots span {
+    animation: none;
+  }
+  
+  .loading-fade-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+

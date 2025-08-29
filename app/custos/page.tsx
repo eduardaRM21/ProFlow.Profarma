@@ -384,6 +384,9 @@ export default function CustosPage() {
 
                     notas = notasComDivergencias
                     console.log(`✅ Notas processadas para relatório ${relatorio.id}:`, notas.length)
+                    console.log(`🔍 Estrutura da primeira nota:`, notas[0]);
+                    console.log(`🔍 Campos disponíveis:`, Object.keys(notas[0] || {}));
+                    console.log(`🔍 Exemplo de nota completa:`, JSON.stringify(notas[0], null, 2));
                   } else {
                     console.log(`⚠️ Erro ao buscar notas fiscais:`, notasError)
                     notas = []
@@ -592,22 +595,65 @@ NOTAS FISCAIS:`
   const filtrarEOrdenarNotas = (notas: NotaFiscal[]) => {
     let notasProcessadas = [...notas];
 
+    console.log('🔍 Filtrando notas:', {
+      totalNotas: notas.length,
+      filtroTexto: filtroTexto,
+      filtroStatus: filtroStatus,
+      ordenacao: ordenacao
+    });
+
     // Aplicar filtro de texto
     if (filtroTexto) {
+      console.log('🔍 Aplicando filtro de texto:', filtroTexto);
+      const notasAntes = notasProcessadas.length;
+      
       notasProcessadas = notasProcessadas.filter(
-        (nota) =>
-          nota.numeroNF.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-          nota.fornecedor.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-          nota.destino.toLowerCase().includes(filtroTexto.toLowerCase()) ||
-          nota.clienteDestino.toLowerCase().includes(filtroTexto.toLowerCase())
+        (nota) => {
+          const numeroNF = nota.numeroNF?.toLowerCase() || '';
+          const fornecedor = nota.fornecedor?.toLowerCase() || '';
+          const destino = nota.destino?.toLowerCase() || '';
+          const clienteDestino = nota.clienteDestino?.toLowerCase() || '';
+          const filtroLower = filtroTexto.toLowerCase();
+          
+          const match = numeroNF.includes(filtroLower) ||
+                       fornecedor.includes(filtroLower) ||
+                       destino.includes(filtroLower) ||
+                       clienteDestino.includes(filtroLower);
+          
+          console.log('🔍 Verificando nota:', {
+            numeroNF,
+            fornecedor,
+            destino,
+            clienteDestino,
+            filtro: filtroLower,
+            match
+          });
+          
+          return match;
+        }
       );
+      
+      console.log('🔍 Filtro de texto aplicado:', {
+        notasAntes,
+        notasDepois: notasProcessadas.length,
+        filtro: filtroTexto
+      });
     }
 
     // Aplicar filtro de status
     if (filtroStatus !== "todos") {
+      console.log('🔍 Aplicando filtro de status:', filtroStatus);
+      const notasAntes = notasProcessadas.length;
+      
       notasProcessadas = notasProcessadas.filter(
         (nota) => nota.status === filtroStatus
       );
+      
+      console.log('🔍 Filtro de status aplicado:', {
+        notasAntes,
+        notasDepois: notasProcessadas.length,
+        status: filtroStatus
+      });
     }
 
     // Aplicar ordenação
@@ -664,9 +710,26 @@ NOTAS FISCAIS:`
 
   // Atualizar useEffect para aplicar filtros
   useEffect(() => {
+    console.log('🔍 useEffect de filtros executado:', {
+      relatorioSelecionado: !!relatorioSelecionado,
+      filtroTexto,
+      filtroStatus,
+      ordenacao,
+      relatorioId: relatorioSelecionado?.id,
+      totalNotas: relatorioSelecionado?.notas?.length || 0
+    });
+    
     if (relatorioSelecionado) {
+      console.log('🔍 Aplicando filtros ao relatório:', relatorioSelecionado.nome);
       const notas = filtrarEOrdenarNotas(relatorioSelecionado.notas);
+      console.log('🔍 Notas filtradas:', {
+        totalOriginal: relatorioSelecionado.notas.length,
+        totalFiltradas: notas.length
+      });
       setNotasFiltradas(notas);
+    } else {
+      console.log('🔍 Nenhum relatório selecionado, limpando notas filtradas');
+      setNotasFiltradas([]);
     }
   }, [relatorioSelecionado, filtroTexto, filtroStatus, ordenacao]);
 
@@ -1256,6 +1319,8 @@ NOTAS FISCAIS:`
                             className="flex-1 bg-transparent"
                             size="sm"
                             onClick={() => {
+                              console.log('🔍 Abrindo modal para relatório:', relatorio.nome);
+                              console.log('🔍 Notas do relatório:', relatorio.notas);
                               setRelatorioSelecionado(relatorio);
                               setNotasFiltradas(relatorio.notas);
                               setFiltroTexto("");
@@ -1406,9 +1471,10 @@ NOTAS FISCAIS:`
                                     <Input
                                       placeholder="NF, fornecedor, destino..."
                                       value={filtroTexto}
-                                      onChange={(e) =>
-                                        setFiltroTexto(e.target.value)
-                                      }
+                                      onChange={(e) => {
+                                        console.log('🔍 Campo de filtro alterado:', e.target.value);
+                                        setFiltroTexto(e.target.value);
+                                      }}
                                       className="pl-10"
                                     />
                                   </div>

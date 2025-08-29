@@ -45,6 +45,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useSession } from "@/hooks/use-database";
 import { LocalAuthService } from "@/lib/local-auth-service";
+import { LoginButton } from "@/components/ui/loading-button";
 
 export default function LoginPage() {
   const [colaboradores, setColaboradores] = useState([""]);
@@ -54,6 +55,7 @@ export default function LoginPage() {
   const [area, setArea] = useState("");
   const [usuarioCustos, setUsuarioCustos] = useState("");
   const [senhaCustos, setSenhaCustos] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const { saveSession } = useSession();
 
@@ -140,6 +142,9 @@ export default function LoginPage() {
       return;
     }
 
+    // Ativar estado de loading
+    setIsLoading(true);
+
     // Verificar se é área que usa autenticação local
     if (LocalAuthService.isLocalAuthArea(area)) {
       // Recebimento e Embalagem: validação local
@@ -183,53 +188,64 @@ export default function LoginPage() {
 
     const loginData = {
       area,
-      colaboradores: area === "embalagem" ? 
-        (colaborador.trim() ? [...colaboradoresPreenchidos, colaborador.trim()] : colaboradoresPreenchidos) : 
-        area === "custos" || area === "crdk" || area === "admin-embalagem" ? [usuarioCustos] : [colaborador],
-      data: LocalAuthService.isLocalAuthArea(area) && data ? format(data, "yyyy-MM-dd") : new Date().toISOString().split('T')[0],
-      turno: LocalAuthService.isLocalAuthArea(area) ? turno : "N/A",
-      loginTime: new Date().toISOString(),
+      colaboradores: area === "embalagem" ? colaboradoresPreenchidos : [colaborador],
+      data: data ? format(data, "yyyy-MM-dd") : undefined,
+      turno,
       usuarioCustos: area === "custos" || area === "crdk" || area === "admin-embalagem" ? usuarioCustos : undefined,
     };
 
     try {
-      // Salvar usando o sistema híbrido (nos bastidores)
-      await saveSession(loginData)
+      await saveSession(loginData);
+      console.log("✅ Sessão salva com sucesso:", loginData);
       
-      // Mostrar mensagem baseada no tipo de autenticação (apenas no console)
-      if (LocalAuthService.isLocalAuthArea(area)) {
-        console.log("💾 Sessão salva localmente (setor operacional)")
+      // Redirecionar para a área correspondente
+      if (area === "recebimento") {
+        router.push("/recebimento");
+      } else if (area === "embalagem") {
+        router.push("/painel");
+      } else if (area === "custos") {
+        router.push("/custos");
+      } else if (area === "crdk") {
+        router.push("/crdk");
+      } else if (area === "admin-embalagem") {
+        router.push("/admin");
       } else {
-        console.log("💾 Sessão salva no banco (setor administrativo)")
+        router.push("/painel");
       }
     } catch (error) {
-      console.error("❌ Erro ao salvar sessão:", error)
-      alert("Erro ao fazer login. Tente novamente.")
-      return
+      console.error("❌ Erro ao salvar sessão:", error);
+      alert("Erro ao fazer login. Tente novamente.");
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    switch (area) {
-      case "recebimento":
-        router.push("/recebimento");
-        break;
-      case "embalagem":
-        router.push("/painel");
-        break;
-      case "admin-embalagem":
-        router.push("/admin");
-        break;
-      case "crdk":
-        router.push("/crdk");
-        break;
-      case "inventario":
-        router.push("/inventario");
-        break;
-      case "custos":
-        router.push("/custos");
-        break;
-      default:
-        router.push("/dashboard");
+  // Handler para tecla Enter em qualquer campo
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      // Verificar se todos os campos obrigatórios estão preenchidos antes de fazer login
+      if (canProceedWithLogin()) {
+        handleLogin();
+      }
     }
+  };
+
+  // Função para verificar se pode prosseguir com o login
+  const canProceedWithLogin = () => {
+    if (!area) return false;
+    
+    if (LocalAuthService.isLocalAuthArea(area)) {
+      if (area === "embalagem") {
+        return colaboradoresPreenchidos.length > 0 && data && turno;
+      } else {
+        return colaborador.trim() && data && turno;
+      }
+    } else if (LocalAuthService.isDatabaseAuthArea(area)) {
+      return usuarioCustos.trim() && senhaCustos.trim();
+    }
+    
+    return false;
   };
 
   const getAreaIcon = (areaCode: string) => {
@@ -311,7 +327,7 @@ export default function LoginPage() {
           <div className="space-y-2">
             <Label className="text-base font-medium">Área de Trabalho *</Label>
             <Select value={area} onValueChange={setArea}>
-              <SelectTrigger className="h-12 text-base hover:bg-green-50 border-green-200">
+              <SelectTrigger className="h-12 text-base hover:bg-green-50 border-green-200" onKeyDown={handleKeyPress}>
                 <SelectValue placeholder="Selecione sua área" />
               </SelectTrigger>
               <SelectContent>
@@ -330,11 +346,11 @@ export default function LoginPage() {
             <>
               <div className="space-y-2">
                 <Label className="text-base font-medium">Usuário (Custos) *</Label>
-                <Input placeholder="Usuário autorizado para Custos" value={usuarioCustos} onChange={(e) => setUsuarioCustos(e.target.value)} className="text-base h-12" />
+                <Input placeholder="Usuário autorizado para Custos" value={usuarioCustos} onChange={(e) => setUsuarioCustos(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
               </div>
               <div className="space-y-2">
                 <Label className="text-base font-medium">Senha *</Label>
-                <Input type="password" placeholder="Senha" value={senhaCustos} onChange={(e) => setSenhaCustos(e.target.value)} className="text-base h-12" />
+                <Input type="password" placeholder="Senha" value={senhaCustos} onChange={(e) => setSenhaCustos(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
               </div>
             </>
           )}
@@ -343,11 +359,11 @@ export default function LoginPage() {
             <>
               <div className="space-y-2">
                 <Label className="text-base font-medium">Usuário (CRDK) *</Label>
-                <Input placeholder="Usuário autorizado para CRDK" value={usuarioCustos} onChange={(e) => setUsuarioCustos(e.target.value)} className="text-base h-12" />
+                <Input placeholder="Usuário autorizado para CRDK" value={usuarioCustos} onChange={(e) => setUsuarioCustos(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
               </div>
               <div className="space-y-2">
                 <Label className="text-base font-medium">Senha *</Label>
-                <Input type="password" placeholder="Senha" value={senhaCustos} onChange={(e) => setSenhaCustos(e.target.value)} className="text-base h-12" />
+                <Input type="password" placeholder="Senha" value={senhaCustos} onChange={(e) => setSenhaCustos(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
               </div>
             </>
           )}
@@ -367,6 +383,7 @@ export default function LoginPage() {
                     onChange={(e) => setUsuarioCustos(e.target.value)}
                     className="text-base h-12 border-blue-200 hover:border-blue-300"
                     required
+                    onKeyPress={handleKeyPress}
                   />
                   <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded-md">
                     <strong>Apenas usuários autorizados</strong>
@@ -385,6 +402,7 @@ export default function LoginPage() {
                     onChange={(e) => setSenhaCustos(e.target.value)}
                     className="text-base h-12 border-blue-200 hover:border-blue-300"
                     required
+                    onKeyPress={handleKeyPress}
                   />
                 </div>
               </div>
@@ -413,6 +431,7 @@ export default function LoginPage() {
                       value={colab}
                       onChange={(e) => atualizarColaborador(i, e.target.value)}
                       className="text-base h-12 flex-1"
+                      onKeyPress={handleKeyPress}
                     />
                     {colaboradores.length > 1 && (
                       <Button
@@ -442,7 +461,7 @@ export default function LoginPage() {
               {area !== "embalagem" && (
                 <div className="space-y-2">
                   <Label className="text-base font-medium">Colaborador *</Label>
-                  <Input placeholder="Nome do colaborador" value={colaborador} onChange={(e) => setColaborador(e.target.value)} className="text-base h-12" />
+                  <Input placeholder="Nome do colaborador" value={colaborador} onChange={(e) => setColaborador(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
                 </div>
               )}
 
@@ -450,7 +469,7 @@ export default function LoginPage() {
                 <Label className="text-base font-medium">Data *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal h-12 text-base bg-transparent hover:bg-green-50 border-green-200">
+                    <Button variant="outline" className="w-full justify-start text-left font-normal h-12 text-base bg-transparent hover:bg-green-50 border-green-200" onKeyDown={handleKeyPress}>
                       <CalendarIcon className="mr-2 h-4 w-4 text-green-600" />
                       {data ? format(data, "dd/MM/yyyy", { locale: ptBR }) : "Selecione a data"}
                     </Button>
@@ -464,7 +483,7 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <Label className="text-base font-medium">Turno *</Label>
                 <Select value={turno} onValueChange={setTurno}>
-                  <SelectTrigger className="h-12 text-base hover:bg-green-50 border-green-200">
+                  <SelectTrigger className="h-12 text-base hover:bg-green-50 border-green-200" onKeyDown={handleKeyPress}>
                     <SelectValue placeholder="Selecione o turno" />
                   </SelectTrigger>
                   <SelectContent>
@@ -477,9 +496,8 @@ export default function LoginPage() {
             </>
           )}
 
-          <Button
-            onClick={handleLogin}
-            className="w-full h-12 text-base font-semibold bg-green-600 hover:bg-green-700 text-white"
+          <LoginButton
+            loading={isLoading}
             disabled={
               area === "custos" || area === "crdk"
                 ? !usuarioCustos.trim() || !senhaCustos.trim()
@@ -489,9 +507,9 @@ export default function LoginPage() {
                 ? !usuarioCustos.trim() || !senhaCustos.trim()
                 : !colaborador.trim() || !data || !turno || !area
             }
-          >
-            Entrar no Sistema
-          </Button>
+            onClick={handleLogin}
+            area={area}
+          />
         </CardContent>
       </Card>
     </div>
