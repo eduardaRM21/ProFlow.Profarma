@@ -27,8 +27,10 @@ import {
   LogOut,
   Search,
 } from "lucide-react"
+import ChangePasswordModal from "@/components/admin/change-password-modal"
 
 import GerenciarCarrosSection from "./components/gerenciar-carros-section"
+import DashboardEstatisticas from "./components/dashboard-estatisticas"
 import { useEstatisticas } from "@/hooks/use-estatisticas"
 
 // Função para gerar ID único
@@ -73,6 +75,7 @@ export default function AdminPage() {
   const [filtro, setFiltro] = useState("")
   const [enviando, setEnviando] = useState(false)
   const [activeSection, setActiveSection] = useState<string | null>(null)
+  const [showChangePassword, setShowChangePassword] = useState(false)
 
   
   // Cliente Supabase - será obtido quando necessário
@@ -91,6 +94,13 @@ export default function AdminPage() {
     console.log('✅ Cliente Supabase inicializado:', !!supabaseClient)
     
     verificarAcessoAdmin()
+    
+    // Restaurar seção ativa do localStorage
+    const secaoSalva = localStorage.getItem("profarma_admin_active_section")
+    if (secaoSalva) {
+      console.log('🔄 Restaurando seção ativa:', secaoSalva)
+      setActiveSection(secaoSalva)
+    }
   }, [])
 
   const verificarAcessoAdmin = () => {
@@ -99,7 +109,7 @@ export default function AdminPage() {
       const sessionData = localStorage.getItem("sistema_session")
       if (!sessionData) {
         console.log("❌ Nenhuma sessão encontrada")
-        router.push("/")
+        setIsAuthenticated(false)
         return
       }
 
@@ -109,13 +119,14 @@ export default function AdminPage() {
       // Verificar se é do setor de embalagem ou admin embalagem
       if (session.area !== "embalagem" && session.area !== "admin-embalagem") {
         console.log("❌ Acesso negado: usuário não é do setor de embalagem ou admin embalagem")
-        router.push("/")
+        setIsAuthenticated(false)
         return
       }
 
       // Se for admin embalagem, acesso direto permitido
       if (session.area === "admin-embalagem") {
         console.log("🔐 Usuário do setor Admin Embalagem detectado, acesso liberado")
+        setIsAuthenticated(true)
         return
       }
 
@@ -126,15 +137,16 @@ export default function AdminPage() {
 
       if (!hasAdminUser) {
         console.log("❌ Acesso negado: usuário não é admin_crdk")
-        router.push("/")
+        setIsAuthenticated(false)
         return
       }
 
       // Se chegou até aqui, acesso direto permitido
       console.log("🔐 Usuário admin_crdk detectado, acesso liberado")
+      setIsAuthenticated(true)
     } catch (error) {
       console.error("❌ Erro ao verificar acesso admin:", error)
-      router.push("/")
+      setIsAuthenticated(false)
     }
   }
 
@@ -157,11 +169,23 @@ export default function AdminPage() {
   const handleLogout = () => {
     // Limpar dados da sessão
     localStorage.removeItem("sistema_session")
+    localStorage.removeItem("profarma_admin_active_section")
     
     // Redirecionar para a página inicial
     router.push("/")
     
     console.log("✅ Logout realizado com sucesso")
+  }
+
+  const handleSectionChange = (section: string | null) => {
+    setActiveSection(section)
+    if (section) {
+      localStorage.setItem("profarma_admin_active_section", section)
+      console.log('💾 Seção salva no localStorage:', section)
+    } else {
+      localStorage.removeItem("profarma_admin_active_section")
+      console.log('🗑️ Seção removida do localStorage')
+    }
   }
 
   const carregarConversasDoSupabase = useCallback(async () => {
@@ -769,238 +793,19 @@ export default function AdminPage() {
     )
   }
 
-  function RelatoriosSection() {
-    const {
-      estatisticasPorTurno,
-      estatisticasPorPeriodo,
-      estatisticasGerais,
-      loading,
-      error,
-      dataSelecionada,
-      periodoSelecionado,
-      setDataSelecionada,
-      setPeriodoSelecionado,
-      formatarTurno,
-      formatarData,
-      calcularPorcentagem
-    } = useEstatisticas()
 
+  // Se não estiver autenticado, mostrar tela de acesso negado
+  if (!isAuthenticated) {
     return (
-      <div className="space-y-6">
-        {/* Estatísticas Gerais */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <BarChart3 className="h-6 w-6 text-blue-600" />
-              <span>Estatísticas Gerais do Sistema</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : error ? (
-              <div className="text-red-600 text-center py-4">{error}</div>
-            ) : estatisticasGerais ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <div className="text-2xl font-bold text-blue-600">{estatisticasGerais.total_carros_sistema}</div>
-                  <div className="text-sm text-blue-800">Total de Carros</div>
-                </div>
-                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                  <div className="text-2xl font-bold text-green-600">{estatisticasGerais.total_notas_sistema}</div>
-                  <div className="text-sm text-green-800">Total de Notas</div>
-                </div>
-                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                  <div className="text-2xl font-bold text-purple-600">{estatisticasGerais.total_volumes_sistema}</div>
-                  <div className="text-sm text-purple-800">Total de Volumes</div>
-                </div>
-                <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                  <div className="text-2xl font-bold text-orange-600">{estatisticasGerais.produtividade_media_diaria}</div>
-                  <div className="text-sm text-orange-800">Produtividade Média</div>
-                </div>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        {/* Estatísticas por Turno */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Clock className="h-6 w-6 text-green-600" />
-              <span>Produtividade por Turno</span>
-            </CardTitle>
-            <div className="flex items-center space-x-4">
-              <input
-                type="date"
-                value={dataSelecionada}
-                onChange={(e) => setDataSelecionada(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-              </div>
-            ) : error ? (
-              <div className="text-red-600 text-center py-4">{error}</div>
-            ) : estatisticasPorTurno.length > 0 ? (
-              <div className="space-y-6">
-                {/* Gráfico de Barras por Turno */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-800">Carros por Status - {formatarData(dataSelecionada)}</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {estatisticasPorTurno.map((stats: any) => (
-                      <div key={stats.turno} className="bg-gray-50 p-4 rounded-lg border">
-                        <h4 className="font-semibold text-gray-800 mb-3">{formatarTurno(stats.turno)}</h4>
-                        
-                        {/* Barra de Progresso para Carros */}
-                        <div className="space-y-2 mb-4">
-                          <div className="flex justify-between text-sm">
-                            <span>Embalando: {stats.carros_embalando}</span>
-                            <span className="text-orange-600">{calcularPorcentagem(stats.carros_embalando, stats.total_carros)}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-orange-500 h-2 rounded-full" 
-                              style={{ width: `${calcularPorcentagem(stats.carros_embalando, stats.total_carros)}%` }}
-                            ></div>
-                          </div>
-                          
-                          <div className="flex justify-between text-sm">
-                            <span>Lançados: {stats.carros_lancados}</span>
-                            <span className="text-blue-600">{calcularPorcentagem(stats.carros_lancados, stats.total_carros)}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-blue-500 h-2 rounded-full" 
-                              style={{ width: `${calcularPorcentagem(stats.carros_lancados, stats.total_carros)}%` }}
-                            ></div>
-                          </div>
-                          
-                          <div className="flex justify-between text-sm">
-                            <span>Finalizados: {stats.carros_finalizados}</span>
-                            <span className="text-green-600">{calcularPorcentagem(stats.carros_finalizados, stats.total_carros)}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-green-500 h-2 rounded-full" 
-                              style={{ width: `${calcularPorcentagem(stats.carros_finalizados, stats.total_carros)}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                        
-                        {/* Estatísticas do Turno */}
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div className="text-gray-600">Total Carros:</div>
-                          <div className="font-semibold">{stats.total_carros}</div>
-                          <div className="text-gray-600">Total Notas:</div>
-                          <div className="font-semibold">{stats.total_notas}</div>
-                          <div className="text-gray-600">Total Volumes:</div>
-                          <div className="font-semibold">{stats.total_volumes}</div>
-                          <div className="text-gray-600">Total Pallets Reais:</div>
-                          <div className="font-semibold">{stats.total_pallets}</div>
-                          <div className="text-gray-600">Produtividade/h:</div>
-                          <div className="font-semibold text-green-600">{stats.produtividade_por_hora}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-gray-500 text-center py-8">Nenhuma estatística disponível para esta data</div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Estatísticas por Período */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <TrendingUp className="h-6 w-6 text-purple-600" />
-              <span>Produtividade por Período</span>
-            </CardTitle>
-            <div className="flex items-center space-x-4">
-              <select
-                value={periodoSelecionado}
-                onChange={(e) => setPeriodoSelecionado(Number(e.target.value))}
-                className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-              >
-                <option value={7}>Últimos 7 dias</option>
-                <option value={15}>Últimos 15 dias</option>
-                <option value={30}>Últimos 30 dias</option>
-              </select>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-              </div>
-            ) : error ? (
-              <div className="text-red-600 text-center py-4">{error}</div>
-            ) : estatisticasPorPeriodo.length > 0 ? (
-              <div className="space-y-4">
-                {/* Gráfico de Linha por Período */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-800">Evolução da Produtividade</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg border">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {estatisticasPorPeriodo.slice(0, 4).map((stats: any) => (
-                        <div key={stats.periodo} className="text-center">
-                          <div className="text-lg font-bold text-purple-600">{stats.total_carros}</div>
-                          <div className="text-sm text-gray-600">Carros</div>
-                          <div className="text-xs text-gray-500">{formatarData(stats.periodo)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  {/* Tabela de Estatísticas */}
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Carros</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notas</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volumes</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pallets Reais</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produtividade</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {estatisticasPorPeriodo.map((stats: any) => (
-                          <tr key={stats.periodo} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {formatarData(stats.periodo)}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats.total_carros}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats.total_notas}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats.total_volumes}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{stats.total_pallets}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                {stats.produtividade_media}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-gray-500 text-center py-8">Nenhuma estatística disponível para este período</div>
-            )}
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Shield className="h-16 w-16 text-red-500 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Acesso Negado</h1>
+          <p className="text-gray-600 mb-6">Você não tem permissão para acessar esta área.</p>
+          <Button onClick={() => router.push("/")} className="bg-blue-600 hover:bg-blue-700">
+            Voltar ao Início
+          </Button>
+        </div>
       </div>
     )
   }
@@ -1022,7 +827,7 @@ export default function AdminPage() {
             <div className="flex items-center space-x-4">
               {/* Botão flutuante para chat interno */}
               <Button
-                onClick={() => setActiveSection("chat")}
+                onClick={() => handleSectionChange("chat")}
                 className="relative bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
                 size="sm"
               >
@@ -1034,6 +839,17 @@ export default function AdminPage() {
                     {totalMensagensNaoLidas > 99 ? '99+' : totalMensagensNaoLidas}
                   </div>
                 )}
+              </Button>
+
+              {/* Botão Alterar Senha */}
+              <Button
+                onClick={() => setShowChangePassword(true)}
+                variant="outline"
+                className="bg-transparent hover:bg-blue-50 border-blue-200"
+                size="sm"
+              >
+                <User className="h-4 w-4 mr-2" />
+                Alterar Senha
               </Button>
 
               {/* Botão Sair */}
@@ -1065,10 +881,10 @@ export default function AdminPage() {
                 <CardTitle className="text-xl font-bold text-gray-900">Gerenciar Carros</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <p className="text-gray-600 mb-6">Visualizar, excluir, gerenciar e lançamentos</p>
+                <p className="text-gray-600 mb-6">Visualizar, excluir, gerenciar e lançar</p>
                 <Button
                   className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700"
-                  onClick={() => setActiveSection("gerenciar-carros")}
+                  onClick={() => handleSectionChange("gerenciar-carros")}
                 >
                   Gerenciar Carros
                 </Button>
@@ -1089,7 +905,7 @@ export default function AdminPage() {
                 <p className="text-gray-600 mb-6">Comunicação e suporte em tempo real</p>
                 <Button
                   className="w-full h-12 text-base font-semibold bg-indigo-600 hover:bg-indigo-700"
-                  onClick={() => setActiveSection("chat")}
+                  onClick={() => handleSectionChange("chat")}
                 >
                   Abrir Chat Interno
                 </Button>
@@ -1104,36 +920,42 @@ export default function AdminPage() {
                     <BarChart3 className="h-12 w-12 text-green-600" />
                   </div>
                 </div>
-                <CardTitle className="text-xl font-bold text-gray-900">Relatórios</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900">Dashboard</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <p className="text-gray-600 mb-6">Visualizar estatisticas e produtividade</p>
+                <p className="text-gray-600 mb-6">Estatísticas, produtividade e destaques</p>
                 <Button
                   className="w-full h-12 text-base font-semibold bg-green-600 hover:bg-green-700"
-                  onClick={() => setActiveSection("relatorios")}
+                  onClick={() => handleSectionChange("relatorios")}
                 >
-                  Ver Relatórios
+                  Abrir Dashboard
                 </Button>
               </CardContent>
             </Card>
           </div>
         ) : (
           <div>
-            <Button variant="outline" onClick={() => setActiveSection(null)} className="mb-6">
+            <Button variant="outline" onClick={() => handleSectionChange(null)} className="mb-6">
               ← Voltar ao Menu Principal
             </Button>
 
             {activeSection === "chat" && <ChatSection />}
             {activeSection === "gerenciar-carros" && <GerenciarCarrosSection />}
-            {activeSection === "relatorios" && <RelatoriosSection />}
+            {activeSection === "relatorios" && <DashboardEstatisticas />}
           </div>
         )}
       </main>
+
+      {/* Modal de Alterar Senha */}
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+        usuario="admin_embalagem"
+        area="admin-embalagem"
+        onSuccess={() => {
+          alert("Senha alterada com sucesso!")
+        }}
+      />
     </div>
   )
-
-  // Se não estiver autenticado, não mostrar nada (está verificando)
-  if (!isAuthenticated) {
-    return null
-  }
 }

@@ -47,6 +47,7 @@ import { ConnectionStatus } from "@/components/connection-status";
 import type { SessionData, NotaFiscal, Relatorio } from "@/lib/database-service";
 import { getSupabase, testSupabaseConnection } from "@/lib/supabase-client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import ChangePasswordModal from "@/components/admin/change-password-modal";
 
 const copiarDadosParaSAP = (dados: string, tipo: string) => {
   if (navigator.clipboard) {
@@ -107,60 +108,12 @@ export default function CustosPage() {
   const [notasFiltradas, setNotasFiltradas] = useState<NotaFiscal[]>([]);
   const [relatorioSelecionado, setRelatorioSelecionado] =
     useState<Relatorio | null>(null);
-
-  // Debug function para verificar estado do banco
-  const debugDatabaseState = async () => {
-    try {
-      console.log('🔍 Debug: Verificando estado do banco...')
-
-      // Teste para verificar conectividade e dados
-      try {
-        console.log('🔍 Testando conectividade com o banco...')
-        const { getSupabase } = await import('@/lib/supabase-client')
-        const supabase = getSupabase()
-
-        // Teste de conectividade básica
-        const { data: testData, error: testError } = await supabase
-          .from('relatorios')
-          .select('count')
-          .limit(1)
-
-        if (testError) {
-          console.log('❌ Erro de conectividade:', testError)
-        } else {
-          console.log('✅ Conectividade OK')
-        }
-      } catch (error) {
-        console.log('❌ Erro no teste de conectividade:', error)
-      }
-
-      // Verificar localStorage
-      console.log('📁 Debug localStorage:')
-      console.log('📁 relatorios_custos:', localStorage.getItem('relatorios_custos'))
-      console.log('📁 relatorios_local:', localStorage.getItem('relatorios_local'))
-      console.log('📁 sistema_session:', localStorage.getItem('sistema_session'))
-
-      // Verificar estado atual
-      console.log('📊 Estado atual dos relatórios:', relatorios)
-      console.log('📊 Quantidade de relatórios:', relatorios.length)
-
-      // Forçar nova busca de relatórios
-      console.log('🔄 Forçando nova busca de relatórios...')
-      await carregarRelatorios()
-      console.log('✅ Nova busca concluída')
-
-    } catch (error) {
-      console.error('❌ Erro no debug do banco:', error)
-    }
-  }
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   useEffect(() => {
     const verificarSessao = async () => {
       try {
         console.log('🔍 Verificando sessão para área custos...')
-
-        // Debug do estado do banco
-        await debugDatabaseState()
 
         // Obter sessão do banco de dados (específica para custos)
         const session = await getSession("custos")
@@ -227,186 +180,176 @@ export default function CustosPage() {
     verificarSessao()
   }, [router, getSession])
 
+  // Função específica para diagnosticar e corrigir problema dos colaboradores
+  const diagnosticarColaboradores = async (supabase: any, relatorioId: string) => {
+    console.log(`🔍 DIAGNÓSTICO: Verificando colaboradores para relatório ${relatorioId}`)
+    
+    try {
+      // 1. Verificar se a tabela relatorio_colaboradores existe
+      const { data: tabelaExiste, error: erroTabela } = await supabase
+        .from('relatorio_colaboradores')
+        .select('id')
+        .limit(1)
+      
+      if (erroTabela) {
+        console.log(`❌ Tabela relatorio_colaboradores não existe ou erro:`, erroTabela)
+        return []
+      }
+      
+      // 2. Verificar se há registros para este relatório
+      const { data: registrosExistentes, error: erroRegistros } = await supabase
+        .from('relatorio_colaboradores')
+        .select('*')
+        .eq('relatorio_id', relatorioId)
+      
+      console.log(`🔍 Registros encontrados para relatório ${relatorioId}:`, {
+        count: registrosExistentes?.length || 0,
+        data: registrosExistentes,
+        error: erroRegistros
+      })
+      
+      if (erroRegistros || !registrosExistentes || registrosExistentes.length === 0) {
+        console.log(`⚠️ Nenhum registro encontrado em relatorio_colaboradores para relatório ${relatorioId}`)
+        return []
+      }
+      
+      // 3. Buscar nomes dos usuários
+      const userIds = registrosExistentes.map((rc: any) => rc.user_id)
+      console.log(`🔍 User IDs encontrados:`, userIds)
+      
+      const { data: usuarios, error: erroUsuarios } = await supabase
+        .from('users')
+        .select('id, nome')
+        .in('id', userIds)
+      
+      if (erroUsuarios) {
+        console.log(`❌ Erro ao buscar usuários:`, erroUsuarios)
+        return []
+      }
+      
+      console.log(`🔍 Usuários encontrados:`, usuarios)
+      
+      // 4. Mapear nomes dos colaboradores
+      const colaboradores = registrosExistentes.map((rc: any) => {
+        const usuario = usuarios?.find((u: any) => u.id === rc.user_id)
+        return usuario?.nome || `Usuário ${rc.user_id} sem nome`
+      })
+      
+      console.log(`✅ Colaboradores mapeados para relatório ${relatorioId}:`, colaboradores)
+      return colaboradores
+      
+    } catch (error) {
+      console.error(`❌ Erro no diagnóstico de colaboradores para relatório ${relatorioId}:`, error)
+      return []
+    }
+  }
+
   const carregarRelatorios = async () => {
     try {
-      console.log("🔄 Iniciando carregamento de relatórios do banco de dados...")
+      console.log("🔄 Iniciando carregamento otimizado de relatórios...")
 
-      // FORÇAR busca direta do banco, ignorando cache
-      console.log("🔍 Buscando diretamente do banco...")
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
 
-      const { data: relatoriosDiretos, error: erroDireto } = await supabase
+      // ABORDAGEM DIRETA: Buscar relatórios primeiro
+      console.log("🔍 Buscando relatórios básicos...")
+      const { data: relatoriosBasicos, error: erroRelatorios } = await supabase
         .from('relatorios')
         .select('*')
         .order('created_at', { ascending: false })
 
-      if (erroDireto) {
-        console.log("❌ Erro na busca direta:", erroDireto)
+      if (erroRelatorios) {
+        console.log("❌ Erro ao buscar relatórios:", erroRelatorios)
+        await carregarRelatoriosFallback(supabase)
         return
       }
 
-      console.log("📊 Relatórios encontrados diretamente:", relatoriosDiretos?.length || 0)
+      if (!relatoriosBasicos || relatoriosBasicos.length === 0) {
+        console.log("⚠️ Nenhum relatório encontrado")
+        setRelatorios([])
+        setFonteDados('banco')
+        return
+      }
 
-      if (relatoriosDiretos && relatoriosDiretos.length > 0) {
-        console.log("✅ Relatórios carregados com sucesso do banco de dados")
-        console.log("🔍 Primeiro relatório:", relatoriosDiretos[0])
+      console.log(`✅ ${relatoriosBasicos.length} relatórios encontrados`)
+      console.log("🔍 Primeiros relatórios:", relatoriosBasicos.slice(0, 3))
 
-        // Para cada relatório, buscar colaboradores e notas relacionadas
-        const relatoriosCompletos = await Promise.all(
-          relatoriosDiretos.map(async (relatorio: any) => {
-            let colaboradores: string[] = []
+      // PROCESSAR CADA RELATÓRIO INDIVIDUALMENTE
+      const relatoriosCompletos = await Promise.all(
+        relatoriosBasicos.map(async (relatorio: any) => {
+          console.log(`🔍 Processando relatório: ${relatorio.id} - ${relatorio.nome}`)
+
+          try {
+            // 1. Buscar colaboradores usando função de diagnóstico
+            console.log(`🔍 Buscando colaboradores para relatório ${relatorio.id}...`)
+            const colaboradores = await diagnosticarColaboradores(supabase, relatorio.id)
+            
+            console.log(`✅ Colaboradores para relatório ${relatorio.id}:`, colaboradores)
+
+            // 2. Buscar notas deste relatório
+            const { data: relatorioNotasData, error: relatorioNotasError } = await supabase
+              .from('relatorio_notas')
+              .select('nota_fiscal_id')
+              .eq('relatorio_id', relatorio.id)
+
             let notas: any[] = []
+            if (!relatorioNotasError && relatorioNotasData && relatorioNotasData.length > 0) {
+              console.log(`🔍 Relatório ${relatorio.id} tem ${relatorioNotasData.length} notas relacionadas`)
 
-            console.log(`🔍 Processando relatório: ${relatorio.id} - ${relatorio.nome}`)
+              // 3. Buscar detalhes das notas fiscais
+              const notaIds = relatorioNotasData.map((rn: any) => rn.nota_fiscal_id)
+              const { data: notasData, error: notasError } = await supabase
+                .from('notas_fiscais')
+                .select('*')
+                .in('id', notaIds)
 
-            try {
-              // 1. Buscar colaboradores do relatório
-              console.log(`🔍 Buscando colaboradores para relatório ${relatorio.id}...`)
-              const { data: colaboradoresData, error: colaboradoresError } = await supabase
-                .from('relatorio_colaboradores')
-                .select(`
-                  user_id,
-                  users!inner(nome)
-                `)
-                .eq('relatorio_id', relatorio.id)
+              if (!notasError && notasData) {
+                console.log(`✅ ${notasData.length} notas fiscais carregadas para relatório ${relatorio.id}`)
 
-              console.log(`🔍 Resultado busca colaboradores:`, { colaboradoresData, colaboradoresError })
+                // 4. Para cada nota, buscar divergências
+                const notasComDivergencias = await Promise.all(
+                  notasData.map(async (nota: any) => {
+                    console.log(`🔍 Buscando divergências para nota ${nota.id}`)
+                    
+                    const { data: divergenciaData, error: divergenciaError } = await supabase
+                      .from('divergencias')
+                      .select('*')
+                      .eq('nota_fiscal_id', nota.id)
+                      .single()
 
-              if (!colaboradoresError && colaboradoresData && colaboradoresData.length > 0) {
-                colaboradores = colaboradoresData.map((col: any) => col.users?.nome || 'Colaborador sem nome')
-                console.log(`✅ Relatório ${relatorio.id} tem ${colaboradores.length} colaboradores:`, colaboradores)
-              } else {
-                console.log(`⚠️ Relatório ${relatorio.id} não tem colaboradores ou erro:`, colaboradoresError)
-
-                // Tentar busca alternativa sem inner join
-                console.log(`🔍 Tentando busca alternativa de colaboradores...`)
-                const { data: colaboradoresAlt, error: colaboradoresAltError } = await supabase
-                  .from('relatorio_colaboradores')
-                  .select('user_id')
-                  .eq('relatorio_id', relatorio.id)
-
-                if (!colaboradoresAltError && colaboradoresAlt && colaboradoresAlt.length > 0) {
-                  console.log(`🔍 IDs de colaboradores encontrados:`, colaboradoresAlt.map(c => c.user_id))
-
-                  // Buscar nomes dos usuários individualmente
-                  const nomesColaboradores = await Promise.all(
-                    colaboradoresAlt.map(async (col: any) => {
-                      const { data: userData, error: userError } = await supabase
-                        .from('users')
-                        .select('nome')
-                        .eq('id', col.user_id)
-                        .single()
-
-                      if (!userError && userData) {
-                        return userData.nome
-                      } else {
-                        console.log(`⚠️ Erro ao buscar usuário ${col.user_id}:`, userError)
-                        return 'Colaborador sem nome'
+                    let divergencia = null
+                    if (!divergenciaError && divergenciaData) {
+                      divergencia = {
+                        volumesInformados: divergenciaData.volumes_informados,
+                        observacoes: divergenciaData.observacoes
                       }
-                    })
-                  )
+                      console.log(`✅ Divergência encontrada para nota ${nota.id}:`, divergencia)
+                    } else {
+                      console.log(`ℹ️ Nenhuma divergência para nota ${nota.id}`)
+                    }
 
-                  colaboradores = nomesColaboradores.filter((nome): nome is string => typeof nome === 'string')
-                  console.log(`✅ Colaboradores encontrados via busca alternativa:`, colaboradores)
-                } else {
-                  // Se não encontrar colaboradores na tabela relatorio_colaboradores, 
-                  // tentar usar os colaboradores armazenados diretamente no relatório
-                  console.log(`🔍 Tentando usar colaboradores armazenados no relatório...`)
-                  if (relatorio.colaboradores && Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0) {
-                    colaboradores = relatorio.colaboradores
-                    console.log(`✅ Colaboradores encontrados no relatório:`, colaboradores)
-                  } else {
-                    console.log(`⚠️ Nenhum colaborador encontrado para relatório ${relatorio.id}`)
-                    colaboradores = []
-                  }
-                }
-              }
+                    return {
+                      id: nota.id,
+                      numeroNF: nota.numero_nf || nota.codigo_completo,
+                      volumes: nota.volumes || 0,
+                      destino: nota.destino || 'Não informado',
+                      fornecedor: nota.fornecedor || 'Não informado',
+                      clienteDestino: nota.cliente_destino || 'Não informado',
+                      status: divergencia ? 'divergencia' : 'ok',
+                      divergencia: divergencia
+                    }
+                  })
+                )
 
-              // 2. Buscar as notas relacionadas ao relatório
-              console.log(`🔍 Buscando notas para relatório ${relatorio.id}...`)
-              const { data: relatorioNotasData, error: relatorioNotasError } = await supabase
-                .from('relatorio_notas')
-                .select('nota_fiscal_id')
-                .eq('relatorio_id', relatorio.id)
-
-              console.log(`🔍 Resultado busca relatorio_notas:`, { relatorioNotasData, relatorioNotasError })
-
-              if (!relatorioNotasError && relatorioNotasData && relatorioNotasData.length > 0) {
-                const notaIds = relatorioNotasData.map((rn: any) => rn.nota_fiscal_id)
-                console.log(`✅ Relatório ${relatorio.id} tem ${notaIds.length} notas relacionadas:`, notaIds)
-
-                if (notaIds.length > 0) {
-                  // 3. Buscar os detalhes das notas fiscais
-                  console.log(`🔍 Buscando detalhes das notas fiscais...`)
-                  const { data: notasData, error: notasError } = await supabase
-                    .from('notas_fiscais')
-                    .select('*')
-                    .in('id', notaIds)
-
-                  console.log(`🔍 Resultado busca notas_fiscais:`, { notasData, notasError })
-
-                  if (!notasError && notasData) {
-                    console.log(`✅ Notas fiscais carregadas para relatório ${relatorio.id}:`, notasData.length)
-                    console.log(`🔍 Dados das notas:`, notasData)
-
-                    // 4. Para cada nota, buscar divergências se houver
-                    const notasComDivergencias = await Promise.all(
-                      notasData.map(async (nota: any) => {
-                        let divergencia = null
-
-                        // Buscar divergência da nota
-                        const { data: divergenciaData, error: divergenciaError } = await supabase
-                          .from('divergencias')
-                          .select('*')
-                          .eq('nota_fiscal_id', nota.id)
-                          .single()
-
-                        if (!divergenciaError && divergenciaData) {
-                          divergencia = {
-                            volumesInformados: divergenciaData.volumes_informados,
-                            observacoes: divergenciaData.observacoes
-                          }
-                        }
-
-                        return {
-                          id: nota.id,
-                          numeroNF: nota.numero_nf || nota.codigo_completo,
-                          volumes: nota.volumes || 0,
-                          destino: nota.destino || 'Não informado',
-                          fornecedor: nota.fornecedor || 'Não informado',
-                          clienteDestino: nota.cliente_destino || 'Não informado',
-                          status: divergencia ? 'divergencia' : 'ok',
-                          divergencia: divergencia
-                        }
-                      })
-                    )
-
-                    notas = notasComDivergencias
-                    console.log(`✅ Notas processadas para relatório ${relatorio.id}:`, notas.length)
-                    console.log(`🔍 Estrutura da primeira nota:`, notas[0]);
-                    console.log(`🔍 Campos disponíveis:`, Object.keys(notas[0] || {}));
-                    console.log(`🔍 Exemplo de nota completa:`, JSON.stringify(notas[0], null, 2));
-                  } else {
-                    console.log(`⚠️ Erro ao buscar notas fiscais:`, notasError)
-                    notas = []
-                  }
-                } else {
-                  console.log(`⚠️ Nenhum ID de nota válido encontrado`)
-                  notas = []
-                }
+                notas = notasComDivergencias
+                console.log(`✅ ${notas.length} notas processadas com divergências para relatório ${relatorio.id}`)
               } else {
-                console.log(`⚠️ Relatório ${relatorio.id} não tem notas relacionadas ou erro:`, relatorioNotasError)
-                notas = []
+                console.log(`⚠️ Erro ao buscar notas fiscais para relatório ${relatorio.id}:`, notasError)
               }
-
-            } catch (error) {
-              console.error(`❌ Erro ao processar relatório ${relatorio.id}:`, error)
-              colaboradores = []
-              notas = []
+            } else {
+              console.log(`⚠️ Relatório ${relatorio.id} não tem notas relacionadas ou erro:`, relatorioNotasError)
             }
 
-            // Mapear os dados para garantir compatibilidade
             const relatorioCompleto = {
               id: relatorio.id,
               nome: relatorio.nome || 'Relatório sem nome',
@@ -421,47 +364,195 @@ export default function CustosPage() {
               status: relatorio.status || 'liberado',
             }
 
-            console.log(`✅ Relatório completo processado:`, relatorioCompleto)
-            console.log(`🔍 Colaboradores no relatório completo:`, relatorioCompleto.colaboradores)
-            console.log(`🔍 Notas no relatório completo:`, relatorioCompleto.notas)
-            return relatorioCompleto
-          })
-        )
+            console.log(`✅ Relatório ${relatorio.id} processado com sucesso:`, {
+              nome: relatorioCompleto.nome,
+              colaboradores: relatorioCompleto.colaboradores,
+              quantidadeColaboradores: relatorioCompleto.colaboradores.length,
+              notas: relatorioCompleto.notas.length
+            })
 
-        console.log("✅ Relatórios completos carregados com sucesso:", relatoriosCompletos.length)
-        console.log("🔍 Primeiro relatório completo:", relatoriosCompletos[0])
-        setRelatorios(relatoriosCompletos)
-        setFonteDados('banco')
-        return
-      } else {
-        console.log("⚠️ Nenhum relatório encontrado no banco")
-        setRelatorios([])
-        setFonteDados('banco')
+            return relatorioCompleto
+
+          } catch (error) {
+            console.error(`❌ Erro ao processar relatório ${relatorio.id}:`, error)
+            return {
+              id: relatorio.id,
+              nome: relatorio.nome || 'Relatório sem nome',
+              colaboradores: [],
+              data: relatorio.data,
+              turno: relatorio.turno || 'Não informado',
+              area: relatorio.area || 'custos',
+              quantidadeNotas: relatorio.quantidade_notas || 0,
+              somaVolumes: relatorio.soma_volumes || 0,
+              notas: [],
+              dataFinalizacao: relatorio.data_finalizacao || new Date().toISOString(),
+              status: relatorio.status || 'liberado',
+            }
+          }
+        })
+      )
+
+      console.log("✅ Todos os relatórios processados:", relatoriosCompletos.length)
+      console.log("🔍 Primeiro relatório completo:", relatoriosCompletos[0])
+      
+      // Verificar se há colaboradores nos relatórios
+      const relatoriosComColaboradores = relatoriosCompletos.filter((r: any) => r.colaboradores && r.colaboradores.length > 0)
+      const relatoriosSemColaboradores = relatoriosCompletos.filter((r: any) => !r.colaboradores || r.colaboradores.length === 0)
+      
+      console.log("📊 Estatísticas dos relatórios:")
+      console.log(`   - Total: ${relatoriosCompletos.length}`)
+      console.log(`   - Com colaboradores: ${relatoriosComColaboradores.length}`)
+      console.log(`   - Sem colaboradores: ${relatoriosSemColaboradores.length}`)
+      
+      if (relatoriosSemColaboradores.length > 0) {
+        console.log("⚠️ Relatórios sem colaboradores:", relatoriosSemColaboradores.map((r: any) => ({ id: r.id, nome: r.nome })))
       }
+
+      setRelatorios(relatoriosCompletos)
+      setFonteDados('banco')
 
     } catch (error) {
-      console.error("❌ Erro ao carregar relatórios do banco:", error)
+      console.error("❌ Erro geral no carregamento:", error)
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      await carregarRelatoriosFallback(supabase)
+    }
+  }
 
-      // Tentar carregar do localStorage como último recurso
-      console.log("⚠️ Tentando carregar do localStorage como fallback...")
+  // FALLBACK: Método tradicional otimizado
+  const carregarRelatoriosFallback = async (supabase: any) => {
+    console.log("🔄 Executando fallback otimizado...")
 
-      try {
-        const relatoriosLocal = await carregarRelatoriosLocalStorage()
-        if (relatoriosLocal.length > 0) {
-          console.log("📊 Relatórios carregados do localStorage:", relatoriosLocal.length)
-          setRelatorios(relatoriosLocal)
-          setFonteDados('localStorage')
-        } else {
-          console.log("📊 Nenhum relatório encontrado no localStorage")
-          setRelatorios([])
-          setFonteDados('nenhuma')
-        }
-      } catch (localError) {
-        console.error("❌ Erro ao carregar do localStorage:", localError)
-        setRelatorios([])
-        setFonteDados('nenhuma')
+    // 1. Buscar relatórios
+    const { data: relatoriosData, error: relatoriosError } = await supabase
+      .from('relatorios')
+      .select('*')
+      .order('created_at', { ascending: false })
+
+    if (relatoriosError || !relatoriosData) {
+      console.log("❌ Erro ao buscar relatórios no fallback")
+      setRelatorios([])
+      setFonteDados('nenhuma')
+      return
+    }
+
+    console.log(`📊 ${relatoriosData.length} relatórios encontrados no fallback`)
+
+    // 2. CONSULTA EM LOTE: Buscar TODOS os colaboradores de uma vez
+    const { data: todosColaboradores, error: colaboradoresError } = await supabase
+      .from('relatorio_colaboradores')
+      .select(`
+        relatorio_id,
+        user_id,
+        users!inner(nome)
+      `)
+      .in('relatorio_id', relatoriosData.map((r: any) => r.id))
+
+    if (colaboradoresError) {
+      console.log("⚠️ Erro ao buscar colaboradores:", colaboradoresError)
+    } else {
+      console.log(`📊 ${todosColaboradores?.length || 0} colaboradores encontrados`)
+    }
+
+    // 3. CONSULTA EM LOTE: Buscar TODAS as notas de uma vez
+    const { data: todasNotas, error: notasError } = await supabase
+      .from('relatorio_notas')
+      .select(`
+        relatorio_id,
+        nota_fiscal_id,
+        notas_fiscais!inner(*)
+      `)
+      .in('relatorio_id', relatoriosData.map((r: any) => r.id))
+
+    if (notasError) {
+      console.log("⚠️ Erro ao buscar notas:", notasError)
+    } else {
+      console.log(`📊 ${todasNotas?.length || 0} notas encontradas`)
+    }
+
+    // 4. CONSULTA EM LOTE: Buscar TODAS as divergências de uma vez
+    const notaIds = todasNotas?.map((tn: any) => tn.nota_fiscal_id) || []
+    console.log(`🔍 IDs das notas para buscar divergências:`, notaIds)
+
+    let todasDivergencias: any[] = []
+    if (notaIds.length > 0) {
+      const { data: divergenciasData, error: divergenciasError } = await supabase
+        .from('divergencias')
+        .select('*')
+        .in('nota_fiscal_id', notaIds)
+
+      if (divergenciasError) {
+        console.log("⚠️ Erro ao buscar divergências:", divergenciasError)
+      } else {
+        todasDivergencias = divergenciasData || []
+        console.log(`📊 ${todasDivergencias.length} divergências encontradas`)
       }
     }
+
+    // 5. Processar dados em memória (muito mais rápido)
+    const relatoriosProcessados = relatoriosData.map(async (relatorio: any) => {
+      // Usar função de diagnóstico para colaboradores
+      const colaboradores = await diagnosticarColaboradores(supabase, relatorio.id)
+
+      // Filtrar notas deste relatório
+      const notas = todasNotas
+        ?.filter((tn: any) => tn.relatorio_id === relatorio.id)
+        ?.map((tn: any) => {
+          const nota = tn.notas_fiscais
+          const divergencia = todasDivergencias?.find((d: any) => d.nota_fiscal_id === nota.id)
+
+          return {
+            id: nota.id,
+            numeroNF: nota.numero_nf || nota.codigo_completo,
+            volumes: nota.volumes || 0,
+            destino: nota.destino || 'Não informado',
+            fornecedor: nota.fornecedor || 'Não informado',
+            clienteDestino: nota.cliente_destino || 'Não informado',
+            status: divergencia ? 'divergencia' : 'ok',
+            divergencia: divergencia ? {
+              volumesInformados: divergencia.volumes_informados,
+              observacoes: divergencia.observacoes
+            } : null
+          }
+        }) || []
+
+      console.log(`🔍 Relatório ${relatorio.id}: ${notas.length} notas processadas`)
+
+      return {
+        id: relatorio.id,
+        nome: relatorio.nome || 'Relatório sem nome',
+        colaboradores: colaboradores,
+        data: relatorio.data,
+        turno: relatorio.turno || 'Não informado',
+        area: relatorio.area || 'custos',
+        quantidadeNotas: relatorio.quantidade_notas || 0,
+        somaVolumes: relatorio.soma_volumes || 0,
+        notas: notas,
+        dataFinalizacao: relatorio.data_finalizacao || new Date().toISOString(),
+        status: relatorio.status || 'liberado',
+      }
+    })
+
+    // Aguardar todos os relatórios serem processados
+    const relatoriosProcessadosFinal = await Promise.all(relatoriosProcessados)
+
+    // Verificar estatísticas dos relatórios processados
+    const relatoriosComColaboradores = relatoriosProcessadosFinal.filter((r: any) => r.colaboradores && r.colaboradores.length > 0)
+    const relatoriosSemColaboradores = relatoriosProcessadosFinal.filter((r: any) => !r.colaboradores || r.colaboradores.length === 0)
+    
+    console.log("📊 Estatísticas dos relatórios (fallback):")
+    console.log(`   - Total: ${relatoriosProcessadosFinal.length}`)
+    console.log(`   - Com colaboradores: ${relatoriosComColaboradores.length}`)
+    console.log(`   - Sem colaboradores: ${relatoriosSemColaboradores.length}`)
+    
+    if (relatoriosSemColaboradores.length > 0) {
+      console.log("⚠️ Relatórios sem colaboradores (fallback):", relatoriosSemColaboradores.map((r: any) => ({ id: r.id, nome: r.nome })))
+    }
+
+    console.log("✅ Fallback executado com sucesso:", relatoriosProcessadosFinal.length)
+    console.log("🔍 Primeiro relatório do fallback:", relatoriosProcessadosFinal[0])
+    setRelatorios(relatoriosProcessadosFinal)
+    setFonteDados('banco')
   }
 
   // Função auxiliar para carregar relatórios do localStorage
@@ -516,7 +607,7 @@ export default function CustosPage() {
     try {
       // Limpar cache e forçar nova busca
       const relatoriosCarregados = await getRelatorios()
-      if (Array.isArray(relatoriosCarregados)) {
+      if (Array.isArray(relatoriosCarregados) && relatoriosCarregados.length > 0) {
         console.log("✅ Relatórios recarregados do banco:", relatoriosCarregados.length)
         setRelatorios(relatoriosCarregados)
         setFonteDados('banco')
@@ -528,8 +619,31 @@ export default function CustosPage() {
     } catch (error) {
       console.error("❌ Erro ao recarregar relatórios do banco:", error)
       alert("Erro ao recarregar relatórios do banco de dados. Verifique a conexão.")
+      setRelatorios([])
       setFonteDados('nenhuma')
     }
+  }
+
+  // Função de debug para verificar dados
+  const debugDados = () => {
+    console.log("🔍 === DEBUG DADOS ===")
+    console.log("📊 Relatórios no estado:", relatorios)
+    console.log("📊 Quantidade de relatórios:", relatorios.length)
+    
+    if (relatorios.length > 0) {
+      console.log("🔍 Primeiro relatório:", relatorios[0])
+      console.log("🔍 Notas do primeiro relatório:", relatorios[0].notas)
+      console.log("🔍 Quantidade de notas:", relatorios[0].notas?.length || 0)
+      
+      if (relatorios[0].notas && relatorios[0].notas.length > 0) {
+        console.log("🔍 Primeira nota:", relatorios[0].notas[0])
+        console.log("🔍 Status da primeira nota:", relatorios[0].notas[0].status)
+        console.log("🔍 Divergência da primeira nota:", relatorios[0].notas[0].divergencia)
+      }
+    }
+    
+    console.log("🔍 Fonte de dados:", fonteDados)
+    console.log("🔍 === FIM DEBUG ===")
   }
 
   const handleLogout = () => {
@@ -1038,6 +1152,15 @@ NOTAS FISCAIS:`
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setShowChangePassword(true)}
+                className="flex items-center space-x-2 bg-transparent hover:bg-blue-50 border-blue-200"
+              >
+                <User className="h-4 w-4" />
+                <span>Alterar Senha</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleLogout}
                 className="flex items-center space-x-2 bg-transparent hover:bg-blue-50 border-blue-200"
               >
@@ -1113,10 +1236,10 @@ NOTAS FISCAIS:`
               <Button
                 onClick={exportarTodosRelatoriosExcel}
                 variant="outline"
-                className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
+                className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700 mt-2"
                 size="sm"
               >
-                <FileSpreadsheet className="h-4 w-4 mr-2" />
+                <FileSpreadsheet className="h-4 w-4 mr-2"/>
                 Exportar Todos ({relatoriosFiltrados.length})
               </Button>
             )}
@@ -1316,7 +1439,7 @@ NOTAS FISCAIS:`
                         <DialogTrigger asChild>
                           <Button
                             variant="outline"
-                            className="flex-1 bg-transparent"
+                            className="flex-1 w-full sm:w-auto bg-transparent text-xs sm:text-sm"
                             size="sm"
                             onClick={() => {
                               console.log('🔍 Abrindo modal para relatório:', relatorio.nome);
@@ -1329,7 +1452,8 @@ NOTAS FISCAIS:`
                             }}
                           >
                             <Eye className="h-3 w-3" />
-                            Ver Detalhes
+                            <span className="hidden sm:inline">Ver Detalhes</span>
+                            <span className="sm:hidden">Detalhes</span>
                           </Button>
                         </DialogTrigger>
                         <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
@@ -1664,7 +1788,8 @@ NOTAS FISCAIS:`
                         className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
                         size="sm"
                       >
-                        Em Lançamento
+                        <span className="hidden sm:inline">Em Lançamento</span>
+                        <span className="sm:hidden">Em Lançamento</span>
                       </Button>
 
                       <Button
@@ -1676,7 +1801,8 @@ NOTAS FISCAIS:`
                         className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
                         size="sm"
                       >
-                        Lançado
+                        <span className="hidden sm:inline">Lançado</span>
+                        <span className="sm:hidden">Lançado</span>
                       </Button>
                     </div>
                   </CardContent>
@@ -1686,6 +1812,19 @@ NOTAS FISCAIS:`
           )}
         </div>
       </main>
+
+      {/* Modal de Alterar Senha */}
+      {sessionData && (
+        <ChangePasswordModal
+          isOpen={showChangePassword}
+          onClose={() => setShowChangePassword(false)}
+          usuario={sessionData.colaboradores[0] || ""}
+          area="custos"
+          onSuccess={() => {
+            alert("Senha alterada com sucesso!")
+          }}
+        />
+      )}
     </div>
   );
 }

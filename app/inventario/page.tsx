@@ -95,6 +95,40 @@ export default function InventarioPage() {
     loadSession();
   }, [getSession, router]);
 
+  // Restrição do botão voltar do navegador
+  useEffect(() => {
+    if (!session) return
+
+    // Função para interceptar tentativas de saída da página
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = 'Você tem certeza que deseja sair? Use o botão "Sair" para sair corretamente.'
+      return 'Você tem certeza que deseja sair? Use o botão "Sair" para sair corretamente.'
+    }
+
+    // Função para interceptar navegação do botão voltar
+    const handlePopState = (event: PopStateEvent) => {
+      // Adiciona uma nova entrada no histórico para manter o usuário na página
+      window.history.pushState(null, '', window.location.href)
+      
+      // Mostra um alerta informativo
+      alert('Para sair do setor de Inventário, use o botão "Sair" no canto superior direito.')
+    }
+
+    // Adiciona uma entrada no histórico para interceptar o botão voltar
+    window.history.pushState(null, '', window.location.href)
+
+    // Adiciona os event listeners
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('popstate', handlePopState)
+
+    // Cleanup dos event listeners
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [session])
+
   const handleLogout = () => {
     logout();
     router.push("/");

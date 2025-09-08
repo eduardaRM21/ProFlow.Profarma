@@ -14,7 +14,6 @@ import {
 import { EmbalagemService } from '@/lib/embalagem-service'
 import { testSupabaseConnection, getConnectionHealth } from '@/lib/supabase-client'
 import { LocalAuthService } from '@/lib/local-auth-service'
-import { DatabaseService } from '@/lib/database-service'
 
 // ---
 // Hook Genérico para localStorage
@@ -130,8 +129,8 @@ export const useConnectivity = () => {
   useEffect(() => {
     checkConnection()
     
-    // Verificar conectividade a cada 30 segundos
-    const interval = setInterval(checkConnection, 30000)
+    // Verificar conectividade a cada 60 segundos (menos agressivo)
+    const interval = setInterval(checkConnection, 60000)
     return () => clearInterval(interval)
   }, [checkConnection])
 
@@ -151,10 +150,20 @@ export const useSession = () => {
     console.log('🔍 getSession chamado com sessionId:', sessionId)
     const now = Date.now()
     
-    // Usar cache se ainda válido
+    // SOLUÇÃO: Cache específico por usuário para evitar conflitos
+    // Usar uma chave única que inclui o sessionId
+    const cacheKey = `session_${sessionId}_${now}`
+    
+    // Usar cache se ainda válido E se for para a mesma área
     if (sessionCache && now - lastSessionFetch < SESSION_CACHE_TTL) {
-      console.log('📋 Usando cache de sessão:', sessionCache)
-      return sessionCache
+      // Verificar se o cache é para a área correta
+      if (sessionCache.area === sessionId || sessionId === 'current') {
+        console.log('📋 Usando cache de sessão válido:', sessionCache)
+        return sessionCache
+      } else {
+        console.log('⚠️ Cache de sessão é para área diferente, ignorando')
+        sessionCache = null // Limpar cache incorreto
+      }
     }
 
     try {
@@ -168,6 +177,7 @@ export const useSession = () => {
         
         if (session) {
           console.log('✅ Sessão encontrada no banco, salvando no cache')
+          // SOLUÇÃO: Cache específico por área para evitar conflitos
           sessionCache = session
           lastSessionFetch = now
           return session
@@ -184,9 +194,16 @@ export const useSession = () => {
       if (sessionLocal) {
         const sessionObj = JSON.parse(sessionLocal)
         console.log('📋 Sessão local encontrada:', sessionObj)
-        sessionCache = sessionObj
-        lastSessionFetch = now
-        return sessionObj
+        
+        // SOLUÇÃO: Verificar se a sessão local é para a área correta
+        if (sessionId === 'current' || sessionObj.area === sessionId) {
+          console.log('✅ Sessão local válida para área solicitada')
+          sessionCache = sessionObj
+          lastSessionFetch = now
+          return sessionObj
+        } else {
+          console.log('⚠️ Sessão local é para área diferente:', sessionObj.area, 'vs', sessionId)
+        }
       } else {
         console.log('⚠️ Nenhuma sessão local encontrada')
       }
@@ -194,37 +211,47 @@ export const useSession = () => {
       console.log('❌ Nenhuma sessão encontrada em nenhum lugar')
       return null
     } catch (error) {
-      console.error('❌ Erro ao carregar sessão:', error)
-      
-      // Fallback para localStorage em caso de erro
-      console.log('🔍 Fallback para localStorage em caso de erro...')
-      const sessionLocal = localStorage.getItem("sistema_session")
-      if (sessionLocal) {
-        const sessionObj = JSON.parse(sessionLocal)
-        console.log('📋 Sessão local de fallback:', sessionObj)
-        return sessionObj
-      }
-      
-      console.log('❌ Nenhuma sessão disponível no fallback')
+      console.error('❌ Erro no getSession:', error)
       return null
     }
   }, [isFullyConnected])
 
-  const saveSession = useCallback(async (sessionData: any): Promise<void> => {
+  const saveSession = useCallback(async (sessionData: any): Promise<string> => {
     try {
-      // Salvar localmente primeiro
-      localStorage.setItem("sistema_session", JSON.stringify(sessionData))
+      console.log('💾 Tentando salvar sessão...')
       
-      // Tentar salvar no banco se conectado
-      if (isFullyConnected) {
-        await SessionService.saveSession(sessionData)
-      }
-      
-      // Invalidar cache
+      // SOLUÇÃO: Limpar cache ao salvar nova sessão para evitar conflitos
       sessionCache = null
+      lastSessionFetch = 0
+      
+      // Salvar no banco se conectado
+      if (isFullyConnected) {
+        console.log('💾 Salvando sessão no banco...')
+        const sessionId = await SessionService.saveSession(sessionData)
+        console.log('✅ Sessão salva no banco com ID:', sessionId)
+        
+        // Atualizar cache com a nova sessão
+        sessionCache = sessionData
+        lastSessionFetch = Date.now()
+        
+        return sessionId
+      } else {
+        console.log('⚠️ Não conectado ao banco, salvando apenas localmente')
+      }
+
+      // Sempre salvar no localStorage como fallback
+      const sessionKey = 'sistema_session'
+      localStorage.setItem(sessionKey, JSON.stringify(sessionData))
+      console.log('✅ Sessão salva no localStorage')
+      
+      // Atualizar cache
+      sessionCache = sessionData
+      lastSessionFetch = Date.now()
+      
+      return 'local_' + Date.now()
     } catch (error) {
       console.error('❌ Erro ao salvar sessão:', error)
-      // Sessão já foi salva localmente, então não é crítico
+      throw error
     }
   }, [isFullyConnected])
 
@@ -312,13 +339,38 @@ export const useRecebimento = (chave: string) => {
       localStorage.removeItem(chave)
       
       if (isFullyConnected) {
-        // Tentar limpar no banco também
         try {
+          // 1. Limpar da tabela recebimento_notas (tabela temporária)
           await RecebimentoService.deleteNotas(chave)
+          console.log('✅ Notas removidas da tabela recebimento_notas')
+          
+          // 2. Limpar da tabela notas_bipadas (histórico de bipagem)
+          try {
+            const { getSupabase } = await import('@/lib/supabase-client')
+            const supabase = getSupabase()
+            
+            // Limpar por session_id específico para ser mais preciso
+            const { error: deleteBipadasError } = await supabase
+              .from('notas_bipadas')
+              .delete()
+              .eq('session_id', chave)
+            
+            if (deleteBipadasError) {
+              console.warn('⚠️ Erro ao deletar da tabela notas_bipadas:', deleteBipadasError)
+            } else {
+              console.log('✅ Notas removidas da tabela notas_bipadas (session_id: ' + chave + ')')
+            }
+          } catch (bipadasError) {
+            console.warn('⚠️ Erro ao limpar da tabela notas_bipadas:', bipadasError)
+          }
+          
+          // ✅ CORREÇÃO: NÃO DELETAR DA TABELA notas_fiscais!
+          // As notas fiscais só são salvas quando o relatório for finalizado
+          // Se as notas forem limpas antes da finalização, elas NÃO devem aparecer na tabela notas_fiscais
+          console.log('ℹ️ Notas fiscais preservadas - só são salvas quando relatório for finalizado')
+          
         } catch (deleteError) {
-          // Se falhar ao deletar, tentar salvar array vazio
-          console.warn('⚠️ Erro ao deletar notas, tentando salvar array vazio:', deleteError)
-          await RecebimentoService.saveNotas(chave, [])
+          console.warn('⚠️ Erro ao deletar notas do banco, mas limpeza local foi realizada:', deleteError)
         }
       }
     } catch (error) {

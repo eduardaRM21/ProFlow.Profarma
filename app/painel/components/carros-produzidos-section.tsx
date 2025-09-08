@@ -106,14 +106,16 @@ const copiarNFsParaSAP = (nfs: Array<{ numeroNF: string }>) => {
 
 interface CarroProduzido {
   id: string;
+  nomeCarro: string;
   colaboradores: string[];
   data: string;
   turno: string;
   destinoFinal: string;
   quantidadeNFs: number;
   totalVolumes: number;
-  dataProducao: string;
-  nfs: Array<{
+  dataCriacao: string;
+  dataProducao?: string;
+  nfs?: Array<{
     id: string;
     numeroNF: string;
     volume: number;
@@ -122,9 +124,12 @@ interface CarroProduzido {
     destino: string;
     tipoCarga: string;
   }>;
-  estimativaPallets: number;
+  estimativaPallets?: number;
   status?: "embalando" | "concluido" | "finalizado" | "pronto" | "liberado" | "lancado";
-  palletesReais?: number;
+  posicoes?: number | null;
+  palletes?: number | null;
+  gaiolas?: number | null;
+  caixasMangas?: number | null;
   dataInicioEmbalagem?: string;
   dataFinalizacao?: string;
   tipoCarro?: "ROD" | "CON";
@@ -141,6 +146,23 @@ interface CarrosProduzidosSectionProps {
   sessionData: SessionData;
 }
 
+// Função para formatar data de forma segura
+const formatarData = (dataString: string | null | undefined): string => {
+  if (!dataString) return "Data não disponível";
+  
+  try {
+    const data = new Date(dataString);
+    if (isNaN(data.getTime())) {
+      console.warn('Data inválida recebida:', dataString);
+      return "Data inválida";
+    }
+    return data.toLocaleString("pt-BR");
+  } catch (error) {
+    console.error('Erro ao formatar data:', error, 'Valor recebido:', dataString);
+    return "Erro na data";
+  }
+};
+
 export default function CarrosProduzidosSection({
   sessionData,
 }: CarrosProduzidosSectionProps) {
@@ -155,7 +177,15 @@ export default function CarrosProduzidosSection({
     carroId: string;
     nomeCarro: string;
   }>({ aberto: false, carroId: "", nomeCarro: "" });
-  const [quantidadePallets, setQuantidadePallets] = useState("");
+  const [quantidadePosicoes, setQuantidadePosicoes] = useState("");
+  const [tiposPosicao, setTiposPosicao] = useState<{
+    paletes: boolean;
+    gaiolas: boolean;
+    caixaManga: boolean;
+  }>({ paletes: false, gaiolas: false, caixaManga: false });
+  const [quantidadePaletesReais, setQuantidadePaletesReais] = useState("");
+  const [quantidadeGaiolas, setQuantidadeGaiolas] = useState("");
+  const [quantidadeCaixaManga, setQuantidadeCaixaManga] = useState("");
 
   const { addRealtimeEvent, carroExcluidoEvent } = useRealtimeMonitoring();
   const { toast } = useToast();
@@ -187,26 +217,35 @@ export default function CarrosProduzidosSection({
 
   const finalizarEmbalagem = async () => {
     if (
-      !quantidadePallets.trim() ||
-      isNaN(Number(quantidadePallets)) ||
-      Number(quantidadePallets) <= 0
+      !quantidadePosicoes.trim() ||
+      isNaN(Number(quantidadePosicoes)) ||
+      Number(quantidadePosicoes) <= 0
     ) {
-      alert("Por favor, informe uma quantidade válida de pallets!");
+      alert("Por favor, informe uma quantidade válida de posições!");
       return;
     }
 
-    const pallets = Number(quantidadePallets);
+    const posicoes = Number(quantidadePosicoes);
 
-    // Verificar se o carro já está lançado
-    const carroAtual = carros.find(c => c.id === modalPallets.carroId);
-    const carroJaLancado = carroAtual?.status === "lancado";
+    // Preparar dados detalhados
+    const dadosDetalhados = {
+      quantidadePosicoes: posicoes,
+      tipoPosicao: tiposPosicao,
+      quantidadePaletesReais: quantidadePaletesReais.trim() ? Number(quantidadePaletesReais) : null,
+      quantidadeGaiolas: quantidadeGaiolas.trim() ? Number(quantidadeGaiolas) : null,
+      quantidadeCaixaManga: quantidadeCaixaManga.trim() ? Number(quantidadeCaixaManga) : null
+    };
 
     try {
       // 1. Se o carro já estiver lançado, apenas atualizar pallets sem alterar status
+      const carroAtual = carros.find(c => c.id === modalPallets.carroId);
+      const carroJaLancado = carroAtual?.status === "lancado";
+
       if (carroJaLancado) {
         const resultado = await EmbalagemNotasBipadasService.atualizarPalletsCarro(
           modalPallets.carroId,
-          pallets
+          posicoes,
+          dadosDetalhados
         );
 
         if (!resultado.success) {
@@ -217,7 +256,8 @@ export default function CarrosProduzidosSection({
         // 2. Se não estiver lançado, finalizar normalmente
         const resultado = await EmbalagemNotasBipadasService.finalizarCarro(
           modalPallets.carroId,
-          pallets
+          posicoes,
+          dadosDetalhados
         );
 
         if (!resultado.success) {
@@ -238,7 +278,10 @@ export default function CarrosProduzidosSection({
           carros[carroIndex] = {
             ...carros[carroIndex],
             status: carroJaLancado ? "lancado" : "finalizado",
-            palletesReais: pallets,
+            posicoes: posicoes,
+            palletes: dadosDetalhados.quantidadePaletesReais || null,
+            gaiolas: dadosDetalhados.quantidadeGaiolas || null,
+            caixasMangas: dadosDetalhados.quantidadeCaixaManga || null,
             dataFinalizacao: new Date().toISOString(),
           };
 
@@ -261,7 +304,10 @@ export default function CarrosProduzidosSection({
           carros[carroIndex] = {
             ...carros[carroIndex],
             status: carroJaLancado ? "lancado" : "finalizado",
-            palletesReais: pallets,
+            posicoes: posicoes,
+            palletes: dadosDetalhados.quantidadePaletesReais || null,
+            gaiolas: dadosDetalhados.quantidadeGaiolas || null,
+            caixasMangas: dadosDetalhados.quantidadeCaixaManga || null,
             dataFinalizacao: new Date().toISOString(),
           };
 
@@ -279,14 +325,27 @@ export default function CarrosProduzidosSection({
         sector: 'embalagem',
         type: 'carro_created',
         message: `Carro ${modalPallets.nomeCarro} finalizado`,
-        data: { nomeCarro: modalPallets.nomeCarro, pallets, carroId: modalPallets.carroId }
+        data: { 
+          nomeCarro: modalPallets.nomeCarro, 
+          posicoes, 
+          carroId: modalPallets.carroId,
+          ...dadosDetalhados
+        }
       });
 
       // 5. Atualizar o carro na lista atual
       setCarros(prevCarros =>
         prevCarros.map(carro =>
           carro.id === modalPallets.carroId
-            ? { ...carro, status: carroJaLancado ? "lancado" : "finalizado", palletesReais: pallets, dataFinalizacao: new Date().toISOString() }
+            ? { 
+                ...carro, 
+                status: carroJaLancado ? "lancado" : "finalizado", 
+                posicoes: posicoes,
+                palletes: dadosDetalhados.quantidadePaletesReais || null,
+                gaiolas: dadosDetalhados.quantidadeGaiolas || null,
+                caixasMangas: dadosDetalhados.quantidadeCaixaManga || null,
+                dataFinalizacao: new Date().toISOString() 
+              }
             : carro
         )
       );
@@ -294,14 +353,34 @@ export default function CarrosProduzidosSection({
       // 6. Recarregar a lista para sincronizar com o banco
       await carregarCarrosProduzidos();
 
-      // 7. Fechar modal
+      // 7. Fechar modal e limpar campos
       setModalPallets({ aberto: false, carroId: "", nomeCarro: "" });
-      setQuantidadePallets("");
+      setQuantidadePosicoes("");
+      setTiposPosicao({ paletes: false, gaiolas: false, caixaManga: false });
+      setQuantidadePaletesReais("");
+      setQuantidadeGaiolas("");
+      setQuantidadeCaixaManga("");
+
+      // 8. Mostrar mensagem de sucesso com detalhes
+      const mensagemDetalhes = [
+        `Posições: ${posicoes} (${Object.entries(tiposPosicao)
+          .filter(([key, value]) => value)
+          .map(([key]) => {
+            if (key === 'paletes') return 'Paletes';
+            if (key === 'gaiolas') return 'Gaiolas';
+            if (key === 'caixaManga') return 'Caixa Manga';
+            return key;
+          })
+          .join(", ")})`,
+        dadosDetalhados.quantidadePaletesReais ? `Posições Reais: ${dadosDetalhados.quantidadePaletesReais}` : null,
+        dadosDetalhados.quantidadeGaiolas ? `Gaiolas: ${dadosDetalhados.quantidadeGaiolas}` : null,
+        dadosDetalhados.quantidadeCaixaManga ? `Caixa Manga: ${dadosDetalhados.quantidadeCaixaManga}` : null
+      ].filter(Boolean).join(" | ");
 
       alert(
         carroJaLancado 
-          ? `${modalPallets.nomeCarro} - Pallets atualizados com sucesso!\nPallets informados: ${pallets}`
-          : `${modalPallets.nomeCarro} finalizado com sucesso!\nPallets informados: ${pallets}`
+          ? `${modalPallets.nomeCarro} - Posições atualizadas com sucesso!\n${mensagemDetalhes}`
+          : `${modalPallets.nomeCarro} finalizado com sucesso!\n${mensagemDetalhes}`
       );
     } catch (error) {
       console.error('Erro ao finalizar carro:', error);
@@ -311,7 +390,11 @@ export default function CarrosProduzidosSection({
 
   const abrirModalPallets = (carroId: string, nomeCarro: string) => {
     setModalPallets({ aberto: true, carroId, nomeCarro });
-    setQuantidadePallets("");
+    setQuantidadePosicoes("");
+    setTiposPosicao({ paletes: false, gaiolas: false, caixaManga: false });
+    setQuantidadePaletesReais("");
+    setQuantidadeGaiolas("");
+    setQuantidadeCaixaManga("");
   };
 
   const getStatusLabel = (status?: string) => {
@@ -405,7 +488,19 @@ export default function CarrosProduzidosSection({
       const resultado = await EmbalagemNotasBipadasService.buscarCarrosProduzidos()
       if (resultado.success && resultado.carros) {
         console.log(`✅ Carregados ${resultado.carros.length} carros da tabela embalagem_notas_bipadas`)
-        carrosEncontrados.push(...(resultado.carros as CarroProduzido[]))
+        carrosEncontrados.push(...(resultado.carros.map(carro => ({
+          ...carro,
+          dataCriacao: carro.dataProducao || carro.dataInicioEmbalagem || new Date().toISOString()
+        })) as CarroProduzido[]))
+        
+        // Debug: verificar as datas dos carros após mapeamento
+        console.log('🔍 Carros após mapeamento:', carrosEncontrados.map(carro => ({
+          id: carro.id,
+          dataCriacao: carro.dataCriacao,
+          tipoDataCriacao: typeof carro.dataCriacao,
+          dataValida: carro.dataCriacao ? !isNaN(new Date(carro.dataCriacao).getTime()) : false,
+          dataFormatada: carro.dataCriacao ? formatarData(carro.dataCriacao) : 'N/A'
+        })));
       }
 
       // 2. Buscar carros em embalagem do localStorage (carros marcados como "Embalar carro")
@@ -419,25 +514,19 @@ export default function CarrosProduzidosSection({
             if (!carroJaExiste && carro.statusCarro === "embalando") {
               const carroFormatado: CarroProduzido = {
                 id: carro.id,
+                nomeCarro: carro.nomeCarro || `${carro.colaboradores.join(" + ")}`,
                 colaboradores: carro.colaboradores,
                 data: carro.data,
                 turno: carro.turno,
                 destinoFinal: carro.destinoFinal,
                 quantidadeNFs: carro.quantidadeNFs,
                 totalVolumes: carro.totalVolumes,
-                dataProducao: carro.dataInicioEmbalagem || carro.dataCriacao,
-                nfs: carro.nfs.map((nf: any) => ({
-                  id: nf.id,
-                  numeroNF: nf.numeroNF,
-                  volume: nf.volume,
-                  fornecedor: nf.fornecedor,
-                  codigo: nf.codigo,
-                  destino: nf.destinoFinal || nf.codigoDestino,
-                  tipoCarga: nf.tipo || 'Normal'
-                })),
-                estimativaPallets: carro.estimativaPallets,
+                dataCriacao: carro.dataInicioEmbalagem || carro.dataCriacao,
                 status: "embalando", // Carros do localStorage marcados como "embalando"
-                palletesReais: carro.palletesReais,
+                posicoes: carro.posicoes,
+                palletes: carro.palletes,
+                gaiolas: carro.gaiolas,
+                caixasMangas: carro.caixasMangas,
                 dataInicioEmbalagem: carro.dataInicioEmbalagem,
                 dataFinalizacao: carro.dataFinalizacao,
               };
@@ -458,7 +547,16 @@ export default function CarrosProduzidosSection({
 
       // Ordenar por data de produção (mais recente primeiro)
       carrosEncontrados.sort(
-        (a, b) => new Date(b.dataProducao).getTime() - new Date(a.dataProducao).getTime()
+        (a, b) => {
+          const dataA = new Date(a.dataCriacao);
+          const dataB = new Date(b.dataCriacao);
+          
+          // Se alguma data for inválida, colocar no final
+          if (isNaN(dataA.getTime())) return 1;
+          if (isNaN(dataB.getTime())) return -1;
+          
+          return dataB.getTime() - dataA.getTime();
+        }
       );
 
       console.log(`✅ Total de ${carrosEncontrados.length} carros carregados`)
@@ -484,17 +582,19 @@ export default function CarrosProduzidosSection({
         carros.forEach((carro: any) => {
           const carroFormatado: CarroProduzido = {
             id: carro.id,
+            nomeCarro: carro.nomeCarro || `${carro.colaboradores.join(" + ")}`,
             colaboradores: carro.colaboradores,
             data: carro.data,
             turno: carro.turno,
             destinoFinal: carro.destinoFinal,
             quantidadeNFs: carro.quantidadeNFs,
             totalVolumes: carro.totalVolumes,
-            dataProducao: carro.dataProducao,
-            nfs: carro.nfs,
-            estimativaPallets: carro.estimativaPallets,
+            dataCriacao: carro.dataProducao || carro.dataInicioEmbalagem || carro.dataCriacao || new Date().toISOString(),
             status: carro.status,
-            palletesReais: carro.palletesReais,
+            posicoes: carro.posicoes,
+            palletes: carro.palletes,
+            gaiolas: carro.gaiolas,
+            caixasMangas: carro.caixasMangas,
             dataInicioEmbalagem: carro.dataInicioEmbalagem,
             dataFinalizacao: carro.dataFinalizacao,
           };
@@ -516,19 +616,21 @@ export default function CarrosProduzidosSection({
           if (!carroJaExiste) {
             const carroFormatado: CarroProduzido = {
               id: carro.id,
+              nomeCarro: carro.nomeCarro || `${carro.colaboradores.join(" + ")}`,
               colaboradores: carro.colaboradores,
               data: carro.data,
               turno: carro.turno,
               destinoFinal: carro.destinoFinal,
               quantidadeNFs: carro.quantidadeNFs,
               totalVolumes: carro.totalVolumes,
-              dataProducao: carro.dataInicioEmbalagem,
-              nfs: carro.nfs,
-              estimativaPallets: carro.estimativaPallets,
-              status: carro.status,
-              palletesReais: carro.palletesReais,
-              dataInicioEmbalagem: carro.dataInicioEmbalagem,
-              dataFinalizacao: carro.dataFinalizacao,
+                          dataCriacao: carro.dataInicioEmbalagem || carro.dataCriacao || new Date().toISOString(),
+            status: carro.status,
+            posicoes: carro.posicoes,
+            palletes: carro.palletes,
+            gaiolas: carro.gaiolas,
+            caixasMangas: carro.caixasMangas,
+            dataInicioEmbalagem: carro.dataInicioEmbalagem,
+            dataFinalizacao: carro.dataFinalizacao,
             };
             carrosEncontrados.push(carroFormatado);
           }
@@ -572,6 +674,7 @@ export default function CarrosProduzidosSection({
 
                 const carro: CarroProduzido = {
                   id: chave,
+                  nomeCarro: `Carro ${chave}`,
                   colaboradores: colaboradoresStr
                     .split("+")
                     .map((c) => c.trim()),
@@ -580,7 +683,7 @@ export default function CarrosProduzidosSection({
                   destinoFinal: destinosUnicos.join(", "),
                   quantidadeNFs: nfsValidas.length,
                   totalVolumes,
-                  dataProducao:
+                  dataCriacao:
                     sessao.ultimaAtualizacao || new Date().toISOString(),
                   nfs: nfsValidas.map((nf: any) => ({
                     id: nf.id,
@@ -608,8 +711,16 @@ export default function CarrosProduzidosSection({
 
     // Ordenar por data de produção (mais recente primeiro)
     carrosEncontrados.sort(
-      (a, b) =>
-        new Date(b.dataProducao).getTime() - new Date(a.dataProducao).getTime()
+      (a, b) => {
+        const dataA = new Date(a.dataCriacao);
+        const dataB = new Date(b.dataCriacao);
+        
+        // Se alguma data for inválida, colocar no final
+        if (isNaN(dataA.getTime())) return 1;
+        if (isNaN(dataB.getTime())) return -1;
+        
+        return dataB.getTime() - dataA.getTime();
+      }
     );
 
     setCarros(carrosEncontrados);
@@ -702,10 +813,10 @@ export default function CarrosProduzidosSection({
             </div>
             <div className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-emerald-600">
-                {carros.reduce((sum, c) => sum + (c.palletesReais || 0), 0)}
+                {carros.reduce((sum, c) => sum + (c.posicoes || 0), 0)}
               </div>
               <div className="text-xs text-gray-600 leading-tight">
-                Qtdd Pallets
+                Qtdd Posições Pallets
               </div>
             </div>
           </div>
@@ -824,12 +935,12 @@ export default function CarrosProduzidosSection({
                     {/* Badge do tipo do carro */}
                     <Badge 
                       className={`text-xs ${
-                        determinarTipoCarro(carro.nfs) === "ROD" 
+                        determinarTipoCarro(carro.nfs || []) === "ROD" 
                           ? "bg-blue-100 text-blue-800 border-blue-200" 
                           : "bg-orange-100 text-orange-800 border-orange-200"
                       }`}
                     >
-                      {determinarTipoCarro(carro.nfs) === "ROD" ? "🚛 ROD" : "📦 CON"}
+                      {determinarTipoCarro(carro.nfs || []) === "ROD" ? "🚛 ROD" : "📦 CON"}
                     </Badge>
                   </div>
                 </div>
@@ -841,7 +952,7 @@ export default function CarrosProduzidosSection({
                   <span>{carro.data}</span>
                   <span>•</span>
                   <span>
-                    {new Date(carro.dataProducao).toLocaleString("pt-BR")}
+                    {formatarData(carro.dataCriacao)}
                   </span>
                 </div>
 
@@ -872,9 +983,9 @@ export default function CarrosProduzidosSection({
                   </div>
                   <div className="text-center">
                     <div className="text-base sm:text-lg font-bold text-purple-600">
-                      {carro.palletesReais || 0}
+                      {carro.posicoes || 0}
                     </div>
-                    <div className="text-xs text-gray-500">Palletes reais</div>
+                    <div className="text-xs text-gray-500">Posições</div>
                   </div>
                 </div>
 
@@ -924,9 +1035,7 @@ export default function CarrosProduzidosSection({
                               Produzido em
                             </div>
                             <div className="font-medium text-xs">
-                              {new Date(carro.dataProducao).toLocaleString(
-                                "pt-BR"
-                              )}
+                              {formatarData(carro.dataCriacao)}
                             </div>
                           </div>
                         </div>
@@ -953,7 +1062,7 @@ export default function CarrosProduzidosSection({
                                 </tr>
                               </thead>
                               <tbody>
-                                {carro.nfs.map((nf, index) => (
+                                {carro.nfs?.map((nf, index) => (
                                   <tr
                                     key={nf.id}
                                     className={
@@ -1202,13 +1311,13 @@ export default function CarrosProduzidosSection({
           setModalPallets({ aberto: false, carroId: "", nomeCarro: "" })
         }
       >
-        <DialogContent className="max-w-[95vw] sm:max-w-md">
+        <DialogContent className="max-w-[95vw] sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <Package className="h-6 w-6 text-green-600" />
               <span>
                 {carros.find(c => c.id === modalPallets.carroId)?.status === "lancado" 
-                  ? "Atualizar Pallets - " 
+                  ? "Atualizar Posições - " 
                   : "Finalizar Embalagem - "
                 }
                 {modalPallets.nomeCarro}
@@ -1216,29 +1325,162 @@ export default function CarrosProduzidosSection({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-4 sm:space-y-6 p-1 sm:p-2">
             <div>
-              <Label htmlFor="quantidadePallets">
-                Quantidade Real de Pallets *
+              <Label htmlFor="quantidadePosicoes">
+                Quantidade de Posições *
               </Label>
               <Input
-                id="quantidadePallets"
+                id="quantidadePosicoes"
                 type="number"
                 min="1"
                 placeholder="Ex: 3"
-                value={quantidadePallets}
-                onChange={(e) => setQuantidadePallets(e.target.value)}
+                value={quantidadePosicoes}
+                onChange={(e) => setQuantidadePosicoes(e.target.value)}
                 onKeyPress={(e) => {
                   if (e.key === "Enter") {
                     finalizarEmbalagem();
                   }
                 }}
-                className="mt-1"
+                className="mt-1 w-full text-base sm:text-sm"
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Informe a quantidade de posições onde os pallets foram colocados.
+              </p>
             </div>
 
-            <div className="text-sm text-gray-600">
-              <p>• Informe a quantidade real de pallets que foram utilizados</p>
+            {/* Opções de tipo de posição - só aparecem após informar quantidade */}
+            {quantidadePosicoes.trim() && (
+              <div className="space-y-3">
+                <Label>Tipos de Posição</Label>
+                <p className="text-xs text-gray-500">
+                  Marque quais tipos de posição foram utilizados:
+                </p>
+                
+                <div className="space-y-3 sm:space-y-2">
+                  <div className="flex items-center space-x-3 sm:space-x-2">
+                    <input
+                      type="checkbox"
+                      id="paletes"
+                      checked={tiposPosicao.paletes}
+                      onChange={(e) => setTiposPosicao(prev => ({
+                        ...prev,
+                        paletes: e.target.checked
+                      }))}
+                      className="rounded border-gray-300 text-green-600 focus:ring-green-500 w-4 h-4 sm:w-3 sm:h-3"
+                    />
+                    <Label htmlFor="paletes" className="text-base sm:text-sm font-normal cursor-pointer">
+                      Paletes
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center space-x-3 sm:space-x-2">
+                    <input
+                      type="checkbox"
+                      id="gaiolas"
+                      checked={tiposPosicao.gaiolas}
+                      onChange={(e) => setTiposPosicao(prev => ({
+                        ...prev,
+                        gaiolas: e.target.checked
+                      }))}
+                      className="rounded border-gray-300 text-green-600 focus:ring-green-500 w-4 h-4 sm:w-3 sm:h-3"
+                    />
+                    <Label htmlFor="gaiolas" className="text-base sm:text-sm font-normal cursor-pointer">
+                      Gaiolas
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center space-x-3 sm:space-x-2">
+                    <input
+                      type="checkbox"
+                      id="caixaManga"
+                      checked={tiposPosicao.caixaManga}
+                      onChange={(e) => setTiposPosicao(prev => ({
+                        ...prev,
+                        caixaManga: e.target.checked
+                      }))}
+                      className="rounded border-gray-300 text-green-600 focus:ring-green-500 w-4 h-4 sm:w-3 sm:h-3"
+                    />
+                    <Label htmlFor="caixaManga" className="text-base sm:text-sm font-normal cursor-pointer">
+                      Caixa Manga
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quantidades detalhadas - só aparecem após marcar tipos */}
+            {Object.values(tiposPosicao).some(Boolean) && (
+              <div className="space-y-3">
+                <Label>Quantidades Detalhadas</Label>
+                
+                {tiposPosicao.paletes && (
+                  <div>
+                    <Label htmlFor="quantidadePaletesReais">
+                      Quantidade palletes reais
+                    </Label>
+                    <Input
+                      id="quantidadePaletesReais"
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 5 (pode ser maior que posições)"
+                      value={quantidadePaletesReais}
+                      onChange={(e) => setQuantidadePaletesReais(e.target.value)}
+                      className="mt-1 w-full text-base sm:text-sm"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Pode ser maior que posições (paletes dobrados)
+                    </p>
+                  </div>
+                )}
+
+                {tiposPosicao.gaiolas && (
+                  <div>
+                    <Label htmlFor="quantidadeGaiolas">
+                      Quantidade de Gaiolas
+                    </Label>
+                    <Input
+                      id="quantidadeGaiolas"
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 0"
+                      value={quantidadeGaiolas}
+                      onChange={(e) => setQuantidadeGaiolas(e.target.value)}
+                      className="mt-1 w-full text-base sm:text-sm"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Quantidade total de gaiolas utilizadas
+                    </p>
+                  </div>
+                )}
+
+                {tiposPosicao.caixaManga && (
+                  <div>
+                    <Label htmlFor="quantidadeCaixaManga">
+                      Quantidade de Caixa Manga
+                    </Label>
+                    <Input
+                      id="quantidadeCaixaManga"
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 8 (pode ser maior que posições)"
+                      value={quantidadeCaixaManga}
+                      onChange={(e) => setQuantidadeCaixaManga(e.target.value)}
+                      className="mt-1 w-full text-base sm:text-sm"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Pode ser maior que posições (caixas dobradas)
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="text-sm sm:text-xs text-gray-600 space-y-1 sm:space-y-0.5 bg-gray-50 p-3 sm:p-2 rounded-lg">
+              <p>• Quantidade de posições é obrigatório (onde os pallets foram colocados)</p>
+              <p>• Marque quais tipos de posição foram utilizados (pode marcar múltiplos)</p>
+              <p>• Campos de quantidade aparecem apenas para os tipos marcados</p>
+              <p>• Quantidades podem ser maiores que posições (itens dobrados)</p>
               <p>• Esta informação será registrada para controle</p>
               <p>• {carros.find(c => c.id === modalPallets.carroId)?.status === "lancado" 
                   ? "Após confirmar, os pallets serão atualizados sem alterar o status do carro" 
@@ -1246,13 +1488,13 @@ export default function CarrosProduzidosSection({
                 }</p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-2">
               <Button
                 onClick={() => finalizarEmbalagem()}
-                disabled={!quantidadePallets.trim()}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-sm"
+                disabled={!quantidadePosicoes.trim() || !Object.values(tiposPosicao).some(Boolean)}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-base sm:text-sm h-12 sm:h-10"
               >
-                <CheckCircle2 className="h-4 w-4 mr-2" />
+                <CheckCircle2 className="h-5 w-5 sm:h-4 sm:w-4 mr-2" />
                 {carros.find(c => c.id === modalPallets.carroId)?.status === "lancado" 
                   ? "Atualizar Pallets" 
                   : "Finalizar Embalagem"
@@ -1266,9 +1508,13 @@ export default function CarrosProduzidosSection({
                     carroId: "",
                     nomeCarro: "",
                   });
-                  setQuantidadePallets("");
+                  setQuantidadePosicoes("");
+                  setTiposPosicao({ paletes: false, gaiolas: false, caixaManga: false });
+                  setQuantidadePaletesReais("");
+                  setQuantidadeGaiolas("");
+                  setQuantidadeCaixaManga("");
                 }}
-                className="text-sm"
+                className="text-base sm:text-sm h-12 sm:h-10"
               >
                 Cancelar
               </Button>

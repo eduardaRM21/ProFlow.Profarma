@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { useCarrosRealtime, CarroStatus } from "@/hooks/use-carros-realtime"
 import { getSupabase } from "@/lib/supabase-client"
+import FiltrosAvancados, { FiltrosAvancados as FiltrosAvancadosType } from "./filtros-avancados"
 import {
   Truck,
   Calendar,
@@ -62,6 +63,7 @@ interface Carro {
     status: "valida" | "invalida"
   }>
   estimativaPallets: number
+  posicoes?: number
   tipoCarro?: "ROD" | "CON"
 }
 
@@ -90,6 +92,7 @@ interface CarroLancamento {
   status: "aguardando_lancamento" | "em_lancamento" | "lancado" | "erro_lancamento"
   estimativaPallets: number
   palletesReais?: number
+  posicoes?: number
   numerosSAP?: string[]
   observacoes?: string
   dataLancamento?: string
@@ -103,22 +106,22 @@ const determinarTipoCarro = (nfs: Array<{ tipo: string }>): "ROD" | "CON" => {
   // Verificar se há pelo menos uma NF com tipo "ROD"
   const temROD = nfs.some(nf => nf.tipo?.toUpperCase().includes('ROD'));
   // Verificar se há pelo menos uma NF com tipo "CON" ou "CONTROLADO"
-  const temCON = nfs.some(nf => 
-    nf.tipo?.toUpperCase().includes('CON') || 
+  const temCON = nfs.some(nf =>
+    nf.tipo?.toUpperCase().includes('CON') ||
     nf.tipo?.toUpperCase().includes('CONTROLADO')
   );
-  
+
   // Priorizar ROD se existir, senão CON
   if (temROD) return "ROD";
   if (temCON) return "CON";
-  
+
   // Padrão: ROD (assumindo que a maioria é rodoviária)
   return "ROD";
 };
 
 export default function GerenciarCarrosSection() {
   const { toast } = useToast()
-  
+
   const {
     carros,
     loading,
@@ -136,10 +139,31 @@ export default function GerenciarCarrosSection() {
   const [carrosLancamento, setCarrosLancamento] = useState<CarroLancamento[]>([])
   const [filtroStatus, setFiltroStatus] = useState<string>("todos")
   const [filtroBusca, setFiltroBusca] = useState("")
+
+  // Filtros avançados
+  const [filtrosAvancados, setFiltrosAvancados] = useState<FiltrosAvancadosType>({
+    filtroData: "hoje",
+    dataInicio: new Date().toISOString().split('T')[0],
+    dataFim: new Date().toISOString().split('T')[0],
+    setores: [],
+    incluirSetores: false,
+    statuses: [],
+    incluirStatus: false,
+    colaboradores: [],
+    incluirColaboradores: false,
+    destinos: [],
+    incluirDestinos: false,
+    tiposCarro: [],
+    incluirTiposCarro: false,
+    salvarPreferencias: true,
+    mostrarFiltros: false
+  })
   const [carroSelecionado, setCarroSelecionado] = useState<CarroStatus | null>(null)
   const [carroLancamentoSelecionado, setCarroLancamentoSelecionado] = useState<CarroLancamento | null>(null)
   const [modalDetalhes, setModalDetalhes] = useState(false)
   const [carroParaExcluir, setCarroParaExcluir] = useState<CarroStatus | null>(null)
+
+
 
   // Estados para lançamento
   const [modalLancamento, setModalLancamento] = useState(false)
@@ -155,7 +179,7 @@ export default function GerenciarCarrosSection() {
 
   useEffect(() => {
     carregarCarrosLancamento()
-    
+
     // Sincronização automática a cada 45 segundos para melhor performance
     const interval = setInterval(() => {
       carregarCarrosLancamento()
@@ -164,7 +188,7 @@ export default function GerenciarCarrosSection() {
         recarregar()
       }
     }, 45000)
-    
+
     return () => clearInterval(interval)
   }, [recarregar])
 
@@ -183,7 +207,7 @@ export default function GerenciarCarrosSection() {
       console.log('🗑️ [COMPONENTE] Iniciando exclusão do carro:', carro)
       console.log('🆔 [COMPONENTE] ID do carro:', carro.carro_id)
       console.log('📋 [COMPONENTE] Dados completos do carro:', JSON.stringify(carro, null, 2))
-      
+
       if (!carro.carro_id) {
         console.error('❌ [COMPONENTE] ID do carro não encontrado')
         toast({
@@ -198,7 +222,7 @@ export default function GerenciarCarrosSection() {
       console.log(`🔄 [COMPONENTE] Chamando excluirCarro(${carro.carro_id})`)
       const result = await excluirCarro(carro.carro_id)
       console.log('📊 [COMPONENTE] Resultado da exclusão:', result)
-      
+
       if (result.success) {
         console.log('✅ [COMPONENTE] Carro excluído com sucesso')
         toast({
@@ -445,13 +469,395 @@ export default function GerenciarCarrosSection() {
     }
   }
 
+  // Função para imprimir carro em andamento
+  const imprimirCarro = (carro: CarroStatus) => {
+    const conteudoImpressao = criarConteudoImpressao(carro)
+    imprimirConteudo(conteudoImpressao)
+  }
+
+  // Função para imprimir carro de lançamento
+  const imprimirCarroLancamento = (carro: CarroLancamento) => {
+    const conteudoImpressao = criarConteudoImpressaoLancamento(carro)
+    imprimirConteudo(conteudoImpressao)
+  }
+
+  // Função para criar conteúdo de impressão para carro em andamento
+  const criarConteudoImpressao = (carro: CarroStatus) => {
+    const tipoCarro = determinarTipoCarro(carro.nfs)
+    const tipoCarroLabel = tipoCarro === "ROD" ? "RODOVIÁRIO" : "CONTROLADO"
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>${carro.nome_carro}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          @media print {
+            body { margin: 0; margin-bottom: 120px; }
+            .no-print { display: none; }
+          }
+          body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            margin-bottom: 120px;
+            font-size: 12px;
+          }
+          .header {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+          }
+          .info-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 20px;
+          }
+          .info-item {
+            display: flex;
+            flex-direction: column;
+          }
+          .info-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+          }
+          .info-value {
+            border: 1px solid #ccc;
+            padding: 8px;
+            background-color: #f9f9f9;
+            min-height: 20px;
+            font-size: 15px;
+          }
+          .nf-count {
+            grid-column: 3 / 4;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+            background-color: #e3f2fd;
+            border: 2px solid #2196f3;
+            padding: 15px;
+            border-radius: 2px;
+          }
+          .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          .table th {
+            background-color:rgb(0, 255, 238);
+            color: black;
+            padding: 10px;
+            text-align: left;
+            font-weight: bold
+          }
+          .table td {
+            border: 1px solid #ddd;
+            padding: 4px;
+            text-align: left;
+            margin-bottom: 10px;
+          }
+          .table tr:nth-child(even) {
+            background-color: #f2f2f2;
+          }
+          .print-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+          }
+          .print-button:hover {
+            background-color: #0056b3;
+          }
+          .rodape {
+            bottom: 0;
+            left: 0;
+            background: white;
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 20px;
+
+          }
+          
+        </style>
+      </head>
+      <body>
+        <button class="print-button no-print" onclick="window.print()">🖨️ Imprimir</button>
+        <div class="header">
+          ESPELHO DE PRODUÇÃO CARGAS CRDK ES
+        </div>
+        
+        <div class="info-section">
+          <div class="info-item">
+            <div class="info-label">EMBALADO POR:</div>
+            <div class="info-value">${carro.colaboradores.join(" + ")}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">DESTINO:</div>
+            <div class="info-value">${carro.destino_final}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">TIPO DE CARGA:</div>
+            <div class="info-value">${tipoCarroLabel}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">CONFERIDO POR:</div>
+            <div class="info-value"> </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">VOLUMES:</div>
+            <div class="info-value">${carro.total_volumes} </div>
+          </div>
+          <div class="nf-count">
+            ${carro.quantidade_nfs} NFs
+          </div>
+        </div>
+        
+        <table class="table">
+          <thead>
+            <tr>
+              <th>NOTA FISCAL</th>
+              <th>FORNECEDOR</th>
+              <th>VOLUMES</th>
+            </tr>
+          </thead>
+          <tbody >
+            ${carro.nfs.map(nf => `
+              <tr>
+                <td>${nf.numeroNF}</td>
+                <td>${nf.fornecedor}</td>
+                <td> </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        
+        <div style="margin-top: 5px; font-size: 10px; color: #666;">
+          <p><strong>Data:</strong> ${carro.data} | <strong>Turno:</strong> ${carro.turno} - ${getTurnoLabel(carro.turno)} | <strong>Status:</strong> ${getStatusLabel(carro.status_carro)} </p> 
+           </div>
+          <div class="rodape">
+           <p ><strong>QTDD PLT: </strong>     |    <strong>POSIÇÃO PLT:</strong> </p> 
+        </div>
+      </body>
+      </html>
+    `
+  }
+
+  // Função para criar conteúdo de impressão para carro de lançamento
+  const criarConteudoImpressaoLancamento = (carro: CarroLancamento) => {
+    const tipoCarro = determinarTipoCarro(carro.nfs)
+    const tipoCarroLabel = tipoCarro === "ROD" ? "RODOVIÁRIO" : "CONTROLADO"
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+      <title> ${carro.nomeCarro || 'Carro'} </title>
+        <meta charset="UTF-8">
+        <style>
+          @media print {
+            body { margin: 0; margin-bottom: 120px; }
+            .no-print { display: none; }
+          }
+          body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            margin-bottom: 120px;
+            font-size: 12px;
+          }
+          .header {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+          }
+          .info-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 20px;
+          }
+          .info-item {
+            display: flex;
+            flex-direction: column;
+          }
+          .info-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+         
+          }
+          .info-value {
+            border: 1px solid #ccc;
+            padding: 8px;
+            background-color: #f9f9f9;
+            min-height: 20px;
+            font-size: 15px;
+          }
+          .nf-count {
+            grid-column: 2 / 4;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            background-color: #e3f2fd;
+            border: 2px solid #2196f3;
+            padding: 15px;
+            border-radius: 5px;
+          }
+          .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+
+          }
+          .table th {
+            background-color:rgb(0, 255, 238);
+            color: white;
+            padding: 10px;
+            text-align: left;
+            font-weight: bold;
+          }
+          .table td {
+            border: 1px solid #ddd;
+            padding: 5px;
+            text-align: left;
+            margin-bottom: 10px;
+          }
+          .table tr:nth-child(even) {
+            background-color: #f2f2f2;
+          }
+          .print-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+          }
+          .print-button:hover {
+            background-color: #0056b3;
+          }
+
+           .rodape {
+            bottom: 0;
+            left: 0;
+            background: white;
+            width: 100%;
+            box-sizing: border-box;
+            margin-top: 20px;
+
+          }
+           
+        </style>
+      </head>
+      <body>
+        <button class="print-button no-print" onclick="window.print()">🖨️ Imprimir</button>
+        
+        <div class="header">
+          ESPELHO DE PRODUÇÃO CARGAS CRDK ES
+        </div>
+        
+        <div class="info-section">
+          <div class="info-item">
+            <div class="info-label">EMBALADO POR:</div>
+            <div class="info-value">${carro.colaboradores.join(" + ")}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">DESTINO:</div>
+            <div class="info-value">${carro.destinoFinal}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">TIPO DE CARGA:</div>
+            <div class="info-value">${tipoCarroLabel}</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">CONFERIDO POR:</div>
+            <div class="info-value"> </div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">VOLUMES:</div>
+            <div class="info-value">${carro.totalVolumes} </div>
+          </div>
+          <div class="nf-count">
+            ${carro.quantidadeNFs} NFs
+          </div>
+        </div>
+        
+        <table class="table">
+          <thead>
+            <tr>
+              <th>NOTA FISCAL</th>
+              <th>FORNECEDOR</th>
+              <th>VOLUMES</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${carro.nfs.map(nf => `
+              <tr>
+                <td>${nf.numeroNF}</td>
+                <td>${nf.fornecedor}</td>
+                <td> </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        
+        <div style="margin-top: 5px; font-size: 10px; color: #666;">
+          <p><strong>Data:</strong> ${carro.data} | <strong>Turno:</strong> ${carro.turno} - ${getTurnoLabel(carro.turno)} |  <strong>Status:</strong> ${getStatusLabel(carro.status)}</p>
+          </div>
+          <div class="rodape">
+          <p> <strong>QTDD PLT: </strong>     |  <strong>POSIÇÃO PLT: </strong>   </p>
+        </div>
+      </body>
+      </html>
+    `
+  }
+
+  // Função para imprimir o conteúdo
+  const imprimirConteudo = (conteudo: string) => {
+    const novaJanela = window.open('', '_blank', 'width=800,height=600')
+    if (novaJanela) {
+      novaJanela.document.write(conteudo)
+      novaJanela.document.close()
+
+      // Aguardar o carregamento e então imprimir
+      novaJanela.onload = () => {
+        setTimeout(() => {
+          novaJanela.print()
+        }, 500)
+      }
+    } else {
+      toast({
+        title: "Erro de Impressão",
+        description: "Não foi possível abrir a janela de impressão. Verifique se o bloqueador de pop-ups está ativado.",
+        variant: "destructive",
+        duration: 3000,
+      })
+    }
+  }
+
   const excluirNotaIndividual = async (carroId: string, notaId: string) => {
     try {
       console.log(`🗑️ [COMPONENTE] Excluindo nota ${notaId} do carro ${carroId}`)
-      
+
       // Usar a função do hook para excluir a nota do banco de dados
       const result = await excluirNotaCarro(carroId, notaId)
-      
+
       if (result.success) {
         console.log('✅ [COMPONENTE] Nota excluída com sucesso do banco')
         toast({
@@ -479,7 +885,7 @@ export default function GerenciarCarrosSection() {
     }
   }
 
-  const alterarStatusCarroEmbalagem = async (carroId: string, novoStatus: CarroStatus["status_carro"]) => {
+  const alterarStatusCarroEmbalagem = async (carroId: string, novoStatus: CarroStatus["status_carro"], fromModal: boolean = false) => {
     // Buscar o carro atual
     const carro = carros.find(c => c.carro_id === carroId)
     if (!carro) return
@@ -487,8 +893,8 @@ export default function GerenciarCarrosSection() {
     // REGRA DE NEGÓCIO: Lógica de finalização
     let statusParaSalvar = novoStatus
 
-    if (novoStatus === "aguardando_lancamento") {
-      // Se o Admin está marcando como aguardando lançamento, abrir modal para números SAP
+    if (novoStatus === "aguardando_lancamento" && !fromModal) {
+      // Se o Admin está marcando como aguardando lançamento (não do modal), abrir modal para números SAP
       setCarroParaSAP(carro)
       setNumerosSAP([])
       setNovoNumeroSAP("")
@@ -572,7 +978,7 @@ export default function GerenciarCarrosSection() {
       console.log('🔄 Iniciando processo de lançamento do carro...')
       console.log('🆔 ID do carro:', carroParaSAP.carro_id)
       console.log('🔑 Números SAP:', numerosSAP)
-      
+
       // 1. Lançar o carro (buscar número na tabela de finalizados e mudar status para "lancado")
       const result = await lancarCarro(carroParaSAP.carro_id, numerosSAP)
 
@@ -629,7 +1035,7 @@ export default function GerenciarCarrosSection() {
         })
       } else {
         console.log('✅ Tabela embalagem_carros_finalizados encontrada, salvando carro...')
-        
+
         // Salvar no Supabase
         const { data: insertData, error: supabaseError } = await getSupabase()
           .from('embalagem_carros_finalizados')
@@ -654,11 +1060,11 @@ export default function GerenciarCarrosSection() {
       const chaveCarrosFinalizados = "profarma_carros_finalizados_admin"
       const carrosFinalizadosExistentes = localStorage.getItem(chaveCarrosFinalizados)
       const carrosFinalizados = carrosFinalizadosExistentes ? JSON.parse(carrosFinalizadosExistentes) : []
-      
+
       // Adicionar o carro finalizado à lista local
       carrosFinalizados.push(carroParaSalvar)
       localStorage.setItem(chaveCarrosFinalizados, JSON.stringify(carrosFinalizados))
-      
+
       console.log('💾 Carro salvo localmente como backup:', carroParaSalvar)
 
       // 4. Fechar modal e limpar estados
@@ -688,34 +1094,120 @@ export default function GerenciarCarrosSection() {
 
   // Filtrar carros
   const carrosFiltrados = carros.filter((carro) => {
-          const matchStatus = filtroStatus === "todos" || 
-        (filtroStatus === "lancados" && carro.status_carro === "lancado") ||
-        carro.status_carro === filtroStatus
-    const matchBusca = filtroBusca === "" ||
-              carro.nome_carro.toLowerCase().includes(filtroBusca.toLowerCase()) ||
-        (carro.numeros_sap && carro.numeros_sap.some((sap: string) => 
-          sap.toLowerCase().includes(filtroBusca.toLowerCase())
-        )) ||
-        carro.colaboradores.some(col => col.toLowerCase().includes(filtroBusca.toLowerCase())) ||
-        carro.destino_final.toLowerCase().includes(filtroBusca.toLowerCase())
+    // Filtro básico de status
+    const matchStatus = filtroStatus === "todos" ||
+      (filtroStatus === "lancados" && carro.status_carro === "lancado") ||
+      carro.status_carro === filtroStatus
 
-    return matchStatus && matchBusca
+    // Filtro básico de busca
+    const matchBusca = filtroBusca === "" ||
+      carro.nome_carro.toLowerCase().includes(filtroBusca.toLowerCase()) ||
+      (carro.numeros_sap && carro.numeros_sap.some((sap: string) =>
+        sap.toLowerCase().includes(filtroBusca.toLowerCase())
+      )) ||
+      carro.colaboradores.some(col => col.toLowerCase().includes(filtroBusca.toLowerCase())) ||
+      carro.destino_final.toLowerCase().includes(filtroBusca.toLowerCase())
+
+    // Filtros avançados
+    let matchFiltrosAvancados = true
+
+    // Filtro de data
+    if (filtrosAvancados.filtroData !== "todos" && filtrosAvancados.dataInicio && filtrosAvancados.dataFim) {
+      const dataCarro = new Date(carro.data)
+      const dataInicio = new Date(filtrosAvancados.dataInicio)
+      const dataFim = new Date(filtrosAvancados.dataFim)
+      dataFim.setHours(23, 59, 59) // Incluir todo o dia final
+
+      matchFiltrosAvancados = matchFiltrosAvancados &&
+        dataCarro >= dataInicio && dataCarro <= dataFim
+    }
+
+    if (filtrosAvancados.incluirSetores && filtrosAvancados.setores.length > 0) {
+      // Implementar lógica de filtro por setor se necessário
+      matchFiltrosAvancados = matchFiltrosAvancados && true
+    }
+
+    if (filtrosAvancados.incluirStatus && filtrosAvancados.statuses.length > 0) {
+      matchFiltrosAvancados = matchFiltrosAvancados && filtrosAvancados.statuses.includes(carro.status_carro)
+    }
+
+    if (filtrosAvancados.incluirColaboradores && filtrosAvancados.colaboradores.length > 0) {
+      matchFiltrosAvancados = matchFiltrosAvancados &&
+        carro.colaboradores.some(col => filtrosAvancados.colaboradores.includes(col))
+    }
+
+    if (filtrosAvancados.incluirDestinos && filtrosAvancados.destinos.length > 0) {
+      matchFiltrosAvancados = matchFiltrosAvancados &&
+        filtrosAvancados.destinos.some(destino =>
+          carro.destino_final.toLowerCase().includes(destino.toLowerCase())
+        )
+    }
+
+    if (filtrosAvancados.incluirTiposCarro && filtrosAvancados.tiposCarro.length > 0) {
+      const tipoCarro = determinarTipoCarro(carro.nfs)
+      matchFiltrosAvancados = matchFiltrosAvancados && filtrosAvancados.tiposCarro.includes(tipoCarro)
+    }
+
+    return matchStatus && matchBusca && matchFiltrosAvancados
   })
 
   // Filtrar carros de lançamento
   const carrosLancamentoFiltrados = carrosLancamento.filter((carro) => {
+    // Filtro básico de status
     const matchStatus = filtroStatus === "todos" ||
       (filtroStatus === "lancados" && carro.status === "lancado") ||
       carro.status === filtroStatus
-    const matchBusca = filtroBusca === "" ||
-              (carro.nomeCarro && carro.nomeCarro.toLowerCase().includes(filtroBusca.toLowerCase())) ||
-        (carro.numerosSAP && carro.numerosSAP.some((sap: string) => 
-          sap.toLowerCase().includes(filtroBusca.toLowerCase())
-        )) ||
-        carro.colaboradores.some(col => col.toLowerCase().includes(filtroBusca.toLowerCase())) ||
-        carro.destinoFinal.toLowerCase().includes(filtroBusca.toLowerCase())
 
-    return matchStatus && matchBusca
+    // Filtro básico de busca
+    const matchBusca = filtroBusca === "" ||
+      (carro.nomeCarro && carro.nomeCarro.toLowerCase().includes(filtroBusca.toLowerCase())) ||
+      (carro.numerosSAP && carro.numerosSAP.some((sap: string) =>
+        sap.toLowerCase().includes(filtroBusca.toLowerCase())
+      )) ||
+      carro.colaboradores.some(col => col.toLowerCase().includes(filtroBusca.toLowerCase())) ||
+      carro.destinoFinal.toLowerCase().includes(filtroBusca.toLowerCase())
+
+    // Filtros avançados
+    let matchFiltrosAvancados = true
+
+    // Filtro de data
+    if (filtrosAvancados.filtroData !== "todos" && filtrosAvancados.dataInicio && filtrosAvancados.dataFim) {
+      const dataCarro = new Date(carro.data)
+      const dataInicio = new Date(filtrosAvancados.dataInicio)
+      const dataFim = new Date(filtrosAvancados.dataFim)
+      dataFim.setHours(23, 59, 59) // Incluir todo o dia final
+
+      matchFiltrosAvancados = matchFiltrosAvancados &&
+        dataCarro >= dataInicio && dataCarro <= dataFim
+    }
+
+    if (filtrosAvancados.incluirSetores && filtrosAvancados.setores.length > 0) {
+      // Implementar lógica de filtro por setor se necessário
+      matchFiltrosAvancados = matchFiltrosAvancados && true
+    }
+
+    if (filtrosAvancados.incluirStatus && filtrosAvancados.statuses.length > 0) {
+      matchFiltrosAvancados = matchFiltrosAvancados && filtrosAvancados.statuses.includes(carro.status)
+    }
+
+    if (filtrosAvancados.incluirColaboradores && filtrosAvancados.colaboradores.length > 0) {
+      matchFiltrosAvancados = matchFiltrosAvancados &&
+        carro.colaboradores.some(col => filtrosAvancados.colaboradores.includes(col))
+    }
+
+    if (filtrosAvancados.incluirDestinos && filtrosAvancados.destinos.length > 0) {
+      matchFiltrosAvancados = matchFiltrosAvancados &&
+        filtrosAvancados.destinos.some(destino =>
+          carro.destinoFinal.toLowerCase().includes(destino.toLowerCase())
+        )
+    }
+
+    if (filtrosAvancados.incluirTiposCarro && filtrosAvancados.tiposCarro.length > 0) {
+      const tipoCarro = determinarTipoCarro(carro.nfs)
+      matchFiltrosAvancados = matchFiltrosAvancados && filtrosAvancados.tiposCarro.includes(tipoCarro)
+    }
+
+    return matchStatus && matchBusca && matchFiltrosAvancados
   })
 
   // Combinar estatísticas do banco de dados com carros de lançamento
@@ -723,8 +1215,8 @@ export default function GerenciarCarrosSection() {
     ...estatisticasRealtime,
     lancados: carrosLancamento.filter((c) => c.status === "lancado").length,
     aguardandoLancamento: estatisticasRealtime.aguardandoLancamento + carrosLancamento.filter((c) => c.status === "aguardando_lancamento").length,
-    totalPallets: carros.reduce((total, carro) => total + ((carro as any).palletes_reais || carro.estimativa_pallets || 0), 0) +
-      carrosLancamento.reduce((total, carro) => total + (carro.palletesReais || carro.estimativaPallets || 0), 0),
+    totalPallets: carros.reduce((total, carro) => total + ((carro as any).posicoes || carro.estimativa_pallets || 0), 0) +
+      carrosLancamento.reduce((total, carro) => total + (carro.posicoes || carro.estimativaPallets || 0), 0),
   }
 
   return (
@@ -734,7 +1226,7 @@ export default function GerenciarCarrosSection() {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Truck className="h-6 w-6 text-blue-600" />
-            <span>Gerenciar Carros e Lançamentos - Área Administrativa</span>
+            <span>Gerenciar Carros e Lançamentos</span>
           </CardTitle>
 
           {/* Indicadores de Tempo Real */}
@@ -789,21 +1281,21 @@ export default function GerenciarCarrosSection() {
             </div>
           </div>
 
-          {/* Filtros */}
-          <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4">
-            <div className="flex items-center space-x-2 w-full sm:w-auto">
+          {/* Filtros Básicos */}
+          <div className="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:items-center sm:space-x-4">
+            <div className="flex items-center space-x-2 w-full">
               <Search className="h-4 w-4 text-gray-400 flex-shrink-0" />
               <Input
                 placeholder="Buscar por carro, colaborador ou destino..."
                 value={filtroBusca}
                 onChange={(e) => setFiltroBusca(e.target.value)}
-                className="w-full sm:w-64 text-sm"
+                className="w-full text-sm h-10"
               />
             </div>
             <div className="flex items-center space-x-2 w-full sm:w-auto">
               <Filter className="h-4 w-4 text-gray-400 flex-shrink-0" />
               <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-                <SelectTrigger className="w-full sm:w-48 text-sm">
+                <SelectTrigger className="w-full sm:w-48 text-sm h-10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -817,10 +1309,20 @@ export default function GerenciarCarrosSection() {
               </Select>
             </div>
           </div>
-
-
         </CardContent>
       </Card>
+
+      {/* Filtros Avançados */}
+      <FiltrosAvancados
+        filtros={filtrosAvancados}
+        onFiltrosChange={setFiltrosAvancados}
+        opcoesDisponiveis={{
+          setores: ["Embalagem", "Expedição", "Recebimento", "Administrativo"],
+          statuses: ["embalando", "divergencia", "aguardando_lancamento", "finalizado", "lancado"],
+          colaboradores: [...new Set(carros.flatMap(c => c.colaboradores))],
+          destinos: [...new Set(carros.flatMap(c => c.destino_final.split(", ")))]
+        }}
+      />
 
       {/* Indicadores de Status */}
       {loading && (
@@ -858,13 +1360,22 @@ export default function GerenciarCarrosSection() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
               {carrosFiltrados.map((carro) => (
-                <Card key={carro.carro_id} className="border-green-200 hover:shadow-md transition-shadow">
+                <Card
+                  key={carro.carro_id}
+                  className="border-green-200 hover:shadow-lg hover:border-green-300 transition-all duration-200 cursor-pointer group"
+                  onClick={() => {
+                    console.log('🎯 Card clicado, abrindo modal para carro:', carro)
+                    // Abrir o modal de detalhes que já existe
+                    setCarroSelecionado(carro)
+                    console.log('🎯 Estado carroSelecionado definido:', carro)
+                  }}
+                >
                   <CardHeader className="pb-2 sm:pb-3 px-2 sm:px-4 pt-2 sm:pt-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
                         <Truck className="h-5 w-5 text-green-600" />
                         <span className="font-semibold text-gray-900">
-                          {carro.numeros_sap && carro.numeros_sap.length > 0 
+                          {carro.numeros_sap && carro.numeros_sap.length > 0
                             ? `Carro SAP: ${carro.numeros_sap.join(', ')}`
                             : carro.nome_carro
                           }
@@ -876,14 +1387,13 @@ export default function GerenciarCarrosSection() {
                           {getStatusIcon(carro.status_carro)}
                           <span className="ml-1">{getStatusLabel(carro.status_carro)}</span>
                         </Badge>
-                        
+
                         {/* Badge do tipo do carro */}
-                        <Badge 
-                          className={`text-xs ${
-                            determinarTipoCarro(carro.nfs) === "ROD" 
-                              ? "bg-blue-100 text-blue-800 border-blue-200" 
+                        <Badge
+                          className={`text-xs ${determinarTipoCarro(carro.nfs) === "ROD"
+                              ? "bg-blue-100 text-blue-800 border-blue-200"
                               : "bg-orange-100 text-orange-800 border-orange-200"
-                          }`}
+                            }`}
                         >
                           {determinarTipoCarro(carro.nfs) === "ROD" ? "ROD" : "CON"}
                         </Badge>
@@ -924,13 +1434,23 @@ export default function GerenciarCarrosSection() {
                         <div className="text-xs text-gray-500">Volumes</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-purple-600">{carro.palletes_reais || carro.estimativa_pallets}</div>
-                        <div className="text-xs text-gray-500">{carro.palletes_reais ? 'Pallets Reais' : 'Estimativa'}</div>
+                         <div className="text-lg font-bold text-purple-600">
+                           {carro.posicoes || carro.estimativa_pallets}
+                         </div>
+                         <div className="text-xs text-gray-500">
+                           {carro.posicoes ? 'Posições' : 'Estimativa'}
+                         </div>
                       </div>
                     </div>
 
                     <div className="text-xs text-gray-500">
                       Criado em: {new Date(carro.data_criacao).toLocaleString("pt-BR")}
+                    </div>
+
+                    {/* Indicador de clique */}
+                    <div className="text-center text-xs text-gray-400 group-hover:text-blue-600 transition-colors border-t pt-2 mt-2">
+                      <Eye className="h-4 w-4 inline mr-1" />
+                      Clique para ver detalhes completos
                     </div>
 
                     {/* Indicador de última atualização */}
@@ -941,10 +1461,11 @@ export default function GerenciarCarrosSection() {
                       </div>
                     )}
 
-                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 items-center justify-center">
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:flex lg:flex-row gap-2 sm:gap-3 items-center justify-center">
 
                       <Button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation()
                           console.log('🚀 Botão Lançar clicado para carro:', carro)
                           setCarroParaSAP(carro)
                           setNumerosSAP([])
@@ -952,213 +1473,38 @@ export default function GerenciarCarrosSection() {
                           setModalSAP(true)
                         }}
                         disabled={carro.status_carro === "lancado"}
-                        className={`flex-1 w-full sm:w-auto text-xs sm:text-sm ${
-                          carro.status_carro === "lancado" 
-                            ? "bg-gray-400 cursor-not-allowed" 
+                        className={`w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8 ${carro.status_carro === "lancado"
+                            ? "bg-gray-400 cursor-not-allowed"
                             : "bg-green-600 hover:bg-green-700"
-                        } text-white`}
+                          } text-white`}
                         size="sm"
                         title={carro.status_carro === "lancado" ? "Carro já foi lançado" : "Lançar carro"}
                       >
-                        <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                         <span className="hidden sm:inline">{carro.status_carro === "lancado" ? "Lançado" : "Lançar"}</span>
                         <span className="sm:hidden">{carro.status_carro === "lancado" ? "✓" : "🚀"}</span>
                       </Button>
 
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="flex-1 w-full sm:w-auto text-xs sm:text-sm"
-                            onClick={() => setCarroSelecionado(carro)}
-                          >
-                            <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                            <span className="hidden sm:inline">Detalhes</span>
-                            <span className="sm:hidden">👁️</span>
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] md:max-h-[80vh] overflow-y-auto">
-                          <DialogHeader>
-                            <DialogTitle className="flex items-center space-x-2 text-sm sm:text-base">
-                              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
-                              <span>
-                                Detalhes do {carro.numeros_sap && carro.numeros_sap.length > 0 
-                                  ? `Carro SAP: ${carro.numeros_sap.join(', ')}`
-                                  : carro.nome_carro
-                                } - {carro.colaboradores.join(" + ")}
-                              </span>
-                            </DialogTitle>
-                          </DialogHeader>
-
-                          <div className="space-y-4">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-                              <div>
-                                <div className="text-sm text-gray-600">Status</div>
-                                <div className="space-y-2">
-                                  <Badge className={`${getStatusColor(carro.status_carro)}`}>
-                                    {getStatusLabel(carro.status_carro)}
-                                  </Badge>
-                                  
-                                  {/* Badge do tipo do carro */}
-                                  <Badge 
-                                    className={`${
-                                      determinarTipoCarro(carro.nfs) === "ROD" 
-                                        ? "bg-blue-100 text-blue-800 border-blue-200" 
-                                        : "bg-orange-100 text-orange-800 border-orange-200"
-                                    }`}
-                                  >
-                                    {determinarTipoCarro(carro.nfs) === "ROD" ? "ROD" : "CON"}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <div>
-                                <div className="text-sm text-gray-600">Data</div>
-                                <div className="font-medium">{carro.data}</div>
-                              </div>
-                              <div>
-                                <div className="text-sm text-gray-600">Destino</div>
-                                <div className="font-medium">{carro.destino_final}</div>
-                              </div>
-                              <div>
-                                <div className="text-sm text-gray-600">Criado</div>
-                                <div className="font-medium text-xs">
-                                  {new Date(carro.data_criacao).toLocaleString("pt-BR")}
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Exibir números SAP se o carro estiver finalizado */}
-                            {carro.status_carro === "finalizado" && carro.numeros_sap && carro.numeros_sap.length > 0 && (
-                              <div className="p-4 bg-green-50 rounded-lg">
-                                <div className="text-sm font-medium text-green-800 mb-2">Números SAP:</div>
-                                <div className="flex flex-wrap gap-2">
-                                  {carro.numeros_sap.map((numero: string, index: number) => (
-                                    <Badge key={index} variant="outline" className="bg-green-100 text-green-700 border-green-200 font-mono">
-                                      {numero}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            <ScrollArea className="h-96">
-                              <div className="border rounded-lg overflow-hidden">
-                                <div className="bg-gray-50 px-2 sm:px-4 py-2 grid grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700">
-                                  <div>NF</div>
-                                  <div>Fornecedor</div>
-                                  <div>Destino</div>
-                                  <div>Tipo</div>
-                                  <div>Volume</div>
-                                  <div>Status</div>
-                                  <div>Ações</div>
-                                </div>
-                                {carro.nfs.map((nf, index) => (
-                                  <div
-                                    key={nf.id}
-                                    className={`px-2 sm:px-4 py-2 grid grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm ${index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                                      }`}
-                                  >
-                                    <div className="font-medium">{nf.numeroNF}</div>
-                                    <div className="truncate" title={nf.fornecedor}>
-                                      {nf.fornecedor}
-                                    </div>
-                                    <div className="text-xs">{nf.destinoFinal}</div>
-                                    <div className="text-xs">{nf.tipo}</div>
-
-                                    <div className="text-center">{nf.volume}</div>
-                                    <div className="text-xs">
-                                      <Badge variant={nf.status === "valida" ? "default" : "destructive"}>
-                                        {nf.status}
-                                      </Badge>
-                                    </div>
-                                    <div className="flex space-x-1">
-                                      <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="text-red-600 border-red-200 hover:bg-red-50 text-xs"
-                                          >
-                                            <Trash2 className="h-3 w-3" />
-                                          </Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                          <AlertDialogHeader>
-                                            <AlertDialogTitle>Confirmar Exclusão da Nota</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                              Tem certeza que deseja excluir a nota {nf.numeroNF}?
-                                              <br />
-                                              <br />
-                                              <strong>Atenção:</strong> Esta ação não pode ser desfeita.
-                                            </AlertDialogDescription>
-                                          </AlertDialogHeader>
-                                          <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                            <AlertDialogAction
-                                              onClick={() => carro.carro_id && excluirNotaIndividual(carro.carro_id, nf.id)}
-                                              className="bg-red-600 hover:bg-red-700"
-                                            >
-                                              Excluir Nota
-                                            </AlertDialogAction>
-                                          </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                      </AlertDialog>
-                                    </div>
-                                  </div>
-                                ))}
-                                <div className="bg-green-50 px-4 py-2 grid grid-cols-7 gap-4 text-sm font-bold text-green-800">
-                                  <div className="col-span-5">Total do Carro:</div>
-                                  <div className="text-center">{carro.total_volumes}</div>
-                                  <div></div>
-                                </div>
-                              </div>
-                            </ScrollArea>
-
-                            {/* Botões de Ação */}
-                            <div className="flex space-x-2 pt-4 border-t">
-                              <Button
-                                onClick={() => copiarNFsParaSAP(carro.nfs)}
-                                variant="outline"
-                                className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
-                              >
-                                <Copy className="h-4 w-4 mr-2" />
-                                Copiar NFs
-                              </Button>
-                              <Button
-                                onClick={() => copiarVolumesParaSAP(carro.nfs)}
-                                variant="outline"
-                                className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
-                              >
-                                <Copy className="h-4 w-4 mr-2" />
-                                Copiar Volumes
-                              </Button>
-
-                              <Select
-                                value={carro.status_carro}
-                                onValueChange={(value) => alterarStatusCarroEmbalagem(carro.carro_id, value as CarroStatus["status_carro"])}
-                              >
-                                <SelectTrigger className="w-full h-10 w-15 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="embalando">🟠 Embalando</SelectItem>
-                                  <SelectItem value="divergencia">🔴 Divergência</SelectItem>
-                                  <SelectItem value="aguardando_lancamento">⏳ Aguardando Lançamento</SelectItem>
-                                  <SelectItem value="finalizado">✅ Finalizado</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          imprimirCarro(carro)
+                        }}
+                      >
+                        <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        <span className="hidden sm:inline">Imprimir</span>
+                        <span className="sm:hidden">🖨️</span>
+                      </Button>
                       <Button
                         onClick={() => copiarNFsParaSAP(carro.nfs)}
                         variant="outline"
-                        className="flex-1 w-full sm:w-auto text-xs sm:text-sm bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+                        className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
                         size="sm"
                       >
-                        <Copy className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        <Copy className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                         <span className="hidden sm:inline">Copiar NFs</span>
                         <span className="sm:hidden">📋</span>
                       </Button>
@@ -1168,10 +1514,10 @@ export default function GerenciarCarrosSection() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="flex-1 w-full sm:w-auto text-xs sm:text-sm text-red-600 border-red-200 hover:bg-red-50"
+                            className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8 text-red-600 border-red-200 hover:bg-red-50"
                             onClick={() => setCarroParaExcluir(carro)}
                           >
-                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                             <span className="hidden sm:inline">Excluir</span>
                             <span className="sm:hidden">🗑️</span>
                           </Button>
@@ -1180,10 +1526,10 @@ export default function GerenciarCarrosSection() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Tem certeza que deseja excluir o carro "{carroParaExcluir?.numeros_sap && carroParaExcluir.numeros_sap.length > 0 
-                  ? `Carro SAP: ${carroParaExcluir.numeros_sap.join(', ')}`
-                  : carroParaExcluir?.nome_carro
-                }"?
+                              Tem certeza que deseja excluir o carro "{carroParaExcluir?.numeros_sap && carroParaExcluir.numeros_sap.length > 0
+                                ? `Carro SAP: ${carroParaExcluir.numeros_sap.join(', ')}`
+                                : carroParaExcluir?.nome_carro
+                              }"?
                               <br />
                               <br />
                               <strong>Atenção:</strong> Esta ação não pode ser desfeita e todos os dados do carro serão perdidos permanentemente.
@@ -1221,7 +1567,16 @@ export default function GerenciarCarrosSection() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
               {carrosLancamentoFiltrados.map((carro) => (
-                <Card key={carro.id} className="border-purple-200 hover:shadow-md transition-shadow">
+                <Card
+                  key={carro.id}
+                  className="border-purple-200 hover:shadow-lg hover:border-purple-300 transition-all duration-200 cursor-pointer group"
+                  onClick={() => {
+                    console.log('🎯 Card de lançamento clicado, abrindo modal para carro:', carro)
+                    // Abrir o modal de detalhes que já existe
+                    setCarroLancamentoSelecionado(carro)
+                    console.log('🎯 Estado carroLancamentoSelecionado definido:', carro)
+                  }}
+                >
                   <CardHeader className="pb-2 sm:pb-3 px-2 sm:px-4 pt-2 sm:pt-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
@@ -1238,14 +1593,13 @@ export default function GerenciarCarrosSection() {
                           {getStatusIcon(carro.status)}
                           <span className="ml-1">{getStatusLabel(carro.status)}</span>
                         </Badge>
-                        
+
                         {/* Badge do tipo do carro */}
-                        <Badge 
-                          className={`text-xs ${
-                            determinarTipoCarro(carro.nfs) === "ROD" 
-                              ? "bg-blue-100 text-blue-800 border-blue-200" 
+                        <Badge
+                          className={`text-xs ${determinarTipoCarro(carro.nfs) === "ROD"
+                              ? "bg-blue-100 text-blue-800 border-blue-200"
                               : "bg-orange-100 text-orange-800 border-orange-200"
-                          }`}
+                            }`}
                         >
                           {determinarTipoCarro(carro.nfs) === "ROD" ? "🚛 ROD" : "📦 CON"}
                         </Badge>
@@ -1285,8 +1639,8 @@ export default function GerenciarCarrosSection() {
                         <div className="text-xs text-gray-500">Volumes</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-blue-600">{carro.palletesReais || carro.estimativaPallets}</div>
-                        <div className="text-xs text-gray-500">{carro.palletesReais ? 'Pallets Reais' : 'Estimativa'}</div>
+                        <div className="text-lg font-bold text-blue-600">{carro.posicoes || carro.estimativaPallets}</div>
+                        <div className="text-xs text-gray-500">{carro.posicoes ? 'Posições' : 'Estimativa'}</div>
                       </div>
                     </div>
 
@@ -1294,30 +1648,50 @@ export default function GerenciarCarrosSection() {
                       Finalizado em: {new Date(carro.dataFinalizacao).toLocaleString("pt-BR")}
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-2">
+                    {/* Indicador de clique */}
+                    <div className="text-center text-xs text-gray-400 group-hover:text-purple-600 transition-colors border-t pt-2 mt-2">
+                      <Eye className="h-4 w-4 inline mr-1" />
+                      Clique para ver detalhes completos
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:flex lg:flex-row gap-2 sm:gap-3">
                       {carro.status === "aguardando_lancamento" && (
                         <Button
-                          onClick={() => iniciarLancamento(carro)}
-                          className="flex-1 w-full sm:w-auto text-xs sm:text-sm bg-purple-600 hover:bg-purple-700"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            iniciarLancamento(carro)
+                          }}
+                          className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8 bg-purple-600 hover:bg-purple-700"
                           size="sm"
                         >
-                          <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                          <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                           <span className="hidden sm:inline">Fazer Lançamento</span>
                           <span className="sm:hidden">🚀</span>
                         </Button>
                       )}
 
                       {carro.status === "em_lancamento" && (
-                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-2 w-full">
-                          <Button onClick={() => iniciarLancamento(carro)} variant="outline" className="flex-1 w-full sm:w-auto text-xs sm:text-sm" size="sm">
-                            <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                        <div className="col-span-2 sm:col-span-1 grid grid-cols-2 sm:grid-cols-2 lg:flex lg:flex-row gap-2 w-full">
+                          <Button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              iniciarLancamento(carro)
+                            }}
+                            variant="outline"
+                            className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8"
+                            size="sm"
+                          >
+                            <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                             <span className="hidden sm:inline">Continuar</span>
                             <span className="sm:hidden">📄</span>
                           </Button>
                           <Button
-                            onClick={() => alterarStatusCarro(carro.id, "aguardando_lancamento")}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              alterarStatusCarro(carro.id, "aguardando_lancamento")
+                            }}
                             variant="outline"
-                            className="flex-1 w-full sm:w-auto text-xs sm:text-sm"
+                            className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8"
                             size="sm"
                           >
                             <span className="hidden sm:inline">Cancelar</span>
@@ -1326,110 +1700,28 @@ export default function GerenciarCarrosSection() {
                         </div>
                       )}
 
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="outline" size="sm" className="flex-1 w-full sm:w-auto text-xs sm:text-sm">
-                            <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                            <span className="hidden sm:inline">Ver NFs</span>
-                            <span className="sm:hidden">👁️</span>
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] md:max-h-[80vh] overflow-y-auto">
-                          <DialogHeader>
-                            <DialogTitle className="flex items-center space-x-2 text-sm sm:text-base">
-                              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
-                              <span>
-                                NFs do {carro.nomeCarro || "Carro"} - {carro.colaboradores.join(" + ")}
-                              </span>
-                            </DialogTitle>
-                          </DialogHeader>
-
-                          <div className="space-y-4">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
-                              <div>
-                                <div className="text-sm text-gray-600">Status</div>
-                                <Badge className={`${getStatusColor(carro.status)}`}>{getStatusLabel(carro.status)}</Badge>
-                              </div>
-                              <div>
-                                <div className="text-sm text-gray-600">Data</div>
-                                <div className="font-medium">{carro.data}</div>
-                              </div>
-                              <div>
-                                <div className="text-sm text-gray-600">Destino</div>
-                                <div className="font-medium">{carro.destinoFinal}</div>
-                              </div>
-                              <div>
-                                <div className="text-sm text-gray-600">Finalizado</div>
-                                <div className="font-medium text-xs">
-                                  {new Date(carro.dataFinalizacao).toLocaleString("pt-BR")}
-                                </div>
-                              </div>
-                            </div>
-
-                            <ScrollArea className="h-96">
-                              <div className="border rounded-lg overflow-hidden">
-                                <div className="bg-gray-50 px-2 sm:px-4 py-2 grid grid-cols-6 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700">
-                                  <div>NF</div>
-                                  <div>Código</div>
-                                  <div>Fornecedor</div>
-                                  <div>Destino</div>
-                                  <div>Volume</div>
-                                  <div>Tipo</div>
-                                </div>
-                                {carro.nfs.map((nf, index) => (
-                                  <div
-                                    key={nf.id}
-                                    className={`px-2 sm:px-4 py-2 grid grid-cols-6 gap-2 sm:gap-4 text-xs sm:text-sm ${index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                                      }`}
-                                  >
-                                    <div className="font-medium">{nf.numeroNF}</div>
-                                    <div className="font-mono text-xs">{nf.codigo}</div>
-                                    <div className="truncate" title={nf.fornecedor}>
-                                      {nf.fornecedor}
-                                    </div>
-                                    <div className="text-xs">{nf.destinoFinal}</div>
-                                    <div className="text-center">{nf.volume}</div>
-                                    <div className="text-xs">{nf.tipo}</div>
-                                  </div>
-                                ))}
-                                <div className="bg-purple-50 px-4 py-2 grid grid-cols-6 gap-4 text-sm font-bold text-purple-800">
-                                  <div className="col-span-4">Total do Carro:</div>
-                                  <div className="text-center">{carro.totalVolumes}</div>
-                                  <div></div>
-                                </div>
-                              </div>
-                            </ScrollArea>
-
-                            {/* Botões de Ação */}
-                            <div className="flex space-x-2 pt-4 border-t">
-                              <Button
-                                onClick={() => copiarNFsParaSAP(carro.nfs)}
-                                variant="outline"
-                                className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
-                              >
-                                <Copy className="h-4 w-4 mr-2" />
-                                Copiar NFs
-                              </Button>
-                              <Button
-                                onClick={() => copiarVolumesParaSAP(carro.nfs)}
-                                variant="outline"
-                                className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
-                              >
-                                <Copy className="h-4 w-4 mr-2" />
-                                Copiar Volumes
-                              </Button>
-                            </div>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          imprimirCarroLancamento(carro)
+                        }}
+                      >
+                        <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        <span className="hidden sm:inline">Imprimir</span>
+                        <span className="sm:hidden">🖨️</span>
+                      </Button>
                       <Button
                         onClick={() => copiarNFsParaSAP(carro.nfs)}
                         variant="outline"
-                        className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+                        className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
                         size="sm"
                       >
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copiar NFs
+                        <Copy className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        <span className="hidden sm:inline">Copiar NFs</span>
+                        <span className="sm:hidden">📋</span>
                       </Button>
                     </div>
                   </CardContent>
@@ -1548,7 +1840,7 @@ export default function GerenciarCarrosSection() {
             <DialogTitle className="flex items-center space-x-2 text-sm sm:text-base">
               <Send className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
               <span>
-                Lançar Carro - {carroParaSAP?.numeros_sap && carroParaSAP.numeros_sap.length > 0 
+                Lançar Carro - {carroParaSAP?.numeros_sap && carroParaSAP.numeros_sap.length > 0
                   ? `Carro SAP: ${carroParaSAP.numeros_sap.join(', ')}`
                   : carroParaSAP?.nome_carro || "Carro"
                 } (
@@ -1664,6 +1956,338 @@ export default function GerenciarCarrosSection() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Detalhes do Carro Selecionado */}
+      <Dialog
+        open={!!carroSelecionado}
+        onOpenChange={(open) => {
+          console.log('🔍 Modal onOpenChange:', open, 'carroSelecionado:', carroSelecionado)
+          if (!open) setCarroSelecionado(null)
+        }}
+      >
+        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] overflow-y-auto z-[9999]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2 text-sm sm:text-base">
+              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
+              <span>
+                Detalhes do Carro - {carroSelecionado?.numeros_sap && carroSelecionado.numeros_sap.length > 0
+                  ? `Carro SAP: ${carroSelecionado.numeros_sap.join(', ')}`
+                  : carroSelecionado?.nome_carro || "Carro"
+                } ({carroSelecionado?.colaboradores.join(" + ")})
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {carroSelecionado && (
+            <div className="space-y-6">
+              {/* Resumo do Carro */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="text-sm text-gray-600">Status</div>
+                  <Badge className={`${getStatusColor(carroSelecionado.status_carro)}`}>
+                    {getStatusIcon(carroSelecionado.status_carro)}
+                    <span className="ml-1">{getStatusLabel(carroSelecionado.status_carro)}</span>
+                  </Badge>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Data</div>
+                  <div className="font-medium">{carroSelecionado.data}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Turno</div>
+                  <div className="font-medium">
+                    {carroSelecionado.turno} - {getTurnoLabel(carroSelecionado.turno)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Destino</div>
+                  <div className="font-medium">{carroSelecionado.destino_final}</div>
+                </div>
+              </div>
+
+              {/* Informações Adicionais */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-blue-50 rounded-lg">
+                <div>
+                  <div className="text-sm text-gray-600">NFs</div>
+                  <div className="font-medium text-lg">{carroSelecionado.quantidade_nfs}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Total Volumes</div>
+                  <div className="font-medium text-lg">{carroSelecionado.total_volumes}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">{carroSelecionado.posicoes ? 'Posições' : 'Estimativa de pallets'}</div>
+                    <div className="font-medium text-lg">{carroSelecionado.posicoes || carroSelecionado.estimativa_pallets}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Tipo Carro</div>
+                  <div className="font-medium text-lg">
+                    <Badge
+                      className={`${determinarTipoCarro(carroSelecionado.nfs) === "ROD"
+                          ? "bg-blue-100 text-blue-800 border-blue-200"
+                          : "bg-orange-100 text-orange-800 border-orange-200"
+                        }`}
+                    >
+                      {determinarTipoCarro(carroSelecionado.nfs)}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* NFs do Carro */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Notas Fiscais</h3>
+                </div>
+
+                <ScrollArea className="h-96">
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 px-2 sm:px-4 py-2 grid grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700">
+                      <div className="truncate">NF</div>
+                      <div className="truncate text-center">Fornecedor</div>
+                      <div className="truncate text-center">Destino</div>
+                      <div className="truncate text-center">Volume</div>
+                      <div className="truncate text-center">Tipo</div>
+                      <div className="truncate text-center">Ações</div>
+                    </div>
+                    {carroSelecionado.nfs.map((nf, index) => (
+                      <div
+                        key={nf.id}
+                        className={`px-2 sm:px-4 py-2 grid grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm ${index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                          }`}
+                      >
+                        <div className="font-medium">{nf.numeroNF}</div>
+                        <div className="truncate" title={nf.fornecedor}>
+                          {nf.fornecedor}
+                        </div>
+                        <div className="truncate text-center">{nf.destinoFinal}</div>
+                        <div className="truncate text-center">{nf.volume}</div>
+                        <div className="truncate text-center">{nf.tipo}</div>
+                        <div className="flex justify-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => excluirNotaIndividual(carroSelecionado.carro_id, nf.id)}
+                            className="h-6 w-6 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                            title="Remover nota"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="bg-green-50 px-4 py-2 grid grid-cols-7 gap-4 text-sm font-bold text-green-800">
+                      <div className="col-span-5">Total do Carro:</div>
+                      <div className="text-center">{carroSelecionado.total_volumes}</div>
+                      <div></div>
+                    </div>
+                  </div>
+                </ScrollArea>
+                {/* Botões de Ação */}
+                <div className="flex space-x-2 pt-4 border-t">
+                  <Button
+                    onClick={() => copiarNFsParaSAP(carroSelecionado.nfs)}
+                    variant="outline"
+                    className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar NFs
+                  </Button>
+                  <Button
+                    onClick={() => copiarVolumesParaSAP(carroSelecionado.nfs)}
+                    variant="outline"
+                    className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar Volumes
+                  </Button>
+                  <Label htmlFor="statusSelect" className="text-sm font-medium whitespace-nowrap text-yellow-800">
+                    </Label>
+                    <Select
+                      value={carroSelecionado.status_carro}
+                      onValueChange={(novoStatus) => {
+                        console.log('Status alterado para:', novoStatus)
+                        alterarStatusCarroEmbalagem(carroSelecionado.carro_id, novoStatus as CarroStatus["status_carro"], true)
+                      }}
+                    >
+                      <SelectTrigger className="w-48 bg-white">
+                        <SelectValue placeholder="Selecionar status" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[9999]">
+                        <SelectItem value="embalando">🟠 Embalando</SelectItem>
+                        <SelectItem value="divergencia">🔴 Divergência</SelectItem>
+                        <SelectItem value="aguardando_lancamento">⏳ Aguardando Lançamento</SelectItem>
+                        <SelectItem value="finalizado">✅ Finalizado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                </div>
+              </div>
+
+              {/* Informações de Criação */}
+              <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded-lg">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="font-medium">Criado em:</span> {new Date(carroSelecionado.data_criacao).toLocaleString("pt-BR")}
+                  </div>
+                  {carroSelecionado.data_finalizacao && (
+                    <div>
+                      <span className="font-medium">Última atualização:</span> {new Date(carroSelecionado.data_finalizacao).toLocaleString("pt-BR")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Detalhes do Carro de Lançamento Selecionado */}
+      <Dialog
+        open={!!carroLancamentoSelecionado}
+        onOpenChange={(open) => {
+          console.log('🔍 Modal de lançamento onOpenChange:', open, 'carroLancamentoSelecionado:', carroLancamentoSelecionado)
+          if (!open) setCarroLancamentoSelecionado(null)
+        }}
+      >
+        <DialogContent className="max-w-[95vw] md:max-w-4xl max-h-[90vh] overflow-y-auto z-[9999]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2 text-sm sm:text-base">
+              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-purple-600" />
+              <span>
+                Detalhes do Lançamento - {carroLancamentoSelecionado?.nomeCarro || "Carro"} ({carroLancamentoSelecionado?.colaboradores.join(" + ")})
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {carroLancamentoSelecionado && (
+            <div className="space-y-6">
+              {/* Resumo do Carro */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="text-sm text-gray-600">Status</div>
+                  <Badge className={`${getStatusColor(carroLancamentoSelecionado.status)}`}>
+                    {getStatusLabel(carroLancamentoSelecionado.status)}
+                  </Badge>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Data</div>
+                  <div className="font-medium">{carroLancamentoSelecionado.data}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Turno</div>
+                  <div className="font-medium">
+                    {carroLancamentoSelecionado.turno} - {getTurnoLabel(carroLancamentoSelecionado.turno)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Destino</div>
+                  <div className="font-medium">{carroLancamentoSelecionado.destinoFinal}</div>
+                </div>
+              </div>
+
+              {/* Informações Adicionais */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-purple-50 rounded-lg">
+                <div>
+                  <div className="text-sm text-gray-600">NFs</div>
+                  <div className="font-medium text-lg">{carroLancamentoSelecionado.quantidadeNFs}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Total Volumes</div>
+                  <div className="font-medium text-lg">{carroLancamentoSelecionado.totalVolumes}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">Estimativa Pallets</div>
+                  <div className="font-medium text-lg">{carroLancamentoSelecionado.estimativaPallets}</div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600">{carroLancamentoSelecionado.posicoes ? 'Posições' : 'Estimativa de pallets'}</div>
+                  <div className="font-medium text-lg">{carroLancamentoSelecionado.posicoes || carroLancamentoSelecionado.estimativaPallets || "N/A"}</div>
+                </div>
+              </div>
+
+              {/* NFs do Carro */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Notas Fiscais</h3>
+                  <Badge variant="outline" className="text-sm">
+                    {carroLancamentoSelecionado.nfs.length} NFs
+                  </Badge>
+                </div>
+
+                <ScrollArea className="h-96">
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 px-2 sm:px-4 py-2 grid grid-cols-6 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700">
+                      <div>NF</div>
+                      <div>Código</div>
+                      <div>Fornecedor</div>
+                      <div>Destino</div>
+                      <div>Volume</div>
+                      <div>Tipo</div>
+                    </div>
+                    {carroLancamentoSelecionado.nfs.map((nf, index) => (
+                      <div
+                        key={nf.id}
+                        className={`px-2 sm:px-4 py-2 grid grid-cols-6 gap-2 sm:gap-4 text-xs sm:text-sm ${index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                          }`}
+                      >
+                        <div className="font-medium">{nf.numeroNF}</div>
+                        <div className="font-medium text-xs">{nf.codigo}</div>
+                        <div className="truncate" title={nf.fornecedor}>
+                          {nf.fornecedor}
+                        </div>
+                        <div className="text-xs">{nf.destinoFinal}</div>
+                        <div className="text-center">{nf.volume}</div>
+                        <div className="text-xs">{nf.tipo}</div>
+                      </div>
+                    ))}
+                    <div className="bg-purple-50 px-4 py-2 grid grid-cols-6 gap-4 text-sm font-bold text-purple-800">
+                      <div className="col-span-4">Total do Carro:</div>
+                      <div className="text-center">{carroLancamentoSelecionado.totalVolumes}</div>
+                      <div></div>
+                    </div>
+                  </div>
+                </ScrollArea>
+
+                {/* Botões de Ação */}
+                <div className="flex space-x-2 pt-4 border-t">
+                  <Button
+                    onClick={() => copiarNFsParaSAP(carroLancamentoSelecionado.nfs)}
+                    variant="outline"
+                    className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar NFs
+                  </Button>
+                  <Button
+                    onClick={() => copiarVolumesParaSAP(carroLancamentoSelecionado.nfs)}
+                    variant="outline"
+                    className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar Volumes
+                  </Button>
+                </div>
+              </div>
+
+              {/* Informações de Finalização */}
+              <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded-lg">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="font-medium">Finalizado em:</span> {new Date(carroLancamentoSelecionado.dataFinalizacao).toLocaleString("pt-BR")}
+                  </div>
+                  {carroLancamentoSelecionado.dataLancamento && (
+                    <div>
+                      <span className="font-medium">Lançado em:</span> {new Date(carroLancamentoSelecionado.dataLancamento).toLocaleString("pt-BR")}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+
 
       {/* Toaster para notificações */}
       <Toaster />

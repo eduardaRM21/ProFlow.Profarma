@@ -17,6 +17,7 @@ import {
   FileText,
   RotateCcw,
 } from "lucide-react";
+import ChangePasswordModal from "@/components/admin/change-password-modal";
 
 interface SessionData {
   colaborador: string;
@@ -28,6 +29,7 @@ interface SessionData {
 
 export default function CRDKPage() {
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [recebimentoStats, setRecebimentoStats] = useState({
     totalNFs: 0,
@@ -283,6 +285,15 @@ export default function CRDKPage() {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => setShowChangePassword(true)}
+                className="flex items-center space-x-2 bg-transparent hover:bg-indigo-50 border-indigo-200"
+              >
+                <Users className="h-4 w-4" />
+                <span>Alterar Senha</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleLogout}
                 className="flex items-center space-x-2 bg-transparent hover:bg-indigo-50 border-indigo-200"
               >
@@ -470,6 +481,19 @@ export default function CRDKPage() {
           </p>
         </div>
       </main>
+
+      {/* Modal de Alterar Senha */}
+      {sessionData && (
+        <ChangePasswordModal
+          isOpen={showChangePassword}
+          onClose={() => setShowChangePassword(false)}
+          usuario={sessionData.colaborador || ""}
+          area="crdk"
+          onSuccess={() => {
+            alert("Senha alterada com sucesso!")
+          }}
+        />
+      )}
     </div>
   );
 }

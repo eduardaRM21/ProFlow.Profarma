@@ -18,6 +18,10 @@ export interface CarroStatus {
   status_carro: 'embalando' | 'divergencia' | 'aguardando_lancamento' | 'pronto' | 'em_producao' | 'finalizado' | 'lancado'
   nfs: any[]
   estimativa_pallets: number
+  posicoes?: number | null;
+  palletes?: number | null;
+  gaiolas?: number | null;
+  caixas_mangas?: number | null;
   palletes_reais?: number
   session_id: string
 }
@@ -140,7 +144,8 @@ export function useCarrosRealtime() {
                  status: 'valida'
                })),
                estimativa_pallets: carro.estimativaPallets,
-               palletes_reais: carro.palletesReais,
+               posicoes: (carro as any).posicoes || null,
+               palletes_reais: (carro as any).palletesReais || 0,
                session_id: ''
              }
          })

@@ -17,7 +17,10 @@ export interface EmbalagemNotaBipada {
   status: string
   observacoes?: string
   timestamp_bipagem?: string
-  palletes_reais?: number
+  posicoes?: number
+  palletes?: number
+  gaiolas?: number
+  caixas_mangas?: number
   data_finalizacao?: string
   created_at?: string
   updated_at?: string
@@ -39,6 +42,10 @@ export interface CarroStatus {
   status_carro: "embalando" | "divergencia" | "aguardando_lancamento" | "finalizado" | "pronto" | "lancado"
   nfs: any[]
   estimativa_pallets: number
+  posicoes?: number
+  palletes?: number
+  gaiolas?: number
+  caixas_mangas?: number
   session_id: string
   created_at?: string
   updated_at?: string
@@ -56,20 +63,36 @@ export class EmbalagemNotasBipadasService {
   /**
    * Finaliza um carro (muda status para "finalizado" e salva pallets reais)
    */
-  static async finalizarCarro(carroId: string, palletsReais: number): Promise<{
+  static async finalizarCarro(carroId: string, palletsReais: number, dadosDetalhados?: {
+    quantidadePosicoes?: number;
+    tiposPosicao?: {
+      paletes: boolean;
+      gaiolas: boolean;
+      caixaManga: boolean;
+    };
+    quantidadePaletesReais?: number | null;
+    quantidadeGaiolas?: number | null;
+    quantidadeCaixaManga?: number | null;
+  }): Promise<{
     success: boolean
     error?: string
   }> {
     try {
       console.log(`✅ Finalizando carro ${carroId} com ${palletsReais} pallets reais`)
+      if (dadosDetalhados) {
+        console.log('📋 Dados detalhados:', dadosDetalhados)
+      }
 
       // 1. Atualizar o status do carro para "finalizado" na tabela carros_status
-      // NOTA: Coluna palletes_reais temporariamente removida até ser adicionada ao banco
       const { error: carroError } = await retryWithBackoff(async () => {
         return await getSupabase()
           .from('carros_status')
           .update({
             status_carro: 'finalizado',
+            posicoes: dadosDetalhados?.quantidadePosicoes || null,
+            palletes: dadosDetalhados?.quantidadePaletesReais || null,
+            gaiolas: dadosDetalhados?.quantidadeGaiolas || null,
+            caixas_mangas: dadosDetalhados?.quantidadeCaixaManga || null,
             data_finalizacao: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
@@ -90,7 +113,10 @@ export class EmbalagemNotasBipadasService {
           .from('embalagem_notas_bipadas')
           .update({
             status: 'finalizado',
-            palletes_reais: palletsReais,
+            posicoes: dadosDetalhados?.quantidadePosicoes || null,
+            palletes: dadosDetalhados?.quantidadePaletesReais || null,
+            gaiolas: dadosDetalhados?.quantidadeGaiolas || null,
+            caixas_mangas: dadosDetalhados?.quantidadeCaixaManga || null,
             data_finalizacao: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
@@ -104,6 +130,16 @@ export class EmbalagemNotasBipadasService {
       }
 
       console.log(`✅ Carro ${carroId} finalizado com sucesso! Pallets reais: ${palletsReais}`)
+      if (dadosDetalhados) {
+        console.log('📋 Dados detalhados salvos:', {
+          quantidadePosicoes: dadosDetalhados.quantidadePosicoes,
+          tiposPosicao: dadosDetalhados.tiposPosicao,
+          quantidadePaletesReais: dadosDetalhados.quantidadePaletesReais,
+          quantidadeGaiolas: dadosDetalhados.quantidadeGaiolas,
+          quantidadeCaixaManga: dadosDetalhados.quantidadeCaixaManga
+        })
+      }
+      
       return {
         success: true
       }
@@ -227,6 +263,10 @@ export class EmbalagemNotasBipadasService {
           tipo_carga: nota.tipo_carga
         })),
         estimativa_pallets: Math.ceil(totalVolumes / 100),
+        posicoes: notaBipada.posicoes,
+        palletes: notaBipada.palletes,
+        gaiolas: notaBipada.gaiolas,
+        caixas_mangas: notaBipada.caixas_mangas,
         session_id: notaBipada.session_id,
         updated_at: new Date().toISOString()
       }
@@ -289,11 +329,15 @@ export class EmbalagemNotasBipadasService {
       }>
       estimativaPallets: number
       status?: string
-      palletesReais?: number
+      posicoes?: number
+      palletes?: number
+      gaiolas?: number
+      caixasMangas?: number
       dataInicioEmbalagem?: string
       dataFinalizacao?: string
       numeros_sap?: string[] // ← Campo adicionado!
       nome_carro?: string // ← Campo adicionado!
+      palletesReais?: number // ← Campo adicionado!
     }>
     error?: string
   }> {
@@ -329,17 +373,24 @@ export class EmbalagemNotasBipadasService {
         console.log(`🔄 Convertendo carro ${carro.carro_id} - Status original: ${carro.status_carro}`)
         console.log(`📋 Campo NFs original do banco:`, JSON.stringify(carro.nfs, null, 2))
         
-        // Buscar palletes reais da tabela embalagem_notas_bipadas para todos os carros
-        let palletesReais: number | undefined = undefined;
+        // Buscar dados de posições e pallets da tabela embalagem_notas_bipadas para todos os carros
+        let posicoes: number | undefined = undefined;
+        let palletes: number | undefined = undefined;
+        let gaiolas: number | undefined = undefined;
+        let caixasMangas: number | undefined = undefined;
+        
         const { data: notasData } = await getSupabase()
           .from('embalagem_notas_bipadas')
-          .select('palletes_reais')
+          .select('posicoes, palletes, gaiolas, caixas_mangas')
           .eq('carro_id', carro.carro_id)
-          .not('palletes_reais', 'is', null)
+          .not('posicoes', 'is', null)
           .limit(1);
         
         if (notasData && notasData.length > 0) {
-          palletesReais = notasData[0].palletes_reais as number;
+          posicoes = notasData[0].posicoes as number;
+          palletes = notasData[0].palletes as number;
+          gaiolas = notasData[0].gaiolas as number;
+          caixasMangas = notasData[0].caixas_mangas as number;
         }
         
         const nfsConvertidas = (carro.nfs || []).map((nf: any) => ({
@@ -366,7 +417,10 @@ export class EmbalagemNotasBipadasService {
           nfs: nfsConvertidas,
           estimativaPallets: carro.estimativa_pallets,
           status: carro.status_carro,
-          palletesReais: palletesReais,
+          posicoes: carro.posicoes || posicoes,
+          palletes: carro.palletes || palletes,
+          gaiolas: carro.gaiolas || gaiolas,
+          caixasMangas: carro.caixas_mangas || caixasMangas,
           dataInicioEmbalagem: carro.data_criacao,
           dataFinalizacao: carro.data_finalizacao,
           numeros_sap: carro.numeros_sap || [], // ← Incluir números SAP!
@@ -483,7 +537,10 @@ export class EmbalagemNotasBipadasService {
           nfs: nfsConvertidas,
           estimativaPallets: carro.estimativa_pallets,
           status: carro.status_carro,
-          palletesReais: undefined,
+          posicoes: carro.posicoes,
+          palletes: carro.palletes,
+          gaiolas: carro.gaiolas,
+          caixasMangas: carro.caixas_mangas,
           dataInicioEmbalagem: carro.data_criacao,
           dataFinalizacao: carro.data_finalizacao,
           numeros_sap: carro.numeros_sap || [],
@@ -1212,19 +1269,35 @@ export class EmbalagemNotasBipadasService {
   /**
    * Atualiza apenas os pallets reais de um carro já lançado sem alterar o status
    */
-  static async atualizarPalletsCarro(carroId: string, palletsReais: number): Promise<{
+  static async atualizarPalletsCarro(carroId: string, palletsReais: number, dadosDetalhados?: {
+    quantidadePosicoes?: number;
+    tiposPosicao?: {
+      paletes: boolean;
+      gaiolas: boolean;
+      caixaManga: boolean;
+    };
+    quantidadePaletesReais?: number | null;
+    quantidadeGaiolas?: number | null;
+    quantidadeCaixaManga?: number | null;
+  }): Promise<{
     success: boolean
     error?: string
   }> {
     try {
       console.log(`📦 Atualizando pallets reais do carro ${carroId} para ${palletsReais}`)
+      if (dadosDetalhados) {
+        console.log('📋 Dados detalhados:', dadosDetalhados)
+      }
 
       // 1. Atualizar apenas os pallets reais na tabela carros_status
       const { error: carroError } = await retryWithBackoff(async () => {
         return await getSupabase()
           .from('carros_status')
           .update({
-            palletes_reais: palletsReais,
+            posicoes: dadosDetalhados?.quantidadePosicoes || null,
+            palletes: dadosDetalhados?.quantidadePaletesReais || null,
+            gaiolas: dadosDetalhados?.quantidadeGaiolas || null,
+            caixas_mangas: dadosDetalhados?.quantidadeCaixaManga || null,
             updated_at: new Date().toISOString()
           })
           .eq('carro_id', carroId)
@@ -1238,12 +1311,15 @@ export class EmbalagemNotasBipadasService {
         }
       }
 
-      // 2. Atualizar também os pallets reais das notas
+      // 2. Atualizar também os pallets reais das notas e dados detalhados
       const { error: notasError } = await retryWithBackoff(async () => {
         return await getSupabase()
           .from('embalagem_notas_bipadas')
           .update({
-            palletes_reais: palletsReais,
+            posicoes: dadosDetalhados?.quantidadePosicoes || null,
+            palletes: dadosDetalhados?.quantidadePaletesReais || null,
+            gaiolas: dadosDetalhados?.quantidadeGaiolas || null,
+            caixas_mangas: dadosDetalhados?.quantidadeCaixaManga || null,
             updated_at: new Date().toISOString()
           })
           .eq('carro_id', carroId)
@@ -1256,6 +1332,16 @@ export class EmbalagemNotasBipadasService {
       }
 
       console.log(`✅ Pallets reais do carro ${carroId} atualizados com sucesso! Pallets: ${palletsReais}`)
+      if (dadosDetalhados) {
+        console.log('📋 Dados detalhados atualizados:', {
+          quantidadePosicoes: dadosDetalhados.quantidadePosicoes,
+          tiposPosicao: dadosDetalhados.tiposPosicao,
+          quantidadePaletesReais: dadosDetalhados.quantidadePaletesReais,
+          quantidadeGaiolas: dadosDetalhados.quantidadeGaiolas,
+          quantidadeCaixaManga: dadosDetalhados.quantidadeCaixaManga
+        })
+      }
+      
       return {
         success: true
       }

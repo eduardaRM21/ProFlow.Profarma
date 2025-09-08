@@ -133,6 +133,40 @@ export default function RecebimentoPage() {
     }
     verificarSessao()
   }, [router, getSession, isFullyConnected])
+
+  // Restrição do botão voltar do navegador
+  useEffect(() => {
+    if (!sessionData) return
+
+    // Função para interceptar tentativas de saída da página
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = 'Você tem certeza que deseja sair? Use o botão "Sair" para sair corretamente.'
+      return 'Você tem certeza que deseja sair? Use o botão "Sair" para sair corretamente.'
+    }
+
+    // Função para interceptar navegação do botão voltar
+    const handlePopState = (event: PopStateEvent) => {
+      // Adiciona uma nova entrada no histórico para manter o usuário na página
+      window.history.pushState(null, '', window.location.href)
+      
+      // Mostra um alerta informativo
+      alert('Para sair do setor de Recebimento, use o botão "Sair" no canto superior direito.')
+    }
+
+    // Adiciona uma entrada no histórico para interceptar o botão voltar
+    window.history.pushState(null, '', window.location.href)
+
+    // Adiciona os event listeners
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('popstate', handlePopState)
+
+    // Cleanup dos event listeners
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [sessionData])
   
   // O hook `useRecebimento` deve ser chamado após `sessionData` ser definido.
   const chaveNotas = sessionData
@@ -174,11 +208,14 @@ export default function RecebimentoPage() {
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
       
-      // Buscar diretamente na tabela notas_fiscais pelo codigo_completo
+      // Buscar diretamente na tabela notas_fiscais pelo numero_nf (mais seguro)
+      // Evitar problemas com caracteres especiais no codigo_completo
+      console.log(`🔍 Buscando NF ${numeroNF} na tabela notas_fiscais`)
+      
       const { data: notaFiscalData, error: notaFiscalError } = await supabase
         .from('notas_fiscais')
         .select('*')
-        .eq('codigo_completo', codigo)
+        .eq('numero_nf', numeroNF)
       
       console.log(`🔍 Resultado busca notas_fiscais:`, { notaFiscalData, notaFiscalError })
       
@@ -472,13 +509,13 @@ export default function RecebimentoPage() {
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
       
-              // Buscar a nota na tabela notas_fiscais
-        const { data: notaExistente, error: buscaError } = await supabase
-          .from('notas_fiscais')
-          .select('id')
-          .eq('numero_nf', notaAtual.numeroNF)
-          .eq('codigo_completo', notaAtual.codigoCompleto)
-          .single()
+      // Buscar a nota na tabela notas_fiscais
+      // Usar apenas numero_nf para busca mais confiável
+      const { data: notaExistente, error: buscaError } = await supabase
+        .from('notas_fiscais')
+        .select('id')
+        .eq('numero_nf', notaAtual.numeroNF)
+        .single()
       
       if (!buscaError && notaExistente) {
         // Atualizar o status da nota para "ok"
@@ -488,44 +525,16 @@ export default function RecebimentoPage() {
           .eq('id', notaExistente.id as string)
         
         if (updateError) {
-          console.error('❌ Erro ao atualizar status da nota na tabela notas_fiscais:', updateError)
+          console.error('❌ Erro ao atualizar status da nota:', updateError)
         } else {
           console.log('✅ Status da nota atualizado para "ok" na tabela notas_fiscais')
         }
       } else {
-        console.log('⚠️ Nota não encontrada na tabela notas_fiscais para atualização de status')
-        
-        // Se a nota não existe, criar na tabela notas_fiscais
-        try {
-          const novaNota = {
-            codigo_completo: notaAtual.codigoCompleto,
-            numero_nf: notaAtual.numeroNF,
-            data: sessionData?.data || new Date().toISOString().split('T')[0],
-            volumes: notaAtual.volumes,
-            destino: notaAtual.destino,
-            fornecedor: notaAtual.fornecedor,
-            cliente_destino: notaAtual.clienteDestino,
-            tipo_carga: notaAtual.tipoCarga,
-            status: 'ok'
-          }
-          
-          const { data: notaCriada, error: createError } = await supabase
-            .from('notas_fiscais')
-            .insert(novaNota)
-            .select()
-            .single()
-          
-          if (createError) {
-            console.error('❌ Erro ao criar nota na tabela notas_fiscais:', createError)
-          } else {
-            console.log('✅ Nota criada na tabela notas_fiscais com ID:', notaCriada.id)
-          }
-        } catch (error) {
-          console.error('❌ Erro ao criar nota:', error)
-        }
+        console.log('ℹ️ Nota não existe na tabela notas_fiscais - será criada apenas quando o relatório for finalizado')
+        // ❌ NÃO CRIAR NOTA AQUI! Ela só deve ser criada quando o relatório for finalizado
       }
     } catch (error) {
-      console.error('❌ Erro ao atualizar status da nota:', error)
+      console.error('❌ Erro ao verificar nota existente:', error)
     }
     
     // Salvar nota bipada na tabela centralizada
@@ -607,13 +616,13 @@ export default function RecebimentoPage() {
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
       
-              // Buscar a nota na tabela notas_fiscais
-        const { data: notaExistente, error: buscaError } = await supabase
-          .from('notas_fiscais')
-          .select('id')
-          .eq('numero_nf', notaAtual.numeroNF)
-          .eq('codigo_completo', notaAtual.codigoCompleto)
-          .single()
+      // Buscar a nota na tabela notas_fiscais
+      // Usar apenas numero_nf para busca mais confiável
+      const { data: notaExistente, error: buscaError } = await supabase
+        .from('notas_fiscais')
+        .select('id')
+        .eq('numero_nf', notaAtual.numeroNF)
+        .single()
       
       if (!buscaError && notaExistente) {
         // Atualizar o status da nota para "divergencia"

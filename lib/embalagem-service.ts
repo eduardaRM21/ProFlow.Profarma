@@ -116,45 +116,33 @@ export const EmbalagemService = {
       let notasData: any[] = []
       let notasError: any = null
       
-      // Primeiro, tentar buscar por codigo_completo
-      console.log(`🔍 Buscando por codigo_completo: "${codigoCompleto}"`)
-      const { data: dataCodigo, error: errorCodigo } = await retryWithBackoff(async () => {
-        return await getSupabase()
-          .from('notas_fiscais')
-          .select('*')
-          .eq('codigo_completo', codigoCompleto)
-          .order('created_at', { ascending: false })
-          .limit(5)
-      })
+      // Buscar por numero_nf extraído do codigo_completo (mais seguro)
+      const partes = codigoCompleto.split('|')
+      const numeroNF = partes.length >= 2 ? partes[1] : null
       
-      if (errorCodigo) {
-        console.error('❌ Erro ao buscar por codigo_completo:', errorCodigo)
-        notasError = errorCodigo
-      } else if (dataCodigo && dataCodigo.length > 0) {
-        console.log(`✅ Encontradas ${dataCodigo.length} notas por codigo_completo`)
-        notasData = dataCodigo
-      } else {
-        console.log(`⚠️ Nenhuma nota encontrada por codigo_completo`)
-        // Se não encontrou por codigo_completo, tentar por numero_nf
-        console.log(`🔍 Buscando por numero_nf: "${codigoCompleto}"`)
-        const { data: dataNF, error: errorNF } = await retryWithBackoff(async () => {
+      if (numeroNF) {
+        console.log(`🔍 Extraído numero_nf: "${numeroNF}" do codigo_completo`)
+        
+        const { data: dataCodigo, error: errorCodigo } = await retryWithBackoff(async () => {
           return await getSupabase()
             .from('notas_fiscais')
             .select('*')
-            .eq('numero_nf', codigoCompleto)
+            .eq('numero_nf', numeroNF)
             .order('created_at', { ascending: false })
             .limit(5)
         })
         
-        if (errorNF) {
-          console.error('❌ Erro ao buscar por numero_nf:', errorNF)
-          notasError = errorNF
-        } else if (dataNF && dataNF.length > 0) {
-          console.log(`✅ Encontradas ${dataNF.length} notas por numero_nf`)
-          notasData = dataNF
+        if (errorCodigo) {
+          console.error('❌ Erro ao buscar por numero_nf:', errorCodigo)
+          notasError = errorCodigo
+        } else if (dataCodigo && dataCodigo.length > 0) {
+          console.log(`✅ Encontradas ${dataCodigo.length} notas por numero_nf`)
+          notasData = dataCodigo
         } else {
           console.log(`⚠️ Nenhuma nota encontrada por numero_nf`)
         }
+      } else {
+        console.log(`⚠️ Não foi possível extrair numero_nf do codigo_completo`)
       }
       
       if (notasError) {

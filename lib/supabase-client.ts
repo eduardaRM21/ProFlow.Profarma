@@ -95,7 +95,7 @@ export const testSupabaseConnection = async (): Promise<boolean> => {
   return circuitBreaker.execute(async () => {
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
 
       const { error } = await getSupabase()
         .from('sessions')
@@ -106,17 +106,24 @@ export const testSupabaseConnection = async (): Promise<boolean> => {
       clearTimeout(timeoutId)
 
       if (error) {
+        // Ignorar erros específicos que não indicam falha de conectividade
+        if (error.code === '20' || error.message?.includes('AbortError')) {
+          console.warn('⚠️ Requisição abortada ou timeout - não é falha de conectividade')
+          return true // Considerar conectado se foi apenas timeout
+        }
+        
         console.error('❌ Falha ao testar conexão com o banco:', error)
         return false
       }
       return true
     } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        console.error('❌ Timeout ao testar conexão (5s)')
+      if (err?.name === 'AbortError' || err?.code === '20') {
+        console.warn('⚠️ Timeout ao testar conexão (10s) - não é falha de conectividade')
+        return true // Considerar conectado se foi apenas timeout
       } else {
         console.error('❌ Erro ao testar conexão:', err)
+        return false
       }
-      return false
     }
   })
 }

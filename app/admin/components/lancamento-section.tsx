@@ -87,6 +87,7 @@ interface CarroLancamento {
   }>
   status: "aguardando_lancamento" | "em_lancamento" | "lancado" | "erro_lancamento"
   estimativaPallets: number
+  posicoes?: number | null; // ← Adicionar este campo
   palletesReais?: number
   observacoes?: string
   dataLancamento?: string
@@ -371,8 +372,8 @@ export default function LancamentoSection() {
                     <div className="text-xs text-gray-500">Volumes</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-lg font-bold text-blue-600">{carro.palletesReais || carro.estimativaPallets}</div>
-                    <div className="text-xs text-gray-500">{carro.palletesReais ? 'Pallets Reais' : 'Estimativa'}</div>
+                    <div className="text-lg font-bold text-blue-600">{carro.posicoes || carro.estimativaPallets}</div>
+                    <div className="text-xs text-gray-500">{carro.posicoes ? 'Posições' : 'Estimativa'}</div>
                   </div>
                 </div>
 

@@ -167,6 +167,8 @@ export const SessionService = {
       const filterByArea = knownAreas.includes(sessionId) // Check if sessionId is a known area
       console.log('🔍 Filtro por área:', { sessionId, filterByArea, knownAreas })
 
+      // SOLUÇÃO: Buscar a sessão mais recente da área específica
+      // Isso garante que cada usuário veja sua própria sessão
       const { data, error } = await retryWithBackoff(async () => {
         let query = getSupabase()
           .from('sessions')
@@ -197,6 +199,7 @@ export const SessionService = {
 
       console.log('✅ Sessão encontrada no banco:', data.area)
       console.log('📊 Dados completos da sessão:', data)
+      console.log('👥 Colaboradores da sessão:', data.colaboradores)
       
       const sessionData = {
         colaboradores: data.colaboradores as string[],
@@ -209,7 +212,7 @@ export const SessionService = {
       console.log('📋 Sessão mapeada:', sessionData)
       return sessionData
     } catch (error) {
-      console.error('❌ Erro ao carregar sessão:', error)
+      console.error('❌ Erro ao buscar sessão:', error)
       return null
     }
   },
@@ -544,7 +547,20 @@ export const RelatoriosService = {
       if (relatorio.data && relatorio.data.includes('/')) {
         dataFormatada = convertDateToISO(relatorio.data)
         console.log('📅 Data convertida de', relatorio.data, 'para', dataFormatada)
+      } else if (relatorio.data) {
+        // Garantir que a data está no formato correto
+        try {
+          const dataObj = new Date(relatorio.data)
+          if (!isNaN(dataObj.getTime())) {
+            dataFormatada = dataObj.toISOString().split('T')[0]
+            console.log('📅 Data formatada para ISO:', dataFormatada)
+          }
+        } catch (error) {
+          console.warn('⚠️ Erro ao formatar data:', error)
+        }
       }
+      
+      console.log('📅 Data final para uso:', dataFormatada)
       
       const supabase = getSupabase()
       console.log('🔍 Cliente Supabase obtido:', !!supabase)
@@ -608,12 +624,12 @@ export const RelatoriosService = {
           relatorio.colaboradores.map(async (nomeColaborador: string) => {
             console.log(`🔍 Buscando usuário: ${nomeColaborador}`)
             
-            // Buscar usuário pelo nome
+            // Buscar usuário pelo nome na tabela users (para colaboradores operacionais)
             const { data: userData, error: userError } = await supabase
               .from('users')
-              .select('id')
+              .select('id, nome, area, ativo')
               .eq('nome', nomeColaborador)
-              .eq('area', 'recebimento')
+              .eq('ativo', true)
               .single()
             
             console.log(`🔍 Resultado busca usuário ${nomeColaborador}:`, { userData, userError })
@@ -627,9 +643,9 @@ export const RelatoriosService = {
                 .insert({
                   nome: nomeColaborador,
                   area: 'recebimento',
-                  email: `${nomeColaborador.toLowerCase().replace(/\s+/g, '.')}@profarma.com`
+                  ativo: true
                 })
-                .select()
+                .select('id, nome')
                 .single()
               
               if (createUserError) {
@@ -681,6 +697,7 @@ export const RelatoriosService = {
       if (relatorio.notas && Array.isArray(relatorio.notas) && relatorio.notas.length > 0) {
         console.log('💾 Salvando notas...')
         console.log('🔍 Notas recebidas:', relatorio.notas)
+        console.log('🔍 Estrutura da primeira nota:', JSON.stringify(relatorio.notas[0], null, 2))
         
         // Verificar se já existem notas associadas a este relatório
         const { data: notasExistentes, error: checkError } = await supabase
@@ -698,75 +715,74 @@ export const RelatoriosService = {
         const notasExistentesIds = new Set(notasExistentes?.map(n => n.nota_fiscal_id) || [])
         
         // Salvar todas as notas na tabela notas_fiscais
+        console.log(`🔍 Iniciando processamento de ${relatorio.notas.length} notas...`)
+        
         const notasSalvas = await Promise.all(
           relatorio.notas.map(async (nota: any, index: number) => {
-            console.log(`🔍 Processando nota ${index + 1}:`, nota)
+            console.log(`🔍 Processando nota ${index + 1}/${relatorio.notas.length}:`, {
+              numeroNF: nota.numeroNF,
+              codigoCompleto: nota.codigoCompleto,
+              volumes: nota.volumes,
+              status: nota.status,
+              temDivergencia: !!nota.divergencia
+            })
             
             try {
               // Verificar se a nota já existe na tabela notas_fiscais
+              // Usar apenas numero_nf para busca (mais confiável)
               const { data: notaExistente, error: buscaError } = await supabase
                 .from('notas_fiscais')
                 .select('id')
                 .eq('numero_nf', nota.numeroNF)
-                .eq('codigo_completo', nota.codigoCompleto || '')
                 .single()
               
               let notaId: string
               
-              if (buscaError || !notaExistente) {
-                // Nota não existe, criar nova
-                console.log(`🔍 Criando nova nota fiscal: ${nota.numeroNF}`)
-                const { data: notaSalva, error: notaError } = await supabase
+              // Sempre processar a nota, independente se já existe ou não
+              // Preparar dados da nota com tratamento de campos
+              const notaData = {
+                codigo_completo: nota.codigoCompleto || '',
+                numero_nf: nota.numeroNF,
+                data: dataFormatada,
+                volumes: nota.volumes || 0,
+                destino: nota.destino || '',
+                fornecedor: nota.fornecedor || '',
+                cliente_destino: nota.clienteDestino || '',
+                tipo_carga: nota.tipoCarga || '',
+                status: nota.status || 'ok'
+              }
+              
+              console.log(`🔍 Dados da nota a serem processados:`, notaData)
+              
+              // Agora que temos constraint única, podemos usar upsert com segurança
+              const { data: notaSalva, error: notaError } = await supabase
+                .from('notas_fiscais')
+                .upsert(notaData, { 
+                  onConflict: 'numero_nf',
+                  ignoreDuplicates: false 
+                })
+                .select()
+                .single()
+              
+              if (notaError) {
+                console.error(`❌ Erro ao salvar nota fiscal ${index + 1}:`, notaError)
+                return null
+              }
+              
+              notaId = (notaSalva as any).id
+              console.log(`✅ Nota fiscal ${index + 1} processada com ID: ${notaId}`)
+              
+              // Atualizar o status da nota se ela tem divergência
+              if (nota.divergencia) {
+                const { error: updateError } = await supabase
                   .from('notas_fiscais')
-                  .insert({
-                    codigo_completo: nota.codigoCompleto || '',
-                    numero_nf: nota.numeroNF,
-                    data: dataFormatada,
-                    volumes: nota.volumes,
-                    destino: nota.destino,
-                    fornecedor: nota.fornecedor,
-                    cliente_destino: nota.clienteDestino,
-                    tipo_carga: nota.tipoCarga,
-                    status: nota.status || 'ok'
-                  })
-                  .select()
-                  .single()
+                  .update({ status: 'divergencia' })
+                  .eq('id', notaId)
                 
-                if (notaError) {
-                  console.error(`❌ Erro ao salvar nota fiscal ${index + 1}:`, notaError)
-                  return null
-                }
-                
-                notaId = notaSalva.id
-                console.log(`✅ Nova nota fiscal ${index + 1} criada com ID: ${notaId}`)
-              } else {
-                // Nota já existe, atualizar status se necessário
-                notaId = notaExistente.id
-                console.log(`✅ Nota fiscal ${index + 1} já existe com ID: ${notaId}`)
-                
-                // Atualizar o status da nota se ela tem divergência
-                if (nota.divergencia) {
-                  const { error: updateError } = await supabase
-                    .from('notas_fiscais')
-                    .update({ status: 'divergencia' })
-                    .eq('id', notaId)
-                  
-                  if (updateError) {
-                    console.error(`❌ Erro ao atualizar status da nota ${index + 1}:`, updateError)
-                  } else {
-                    console.log(`✅ Status da nota ${index + 1} atualizado para "divergencia"`)
-                  }
-                } else if (nota.status === 'ok') {
-                  const { error: updateError } = await supabase
-                    .from('notas_fiscais')
-                    .update({ status: 'ok' })
-                    .eq('id', notaId)
-                  
-                  if (updateError) {
-                    console.error(`❌ Erro ao atualizar status da nota ${index + 1}:`, updateError)
-                  } else {
-                    console.log(`✅ Status da nota ${index + 1} atualizado para "ok"`)
-                  }
+                if (updateError) {
+                  console.error(`❌ Erro ao atualizar status da nota ${index + 1}:`, updateError)
+                } else {
+                  console.log(`✅ Status da nota ${index + 1} atualizado para "divergencia"`)
                 }
               }
               
@@ -778,37 +794,41 @@ export const RelatoriosService = {
           })
         )
         
-        console.log('🔍 Notas processadas:', notasSalvas)
+        console.log('🔍 Resultado do processamento:')
+        console.log(`  - Total de notas recebidas: ${relatorio.notas.length}`)
+        console.log(`  - Notas processadas com sucesso: ${notasSalvas.filter(n => n !== null).length}`)
+        console.log(`  - Notas com erro: ${notasSalvas.filter(n => n === null).length}`)
         
         // Filtrar notas válidas
         const notasValidas = notasSalvas.filter(nota => nota !== null)
-        console.log('🔍 Notas válidas filtradas:', notasValidas)
+        console.log(`🔍 Notas válidas para salvar: ${notasValidas.length}`)
         
         if (notasValidas.length > 0) {
-          // Filtrar apenas notas que ainda não estão associadas ao relatório
-          const notasNovas = notasValidas.filter(nota => !notasExistentesIds.has(nota.id))
-          console.log('🔍 Notas novas para associar:', notasNovas.length)
+          console.log('🔍 IDs das notas válidas:', notasValidas.map(n => n.id))
+        }
+        
+        if (notasValidas.length > 0) {
+          // IMPORTANTE: Sempre salvar relacionamentos para todas as notas válidas
+          // Não filtrar por notas existentes, pois queremos garantir que todas sejam associadas
+          const todasNotasRelacionamentos = notasValidas.map(nota => ({
+            relatorio_id: relatorioId,
+            nota_fiscal_id: nota.id
+          }))
           
-          if (notasNovas.length > 0) {
-            // Salvar relacionamentos na tabela relatorio_notas apenas para notas novas
-            const notasRelacionamentos = notasNovas.map(nota => ({
-              relatorio_id: relatorioId,
-              nota_fiscal_id: nota.id
-            }))
-            
-            console.log('🔍 Relacionamentos de notas a serem salvos:', notasRelacionamentos)
-            
-            const { error: notasError } = await supabase
-              .from('relatorio_notas')
-              .insert(notasRelacionamentos)
-            
-            if (notasError) {
-              console.error('❌ Erro ao salvar relacionamentos de notas:', notasError)
-            } else {
-              console.log('✅ Relacionamentos de notas salvos:', notasRelacionamentos.length)
-            }
+          console.log('🔍 Relacionamentos de TODAS as notas a serem salvos:', todasNotasRelacionamentos.length)
+          
+          // Usar upsert para evitar duplicações mas garantir que todas as notas sejam associadas
+          const { error: notasError } = await supabase
+            .from('relatorio_notas')
+            .upsert(todasNotasRelacionamentos, { 
+              onConflict: 'relatorio_id,nota_fiscal_id',
+              ignoreDuplicates: false 
+            })
+          
+          if (notasError) {
+            console.error('❌ Erro ao salvar relacionamentos de notas:', notasError)
           } else {
-            console.log('✅ Todas as notas já estão associadas ao relatório')
+            console.log('✅ Relacionamentos de TODAS as notas salvos:', todasNotasRelacionamentos.length)
           }
           
           // Salvar divergências se houver (para todas as notas com divergência)
@@ -1255,24 +1275,27 @@ export const migrateFromLocalStorage = async () => {
           if (notas.length > 0) {
             await RecebimentoService.saveNotas(key, notas)
             recebimentoCount++
-            console.log(`✅ Notas de recebimento migradas: ${key}`)
+            console.log(`
+              ✅ Notas de recebimento migradas: ${recebimentoCount} sessões
+            `)
           }
         } catch (error) {
-          console.warn(`⚠️ Erro ao migrar notas de recebimento ${key}:`, error)
+          console.warn(`⚠️ Erro ao migrar notas de recebimento da sessão ${key}:`, error)
           // Continuar com outras migrações
         }
       }
     }
-    console.log(`📊 Total de sessões de recebimento migradas: ${recebimentoCount}`)
 
     // Migrar carros de embalagem
-    const carrosData = localStorage.getItem('profarma_carros_embalagem')
-    if (carrosData) {
+    let embalagemCount = 0
+    const embalagemData = localStorage.getItem('profarma_carros_embalagem')
+    if (embalagemData) {
       try {
-        const carros = JSON.parse(carrosData)
+        const carros = JSON.parse(embalagemData)
         if (carros.length > 0) {
-          await EmbalagemService.saveCarrosFinalizados(carros)
-          console.log('✅ Carros de embalagem migrados com sucesso')
+          await EmbalagemService.saveCarros('embalagem_migrada', carros)
+          embalagemCount++
+          console.log(`✅ Carros de embalagem migrados: ${embalagemCount} sessões`)
         }
       } catch (error) {
         console.warn('⚠️ Erro ao migrar carros de embalagem:', error)
@@ -1280,29 +1303,26 @@ export const migrateFromLocalStorage = async () => {
       }
     }
 
-    // Migrar relatórios
-    const relatoriosData = localStorage.getItem('relatorios_custos')
-    if (relatoriosData) {
+    // Migrar relatórios de custos
+    let custosCount = 0
+    const custosData = localStorage.getItem('relatorios_custos')
+    if (custosData) {
       try {
-        const relatorios = JSON.parse(relatoriosData)
-        let relatoriosCount = 0
-        for (const relatorio of relatorios) {
-          try {
+        const relatorios = JSON.parse(custosData)
+        if (relatorios.length > 0) {
+          for (const relatorio of relatorios) {
             await RelatoriosService.saveRelatorio(relatorio)
-            relatoriosCount++
-          } catch (error) {
-            console.warn(`⚠️ Erro ao migrar relatório ${relatorio.id}:`, error)
-            // Continuar com outros relatórios
+            custosCount++
           }
+          console.log(`✅ Relatórios de custos migrados: ${custosCount} relatórios`)
         }
-        console.log(`📊 Total de relatórios migrados: ${relatoriosCount}`)
       } catch (error) {
-        console.warn('⚠️ Erro ao migrar relatórios:', error)
+        console.warn('⚠️ Erro ao migrar relatórios de custos:', error)
         // Continuar com outras migrações
       }
     }
 
-    console.log('✅ Migração concluída com sucesso!')
+    console.log(`✅ Migração concluída! Total: ${recebimentoCount + embalagemCount + custosCount} itens migrados`)
   } catch (error) {
     console.error('❌ Erro durante a migração:', error)
     throw error

@@ -286,20 +286,36 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     console.log("🔍 Verificando NF para embalagem (apenas recebimento):", numeroNF)
     
     try {
-      // 1. Primeiro, tentar validar usando o EmbalagemService (método principal)
-      console.log("🔍 Tentando validar NF usando EmbalagemService:", numeroNF, sessionData.data, sessionData.turno)
+      // 1. Primeiro, tentar validar usando busca direta na tabela notas_fiscais
+      console.log("🔍 Tentando validar NF diretamente na tabela notas_fiscais:", numeroNF)
       
-      const { EmbalagemService } = await import('@/lib/embalagem-service')
-      const resultado = await EmbalagemService.buscarNFNaTabelaNotasFiscais(numeroNF);
+      const { getSupabase, retryWithBackoff } = await import('@/lib/supabase-client')
       
-      console.log("📋 Resultado da validação na tabela notas_fiscais:", resultado)
+      // Buscar diretamente por numero_nf na tabela notas_fiscais
+      const { data: nfData, error: nfError } = await retryWithBackoff(async () => {
+        return await getSupabase()
+          .from('notas_fiscais')
+          .select('*')
+          .eq('numero_nf', numeroNF)
+          .limit(1)
+      })
       
-      if (resultado.encontrada) {
-        console.log("✅ NF encontrada na tabela notas_fiscais:", numeroNF, "Status:", resultado.status);
-        return true;
+      if (nfError) {
+        console.error("❌ Erro ao buscar NF na tabela notas_fiscais:", nfError)
+      } else if (nfData && nfData.length > 0) {
+        const nota = nfData[0]
+        console.log("✅ NF encontrada na tabela notas_fiscais:", numeroNF, "Status:", nota.status)
+        console.log("📋 Detalhes da NF:", {
+          id: nota.id,
+          numero_nf: nota.numero_nf,
+          codigo_completo: nota.codigo_completo,
+          status: nota.status,
+          fornecedor: nota.fornecedor
+        })
+        return true
       }
       
-      console.log("❌ NF não encontrada na tabela notas_fiscais:", resultado.erro);
+      console.log("❌ NF não encontrada na tabela notas_fiscais:", numeroNF)
       
       // 2. Verificar em sessões ativas de recebimento (localStorage)
       for (let i = 0; i < localStorage.length; i++) {
@@ -1130,6 +1146,7 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
       statusCarro: "embalando" as StatusCarro, // Usar statusCarro para compatibilidade com admin
       estimativaPallets: Math.ceil(totalVolumes / 100),
       palletesReais: null,
+      posicoes: null,
       dataFinalizacao: null,
     }
 
@@ -1172,6 +1189,7 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
       estimativaPallets: Math.ceil(totalVolumes / 100),
       status: "embalando", // Status específico para carros produzidos
       palletesReais: null,
+      posicoes: null,
       dataInicioEmbalagem: new Date().toISOString(),
       dataFinalizacao: null,
     }

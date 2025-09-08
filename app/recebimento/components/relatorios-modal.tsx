@@ -362,7 +362,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
 
   return (
     <>
-      <Dialog open={isOpen && !relatorioSelecionado} onOpenChange={onClose}>
+      <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto" aria-describedby="relatorios-description">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">

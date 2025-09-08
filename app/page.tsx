@@ -56,59 +56,78 @@ export default function LoginPage() {
   const [usuarioCustos, setUsuarioCustos] = useState("");
   const [senhaCustos, setSenhaCustos] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const norm = (s?: string) => (s ?? "").trim().toLowerCase();
+  const same = (a?: string, b?: string) => norm(a) === norm(b);
+
 
   const { saveSession } = useSession();
 
   const colaboradoresPreenchidos = colaboradores.filter((c) => c.trim() !== "");
 
-  const usuariosCustos = [
-    { usuario: "Eduarda", senha: "Prof@123" },
-    { usuario: "Silmar", senha: "Prof@123" },
-    { usuario: "Josue", senha: "Prof@123" },
-    { usuario: "Fernando", senha: "Prof@123" },
-    { usuario: "Ediandro", senha: "Prof@123" },
-    { usuario: "Sergio", senha: "Prof@123" },
-  ];
-
-  const usuariosCRDK = [
-    { usuario: "franklin.viana", senha: "crdkes2025" },
-    { usuario: "eduarda.medeiros", senha: "crdkes2025" },
-    { usuario: "ramon.fraga", senha: "crdkes2025" },
-    { usuario: "alessandro.santos", senha: "crdkes2025" },
-    { usuario: "rafael.lobo", senha: "crdkes2025" },
-  ];
-
-  const usuariosAdminEmbalagem = [
-    { usuario: "Amanda", senha: "20252025" },
-    { usuario: "Eduarda", senha: "20252025" },
-    { usuario: "Philipe", senha: "20252025" },
-    { usuario: "Crispiniana", senha: "20252025" },
-    { usuario: "Miqueias", senha: "20252025" },
-  ];
+  // REMOVIDO: Listas de usuários hardcoded - agora busca no banco
+  // const usuariosCustos = [...]
+  // const usuariosCRDK = [...]
+  // const usuariosAdminEmbalagem = [...]
 
   const validarUsuarioCustos = async () => {
-    let usuarioValido = null;
-    
-    if (area === "custos") {
-      usuarioValido = usuariosCustos.find(
-        (u: { usuario: string; senha: string }) => u.usuario === usuarioCustos && u.senha === senhaCustos
-      );
-    } else if (area === "crdk") {
-      usuarioValido = usuariosCRDK.find(
-        (u: { usuario: string; senha: string }) => u.usuario === usuarioCustos && u.senha === senhaCustos
-      );
-    } else if (area === "admin-embalagem") {
-      usuarioValido = usuariosAdminEmbalagem.find(
-        (u: { usuario: string; senha: string }) => u.usuario === usuarioCustos && u.senha === senhaCustos
-      );
-    }
+    try {
+      const { AuthService } = await import('@/lib/auth-service')
+      
+      // Verificar se a senha foi informada
+      if (!senhaCustos.trim()) {
+        alert("Por favor, informe a senha.");
+        return false;
+      }
 
-    if (!usuarioValido) {
-      alert("Usuário ou senha inválidos.");
+      // Autenticar usuário com senha
+      const result = await AuthService.authenticateUser(usuarioCustos.trim(), senhaCustos.trim(), area)
+      
+      if (!result.success) {
+        alert(result.error || "Erro na autenticação.");
+        return false;
+      }
+
+      console.log("✅ Usuário administrativo autenticado para área:", area, "ID:", result.user?.id);
+      return true;
+    } catch (error) {
+      console.error("❌ Erro ao validar usuário administrativo:", error);
+      alert("Erro ao validar usuário. Tente novamente.");
       return false;
     }
+  };
 
-    return true;
+  // NOVA FUNÇÃO: Validar usuário para áreas operacionais (recebimento e embalagem)
+  const validarUsuarioOperacional = async (nomeUsuario: string, areaSelecionada: string) => {
+    try {
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+
+      // Buscar usuário na tabela users para setores operacionais
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, nome, area, ativo')
+        .eq('nome', nomeUsuario.trim())
+        .eq('ativo', true)
+        .single()
+
+      if (userError || !userData) {
+        alert("Usuário não encontrado ou inativo.");
+        return false;
+      }
+
+      // Verificar se a área do usuário corresponde à área selecionada
+      if (userData.area !== areaSelecionada) {
+        alert(`Usuário não tem acesso à área ${areaSelecionada}. Área autorizada: ${userData.area}`);
+        return false;
+      }
+
+      console.log("✅ Usuário operacional validado:", nomeUsuario, "ID:", userData.id, "para área:", areaSelecionada);
+      return true;
+    } catch (error) {
+      console.error("❌ Erro ao validar usuário operacional:", error);
+      alert("Erro ao validar usuário. Tente novamente.");
+      return false;
+    }
   };
 
   const router = useRouter();
@@ -147,30 +166,57 @@ export default function LoginPage() {
 
     // Verificar se é área que usa autenticação local
     if (LocalAuthService.isLocalAuthArea(area)) {
-      // Recebimento e Embalagem: validação local
+      // Recebimento e Embalagem: validação no banco (sem senha)
       if (area === "embalagem") {
         if (colaboradoresPreenchidos.length === 0 || !data || !turno) {
           alert("Preencha todos os campos obrigatórios.");
           return;
         }
-        console.log("✅ Login autorizado (local): setor Embalagem ->", colaboradoresPreenchidos);
+
+        // Validar usuário no banco para embalagem
+        const usuarioValido = await validarUsuarioOperacional(colaboradoresPreenchidos[0], area);
+        if (!usuarioValido) {
+          return;
+        }
+
+        console.log("✅ Login autorizado (banco): setor Embalagem ->", colaboradoresPreenchidos);
+      } else if (area === "recebimento") {
+        if (!colaborador.trim() || !data || !turno) {
+          alert("Por favor, preencha todos os campos.");
+          return;
+        }
+
+        // Validar usuário no banco para recebimento
+        const usuarioValido = await validarUsuarioOperacional(colaborador, area);
+        if (!usuarioValido) {
+          return;
+        }
+
+        console.log("✅ Login autorizado (banco): setor Recebimento ->", colaborador);
       } else {
         if (!colaborador.trim() || !data || !turno) {
           alert("Por favor, preencha todos os campos.");
           return;
         }
-        console.log("✅ Login autorizado (local): setor", area, "->", colaborador);
+
+        // Validar usuário no banco para inventário
+        const usuarioValido = await validarUsuarioOperacional(colaborador, area);
+        if (!usuarioValido) {
+          return;
+        }
+
+        console.log("✅ Login autorizado (banco): setor", area, "->", colaborador);
       }
     } else if (LocalAuthService.isDatabaseAuthArea(area)) {
-      // Custos, CRDK e Admin Embalagem: validação no banco
+      // Custos, CRDK e Admin Embalagem: validação no banco (com senha)
       if (!usuarioCustos.trim() || !senhaCustos.trim()) {
         alert("Por favor, preencha o usuário e a senha.");
         return;
       }
-    
+
       const autorizado = await validarUsuarioCustos();
       if (!autorizado) return;
-    
+
       console.log("✅ Login autorizado (banco): setor", area, "->", usuarioCustos);
     }
 
@@ -188,16 +234,42 @@ export default function LoginPage() {
 
     const loginData = {
       area,
-      colaboradores: area === "embalagem" ? colaboradoresPreenchidos : [colaborador],
-      data: data ? format(data, "yyyy-MM-dd") : undefined,
-      turno,
+      colaboradores: area === "embalagem" ? colaboradoresPreenchidos :
+        (LocalAuthService.isDatabaseAuthArea(area) ? [usuarioCustos] : [colaborador]), // Usuário administrativo para setores administrativos
+      data: data ? format(data, "yyyy-MM-dd") : new Date().toISOString().split('T')[0], // Data atual para setores administrativos
+      turno: turno || "manhã", // Turno padrão para setores administrativos
       usuarioCustos: area === "custos" || area === "crdk" || area === "admin-embalagem" ? usuarioCustos : undefined,
+      loginTime: new Date().toISOString(), // CAMPO OBRIGATÓRIO ADICIONADO
     };
 
+    // DEBUG: Verificar dados antes de enviar
+    console.log("🔍 Dados de login a serem enviados:", loginData);
+    console.log("🔍 Validação dos campos:");
+    console.log("  - area:", !!loginData.area, loginData.area);
+    console.log("  - colaboradores:", !!loginData.colaboradores, loginData.colaboradores);
+    console.log("  - data:", !!loginData.data, loginData.data);
+    console.log("  - turno:", !!loginData.turno, loginData.turno);
+    console.log("  - loginTime:", !!loginData.loginTime, loginData.loginTime);
+
     try {
+      // SOLUÇÃO: Salvar sessão com identificação única por usuário
       await saveSession(loginData);
       console.log("✅ Sessão salva com sucesso:", loginData);
-      
+
+      // SOLUÇÃO ADICIONAL: Salvar no localStorage com chave única por usuário
+      // Isso evita conflitos quando múltiplas pessoas fazem login no mesmo setor
+      const sessionKey = 'sistema_session'
+      const sessionData = {
+        ...loginData,
+        loginTime: new Date().toISOString(),
+        // NOVO: Adicionar hash único para identificar sessão específica do usuário
+        userHash: `${area}_${(area === "embalagem" ? colaboradoresPreenchidos.join('_') : colaborador)}_${Date.now()}`,
+        timestamp: new Date().toISOString()
+      }
+
+      localStorage.setItem(sessionKey, JSON.stringify(sessionData))
+      console.log("✅ Sessão também salva no localStorage com hash único:", sessionData.userHash)
+
       // Redirecionar para a área correspondente
       if (area === "recebimento") {
         router.push("/recebimento");
@@ -209,8 +281,11 @@ export default function LoginPage() {
         router.push("/crdk");
       } else if (area === "admin-embalagem") {
         router.push("/admin");
+      } else if (area === "inventario") {
+        router.push("/inventario");
       } else {
         router.push("/painel");
+
       }
     } catch (error) {
       console.error("❌ Erro ao salvar sessão:", error);
@@ -234,7 +309,7 @@ export default function LoginPage() {
   // Função para verificar se pode prosseguir com o login
   const canProceedWithLogin = () => {
     if (!area) return false;
-    
+
     if (LocalAuthService.isLocalAuthArea(area)) {
       if (area === "embalagem") {
         return colaboradoresPreenchidos.length > 0 && data && turno;
@@ -244,7 +319,7 @@ export default function LoginPage() {
     } else if (LocalAuthService.isDatabaseAuthArea(area)) {
       return usuarioCustos.trim() && senhaCustos.trim();
     }
-    
+
     return false;
   };
 
@@ -289,7 +364,7 @@ export default function LoginPage() {
                     <div className="w-0.5 h-8 bg-white"></div>
                   </div>
                 </div>
-                
+
                 {/* Texto ProFlow */}
                 <div className="text-left">
                   <div className="text-3xl font-bold text-gray-900">ProFlow</div>
@@ -311,7 +386,7 @@ export default function LoginPage() {
               </div>
             )}
           </div>
-          
+
           <CardDescription className="text-lg text-center mb-2 mt-2">
             {area === "recebimento" && "Recebimento de Notas Fiscais"}
             {area === "embalagem" && "Embalagem e Expedição"}
@@ -337,7 +412,7 @@ export default function LoginPage() {
                 <SelectItem value="admin-embalagem" className="text-base py-3">🛡️ Admin Embalagem</SelectItem>
                 <SelectItem value="inventario" className="text-base py-3">📋 Inventário</SelectItem>
                 <SelectItem value="crdk" className="text-base py-3"> 📊 CRDK </SelectItem>
-                
+
               </SelectContent>
             </Select>
           </div>
@@ -389,7 +464,7 @@ export default function LoginPage() {
                     <strong>Apenas usuários autorizados</strong>
                   </p>
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label className="text-base font-medium flex items-center space-x-2">
                     <Lock className="h-4 w-4 text-blue-600" />
@@ -502,10 +577,10 @@ export default function LoginPage() {
               area === "custos" || area === "crdk"
                 ? !usuarioCustos.trim() || !senhaCustos.trim()
                 : area === "embalagem"
-                ? colaboradoresPreenchidos.length === 0 || !data || !turno
-                : area === "admin-embalagem"
-                ? !usuarioCustos.trim() || !senhaCustos.trim()
-                : !colaborador.trim() || !data || !turno || !area
+                  ? colaboradoresPreenchidos.length === 0 || !data || !turno
+                  : area === "admin-embalagem"
+                    ? !usuarioCustos.trim() || !senhaCustos.trim()
+                    : !colaborador.trim() || !data || !turno || !area
             }
             onClick={handleLogin}
             area={area}

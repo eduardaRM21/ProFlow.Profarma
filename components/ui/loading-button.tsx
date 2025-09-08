@@ -117,7 +117,7 @@ export function LoginButton({
   return (
     <LoadingButton
       loading={loading}
-      loadingText="Entrando no Sistema..."
+      loadingText="Entrando no  Sistema..."
       onClick={onClick}
       disabled={disabled}
       loadingVariant={getLoadingVariant()}
