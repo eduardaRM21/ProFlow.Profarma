@@ -91,3 +91,50 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Bloquear rotação da tela em dispositivos móveis */
+@media screen and (max-width: 768px) {
+  html, body {
+    /* Forçar orientação portrait */
+    transform: rotate(0deg);
+    transform-origin: center center;
+  }
+  
+  /* Prevenir rotação automática */
+  @media screen and (orientation: landscape) {
+    html, body {
+      transform: rotate(90deg);
+      transform-origin: center center;
+      width: 100vh;
+      height: 100vw;
+      overflow-x: hidden;
+    }
+  }
+}
+
+/* Estilos específicos para setores de recebimento e embalagem */
+.recebimento-page,
+.embalagem-page {
+  /* Forçar orientação portrait */
+  transform: rotate(0deg);
+  transform-origin: center center;
+}
+
+/* Prevenir zoom e rotação em dispositivos móveis */
+@media screen and (max-width: 768px) {
+  .recebimento-page,
+  .embalagem-page {
+    /* Desabilitar zoom */
+    touch-action: pan-x pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    
+    /* Prevenir rotação */
+    -webkit-transform: rotate(0deg);
+    -moz-transform: rotate(0deg);
+    -ms-transform: rotate(0deg);
+    transform: rotate(0deg);
+  }
+}

@@ -9,7 +9,14 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "ProFlow - Fluxo profissional entre setores - Profarma",
   description: "Sistema completo de recebimento, embalagem, custos e expedição - Profarma",
-  manifest: '/manifest.json'
+  manifest: '/manifest.json',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+    orientation: 'portrait'
+  }
 }
 
 export default function RootLayout({

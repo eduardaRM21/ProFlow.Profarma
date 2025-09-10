@@ -32,6 +32,7 @@ import { useNotasBipadas } from "@/lib/notas-bipadas-service"
 import { EmbalagemNotasBipadasService, EmbalagemNotaBipada } from '@/lib/embalagem-notas-bipadas-service'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
+import { useScreenOrientation } from "@/hooks/use-screen-orientation"
 import { config, debugConfig } from '@/lib/config'
 import { getSupabase } from '@/lib/supabase-client'
 
@@ -82,6 +83,9 @@ type StatusCarro = "aguardando_colagem" | "em_conferencia" | "liberado" | "embal
 export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProps) {
   const { toast } = useToast()
   const notasBipadasService = useNotasBipadas()
+  
+  // Hook para bloquear rotação da tela
+  useScreenOrientation()
   const [carros, setCarros] = useState<Carro[]>([])
   const [carroAtivo, setCarroAtivo] = useState<Carro | null>(null)
   const [codigoInput, setCodigoInput] = useState("")

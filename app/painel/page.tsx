@@ -34,6 +34,7 @@ import ChatModal from "./components/chat-modal";
 import AjudaSection from "./components/ajuda-section";
 import { useSession, useConnectivity } from "@/hooks/use-database";
 import { useEmbalagemStats } from "@/hooks/use-embalagem-stats";
+import { useScreenOrientation } from "@/hooks/use-screen-orientation";
 import type { SessionData } from "@/lib/database-service";
 
 export default function PainelPage() {
@@ -49,6 +50,9 @@ export default function PainelPage() {
   // Hook do banco de dados
   const { getSession } = useSession();
   const { isFullyConnected } = useConnectivity();
+  
+  // Hook para bloquear rotação da tela
+  useScreenOrientation();
 
   useEffect(() => {
     const verificarSessao = async () => {
@@ -201,7 +205,7 @@ export default function PainelPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 embalagem-page">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-green-100">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">

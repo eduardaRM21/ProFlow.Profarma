@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useScreenOrientation } from "@/hooks/use-screen-orientation"
 import { QrCode, AlertTriangle, CheckCircle } from 'lucide-react'
 
 interface BarcodeScannerProps {
@@ -11,6 +12,9 @@ interface BarcodeScannerProps {
 }
 
 export default function BarcodeScanner({ onScan, onError }: BarcodeScannerProps) {
+  // Hook para bloquear rotação da tela
+  useScreenOrientation()
+  
   const videoRef = useRef<HTMLVideoElement>(null)
   const controlsRef = useRef<any | null>(null)
   const [isScanning, setIsScanning] = useState(false)

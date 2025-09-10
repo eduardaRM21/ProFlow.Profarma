@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { MessageCircle, Phone, Mail, HelpCircle, ExternalLink, Clock, MessageSquare } from "lucide-react"
 import ChatModal from "./chat-modal"
+import { useScreenOrientation } from "@/hooks/use-screen-orientation"
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = 'https://auiidcxarcjjxvyswwhf.supabase.co'
@@ -24,6 +25,9 @@ interface AjudaSectionProps {
 }
 
 export default function AjudaSection({ sessionData }: AjudaSectionProps) {
+  // Hook para bloquear rotação da tela
+  useScreenOrientation()
+  
   const [chatAberto, setChatAberto] = useState(false)
   const [mensagensNaoLidas, setMensagensNaoLidas] = useState(0)
 
