@@ -335,7 +335,7 @@ export default function CustosPage() {
                       destino: nota.destino || 'Não informado',
                       fornecedor: nota.fornecedor || 'Não informado',
                       clienteDestino: nota.cliente_destino || 'Não informado',
-                      status: divergencia ? 'divergencia' : 'ok',
+                      status: nota.status === 'devolvida' ? 'devolvida' : (divergencia ? 'divergencia' : 'ok'),
                       divergencia: divergencia
                     }
                   })
@@ -395,12 +395,33 @@ export default function CustosPage() {
       console.log("✅ Todos os relatórios processados:", relatoriosCompletos.length)
       console.log("🔍 Primeiro relatório completo:", relatoriosCompletos[0])
       
+      // Preservar mudanças locais recentes (últimos 5 minutos)
+      const agora = Date.now()
+      const cincoMinutosAtras = agora - (5 * 60 * 1000)
+      
+      const relatoriosComMudancasLocais = relatoriosCompletos.map(relatorioBanco => {
+        const relatorioLocal = relatorios.find(r => r.id === relatorioBanco.id)
+        
+        // Se existe relatório local com atualização recente, preservar o status local
+        if (relatorioLocal && 
+            relatorioLocal.ultimaAtualizacaoLocal && 
+            relatorioLocal.ultimaAtualizacaoLocal > cincoMinutosAtras) {
+          console.log(`🔄 Preservando mudança local para relatório ${relatorioBanco.id}: ${relatorioLocal.status}`)
+          return {
+            ...relatorioBanco,
+            status: relatorioLocal.status
+          }
+        }
+        
+        return relatorioBanco
+      })
+      
       // Verificar se há colaboradores nos relatórios
-      const relatoriosComColaboradores = relatoriosCompletos.filter((r: any) => r.colaboradores && r.colaboradores.length > 0)
-      const relatoriosSemColaboradores = relatoriosCompletos.filter((r: any) => !r.colaboradores || r.colaboradores.length === 0)
+      const relatoriosComColaboradores = relatoriosComMudancasLocais.filter((r: any) => r.colaboradores && r.colaboradores.length > 0)
+      const relatoriosSemColaboradores = relatoriosComMudancasLocais.filter((r: any) => !r.colaboradores || r.colaboradores.length === 0)
       
       console.log("📊 Estatísticas dos relatórios:")
-      console.log(`   - Total: ${relatoriosCompletos.length}`)
+      console.log(`   - Total: ${relatoriosComMudancasLocais.length}`)
       console.log(`   - Com colaboradores: ${relatoriosComColaboradores.length}`)
       console.log(`   - Sem colaboradores: ${relatoriosSemColaboradores.length}`)
       
@@ -408,7 +429,7 @@ export default function CustosPage() {
         console.log("⚠️ Relatórios sem colaboradores:", relatoriosSemColaboradores.map((r: any) => ({ id: r.id, nome: r.nome })))
       }
 
-      setRelatorios(relatoriosCompletos)
+      setRelatorios(relatoriosComMudancasLocais)
       setFonteDados('banco')
 
     } catch (error) {
@@ -508,7 +529,7 @@ export default function CustosPage() {
             destino: nota.destino || 'Não informado',
             fornecedor: nota.fornecedor || 'Não informado',
             clienteDestino: nota.cliente_destino || 'Não informado',
-            status: divergencia ? 'divergencia' : 'ok',
+            status: nota.status === 'devolvida' ? 'devolvida' : (divergencia ? 'divergencia' : 'ok'),
             divergencia: divergencia ? {
               volumesInformados: divergencia.volumes_informados,
               observacoes: divergencia.observacoes
@@ -549,9 +570,30 @@ export default function CustosPage() {
       console.log("⚠️ Relatórios sem colaboradores (fallback):", relatoriosSemColaboradores.map((r: any) => ({ id: r.id, nome: r.nome })))
     }
 
-    console.log("✅ Fallback executado com sucesso:", relatoriosProcessadosFinal.length)
-    console.log("🔍 Primeiro relatório do fallback:", relatoriosProcessadosFinal[0])
-    setRelatorios(relatoriosProcessadosFinal)
+    // Preservar mudanças locais recentes (últimos 5 minutos)
+    const agora = Date.now()
+    const cincoMinutosAtras = agora - (5 * 60 * 1000)
+    
+    const relatoriosComMudancasLocais = relatoriosProcessadosFinal.map(relatorioBanco => {
+      const relatorioLocal = relatorios.find(r => r.id === relatorioBanco.id)
+      
+      // Se existe relatório local com atualização recente, preservar o status local
+      if (relatorioLocal && 
+          relatorioLocal.ultimaAtualizacaoLocal && 
+          relatorioLocal.ultimaAtualizacaoLocal > cincoMinutosAtras) {
+        console.log(`🔄 Preservando mudança local para relatório ${relatorioBanco.id}: ${relatorioLocal.status}`)
+        return {
+          ...relatorioBanco,
+          status: relatorioLocal.status
+        }
+      }
+      
+      return relatorioBanco
+    })
+
+    console.log("✅ Fallback executado com sucesso:", relatoriosComMudancasLocais.length)
+    console.log("🔍 Primeiro relatório do fallback:", relatoriosComMudancasLocais[0])
+    setRelatorios(relatoriosComMudancasLocais)
     setFonteDados('banco')
   }
 
@@ -990,12 +1032,16 @@ NOTAS FISCAIS:`
 
     const texto = filtroTexto.toLowerCase();
 
-    // Verificar nome
+    // Verificar nome da transportadora
     const nomeMatch = relatorio.nome && relatorio.nome.toLowerCase().includes(texto);
 
-    // Verificar colaboradores (sempre é array conforme interface)
+    // Verificar colaboradores
     const colaboradoresMatch = relatorio.colaboradores && Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0 &&
       relatorio.colaboradores.some(col => col && col.toLowerCase().includes(texto));
+
+    // Verificar Notas Fiscais
+    const nfMatch = relatorio.notas && Array.isArray(relatorio.notas) && relatorio.notas.length > 0 &&
+      relatorio.notas.some(nota => nota.numeroNF && nota.numeroNF.toLowerCase().includes(texto));
 
     // Verificar área
     const areaMatch = relatorio.area && relatorio.area.toLowerCase().includes(texto);
@@ -1003,7 +1049,7 @@ NOTAS FISCAIS:`
     // Verificar status
     const statusMatch = relatorio.status && relatorio.status.toLowerCase().includes(texto);
 
-    return nomeMatch || colaboradoresMatch || areaMatch || statusMatch;
+    return nomeMatch || colaboradoresMatch || nfMatch || areaMatch || statusMatch;
   });
 
   // Filtrar relatórios por colaborador e NF
@@ -1068,6 +1114,8 @@ NOTAS FISCAIS:`
       });
 
   const alterarStatusRelatorio = async (relatorioId: string, novoStatus: string) => {
+    console.log('🔄 Alterando status do relatório:', relatorioId, 'para:', novoStatus)
+    
     const relatoriosAtualizados = relatorios.map((rel) =>
       rel.id === relatorioId ? { ...rel, status: novoStatus } : rel
     )
@@ -1078,9 +1126,13 @@ NOTAS FISCAIS:`
       // Atualizar apenas o status no banco de dados (mais eficiente)
       await updateRelatorioStatus(relatorioId, novoStatus)
 
-      // Disparar evento em tempo real
+      // Marcar que este relatório foi atualizado recentemente para evitar sobrescrita
       const relatorioAtualizado = relatoriosAtualizados.find(rel => rel.id === relatorioId)
       if (relatorioAtualizado) {
+        // Adicionar timestamp de atualização local
+        relatorioAtualizado.ultimaAtualizacaoLocal = Date.now()
+        
+        // Disparar evento em tempo real
         addRealtimeEvent({
           id: Date.now().toString(),
           timestamp: new Date().toISOString(),
@@ -1089,10 +1141,67 @@ NOTAS FISCAIS:`
           message: `Status do relatório alterado para ${novoStatus}`,
           data: { relatorioId, novoStatus, area: relatorioAtualizado.area }
         });
+        
+        console.log('✅ Status do relatório atualizado com sucesso')
       }
     } catch (error) {
-      console.error("Erro ao atualizar status no banco:", error)
+      console.error("❌ Erro ao atualizar status no banco:", error)
       alert("Erro ao atualizar dados no banco. Verifique sua conexão.")
+      
+      // Reverter mudança local em caso de erro
+      setRelatorios(relatorios)
+    }
+  };
+
+  const marcarNotaComoDevolvida = async (notaId: string) => {
+    if (!relatorioSelecionado) return;
+
+    try {
+      // Atualizar no banco de dados
+      const { getSupabase } = await import('@/lib/supabase-client');
+      const supabase = getSupabase();
+      
+      const { error } = await supabase
+        .from('notas_fiscais')
+        .update({ status: 'devolvida' })
+        .eq('id', notaId);
+
+      if (error) {
+        console.error('❌ Erro ao atualizar status da nota no banco:', error);
+        alert('Erro ao atualizar nota no banco de dados. Verifique sua conexão.');
+        return;
+      }
+
+      // Atualizar estado local
+      const relatorioAtualizado = {
+        ...relatorioSelecionado,
+        notas: relatorioSelecionado.notas.map(nota =>
+          nota.id === notaId ? { ...nota, status: 'devolvida' as const } : nota
+        )
+      };
+
+      setRelatorioSelecionado(relatorioAtualizado);
+      
+      // Atualizar também na lista de relatórios
+      const relatoriosAtualizados = relatorios.map(rel =>
+        rel.id === relatorioAtualizado.id ? relatorioAtualizado : rel
+      );
+      setRelatorios(relatoriosAtualizados);
+
+      // Disparar evento em tempo real
+      addRealtimeEvent({
+        id: Date.now().toString(),
+        timestamp: new Date().toISOString(),
+        sector: 'custos',
+        type: 'relatorio_finalized',
+        message: `Nota ${notaId} marcada como devolvida`,
+        data: { notaId, relatorioId: relatorioAtualizado.id }
+      });
+
+      console.log('✅ Nota marcada como devolvida no banco:', notaId);
+    } catch (error) {
+      console.error('❌ Erro ao marcar nota como devolvida:', error);
+      alert('Erro ao marcar nota como devolvida. Verifique sua conexão.');
     }
   };
 
@@ -1257,7 +1366,7 @@ NOTAS FISCAIS:`
               <div>
                 <Label className="text-sm">Buscar por texto</Label>
                 <Input
-                  placeholder="Transportadora, colaborador, área..."
+                  placeholder="Transportadora, colaborador, Nota Fiscal..."
                   value={filtroTexto}
                   onChange={(e) => setFiltroTexto(e.target.value)}
                   className="w-full"
@@ -1307,7 +1416,7 @@ NOTAS FISCAIS:`
             {(filtroTexto || filtroColaborador !== "todos" || filtroDataInicio || filtroDataFim) && (
               <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
                 <span className="font-medium">Filtros ativos:</span>
-                {filtroTexto && ` Texto: "${filtroTexto}"`}
+                {filtroTexto && ` Busca: "${filtroTexto}" (transportadora, colaborador, NF)`}
                 {filtroColaborador !== "todos" && ` Colaborador/NF: "${filtroColaborador}"`}
                 {filtroDataInicio && ` Data início: ${filtroDataInicio}`}
                 {filtroDataFim && ` Data fim: ${filtroDataFim}`}
@@ -1623,6 +1732,9 @@ NOTAS FISCAIS:`
                                       <SelectItem value="divergencia">
                                         ⚠️ Apenas Divergências
                                       </SelectItem>
+                                      <SelectItem value="devolvida">
+                                        🔄 Apenas Devolvidas
+                                      </SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
@@ -1685,7 +1797,7 @@ NOTAS FISCAIS:`
                             <ScrollArea className="max-h-96 overflow-y-auto overflow-x-hidden ">
                               <div className="min-w-max">
                                 {/* Cabeçalho fixo */}
-                                <div className="grid grid-cols-7 gap-4 bg-gray-100 px-4 py-2 sticky top-0 z-10 text-sm font-semibold text-gray-700 border-b border-gray-300">
+                                <div className="grid grid-cols-8 gap-4 bg-gray-100 px-4 py-2 sticky top-0 z-10 text-sm font-semibold text-gray-700 border-b border-gray-300">
                                   <div>NF</div>
                                   <div>Volumes</div>
                                   <div>Destino</div>
@@ -1693,11 +1805,12 @@ NOTAS FISCAIS:`
                                   <div>Cliente</div>
                                   <div>Status</div>
                                   <div>Divergência</div>
+                                  <div>Ações</div>
                                 </div>
                                 {notasFiltradas.map((nota, index) => (
                                   <div
                                     key={nota.id}
-                                    className={`px-4 py-2 grid grid-cols-7 gap-4 text-sm ${index % 2 === 0
+                                    className={`px-4 py-2 grid grid-cols-8 gap-4 text-sm ${index % 2 === 0
                                         ? "bg-white"
                                         : "bg-gray-50"
                                       }`}
@@ -1736,6 +1849,11 @@ NOTAS FISCAIS:`
                                           <CheckCircle className="h-3 w-3 mr-1" />
                                           <span className="text-xs">OK</span>
                                         </div>
+                                      ) : nota.status === "devolvida" ? (
+                                        <div className="flex items-center text-red-600">
+                                          <RefreshCw className="h-3 w-3 mr-1" />
+                                          <span className="text-xs">Devolvida</span>
+                                        </div>
                                       ) : (
                                         <div className="flex items-center text-orange-600">
                                           <AlertTriangle className="h-3 w-3 mr-1" />
@@ -1753,9 +1871,22 @@ NOTAS FISCAIS:`
                                         </span>
                                       )}
                                     </div>
+                                    <div className="flex items-center justify-center">
+                                      {nota.status !== "devolvida" && (
+                                        <Button
+                                          onClick={() => marcarNotaComoDevolvida(nota.id)}
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-6 px-2 text-xs bg-red-50 hover:bg-red-100 border-red-200 text-red-700"
+                                        >
+                                          <RefreshCw className="h-3 w-3 mr-1" />
+                                          Devolver
+                                        </Button>
+                                      )}
+                                    </div>
                                   </div>
                                 ))}
-                                <div className="bg-orange-50 px-4 py-2 grid grid-cols-7 gap-4 text-sm font-bold text-orange-800">
+                                <div className="bg-orange-50 px-4 py-2 grid grid-cols-8 gap-4 text-sm font-bold text-orange-800">
                                   <div className="col-span-1">Total:</div>
                                   <div className="text-center">
                                     {notasFiltradas.reduce(
@@ -1766,7 +1897,7 @@ NOTAS FISCAIS:`
                                       0
                                     )}
                                   </div>
-                                  <div className="col-span-5"></div>
+                                  <div className="col-span-6"></div>
                                 </div>
                               </div>
                             </ScrollArea>

@@ -22,7 +22,7 @@ export interface NotaFiscal {
   clienteDestino: string
   tipoCarga: string
   timestamp: string
-  status: string
+  status: 'ok' | 'divergencia' | 'devolvida'
   divergencia?: {
     volumesInformados: number
     observacoes: string
@@ -52,6 +52,7 @@ export interface Relatorio {
   notas: NotaFiscal[]
   dataFinalizacao: string
   status: string
+  ultimaAtualizacaoLocal?: number
 }
 
 export interface ChatMessage {

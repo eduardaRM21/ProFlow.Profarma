@@ -851,7 +851,7 @@ export const useCentralizedDatabase = () => {
     cleanup: () => service.cleanup(),
     
     // Usuários
-    createUser: (userData: any) => service.createUser(userData),
+    createUser: (userData: Omit<User, 'id' | 'created_at' | 'updated_at'>) => service.createUser(userData),
     getUserById: (id: string) => service.getUserById(id),
     getUsersByArea: (area: string) => service.getUsersByArea(area),
     

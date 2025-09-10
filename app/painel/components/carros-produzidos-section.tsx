@@ -483,12 +483,28 @@ export default function CarrosProduzidosSection({
       console.log('🚛 Carregando carros produzidos...')
 
       const carrosEncontrados: CarroProduzido[] = [];
+      
+      // Obter data atual para filtro
+      const hoje = new Date().toISOString().split('T')[0] // Formato YYYY-MM-DD
+      console.log('📅 Filtrando carros do dia:', hoje)
 
       // 1. Buscar carros da tabela embalagem_notas_bipadas
       const resultado = await EmbalagemNotasBipadasService.buscarCarrosProduzidos()
       if (resultado.success && resultado.carros) {
         console.log(`✅ Carregados ${resultado.carros.length} carros da tabela embalagem_notas_bipadas`)
-        carrosEncontrados.push(...(resultado.carros.map(carro => ({
+        
+        // Filtrar apenas carros do dia atual
+        const carrosHoje = resultado.carros.filter(carro => {
+          const dataCarro = carro.dataProducao || carro.dataInicioEmbalagem
+          if (!dataCarro) return false
+          
+          const dataCarroFormatada = new Date(dataCarro).toISOString().split('T')[0]
+          return dataCarroFormatada === hoje
+        })
+        
+        console.log(`📊 Carros filtrados para hoje: ${carrosHoje.length} de ${resultado.carros.length} total`)
+        
+        carrosEncontrados.push(...(carrosHoje.map(carro => ({
           ...carro,
           dataCriacao: carro.dataProducao || carro.dataInicioEmbalagem || new Date().toISOString()
         })) as CarroProduzido[]))
@@ -511,7 +527,16 @@ export default function CarrosProduzidosSection({
           carros.forEach((carro: any) => {
             // Verificar se o carro já não foi adicionado da tabela
             const carroJaExiste = carrosEncontrados.find(c => c.id === carro.id);
-            if (!carroJaExiste && carro.statusCarro === "embalando") {
+            
+            // Filtrar apenas carros do dia atual
+            const dataCarro = carro.dataInicioEmbalagem || carro.dataCriacao
+            let carroDoDiaAtual = false
+            if (dataCarro) {
+              const dataCarroFormatada = new Date(dataCarro).toISOString().split('T')[0]
+              carroDoDiaAtual = dataCarroFormatada === hoje
+            }
+            
+            if (!carroJaExiste && carro.statusCarro === "embalando" && carroDoDiaAtual) {
               const carroFormatado: CarroProduzido = {
                 id: carro.id,
                 nomeCarro: carro.nomeCarro || `${carro.colaboradores.join(" + ")}`,
@@ -573,6 +598,10 @@ export default function CarrosProduzidosSection({
     console.log('🔄 Carregando carros do localStorage como fallback...')
     // Buscar todos os carros produzidos no localStorage
     const carrosEncontrados: CarroProduzido[] = [];
+    
+    // Obter data atual para filtro
+    const hoje = new Date().toISOString().split('T')[0] // Formato YYYY-MM-DD
+    console.log('📅 Filtrando carros do localStorage para o dia:', hoje)
 
     // Buscar carros da nova lista de carros produzidos
     const carrosProduzidos = localStorage.getItem("profarma_carros_produzidos");
@@ -580,25 +609,35 @@ export default function CarrosProduzidosSection({
       try {
         const carros = JSON.parse(carrosProduzidos);
         carros.forEach((carro: any) => {
-          const carroFormatado: CarroProduzido = {
-            id: carro.id,
-            nomeCarro: carro.nomeCarro || `${carro.colaboradores.join(" + ")}`,
-            colaboradores: carro.colaboradores,
-            data: carro.data,
-            turno: carro.turno,
-            destinoFinal: carro.destinoFinal,
-            quantidadeNFs: carro.quantidadeNFs,
-            totalVolumes: carro.totalVolumes,
-            dataCriacao: carro.dataProducao || carro.dataInicioEmbalagem || carro.dataCriacao || new Date().toISOString(),
-            status: carro.status,
-            posicoes: carro.posicoes,
-            palletes: carro.palletes,
-            gaiolas: carro.gaiolas,
-            caixasMangas: carro.caixasMangas,
-            dataInicioEmbalagem: carro.dataInicioEmbalagem,
-            dataFinalizacao: carro.dataFinalizacao,
-          };
-          carrosEncontrados.push(carroFormatado);
+          // Filtrar apenas carros do dia atual
+          const dataCarro = carro.dataProducao || carro.dataInicioEmbalagem || carro.dataCriacao
+          let carroDoDiaAtual = false
+          if (dataCarro) {
+            const dataCarroFormatada = new Date(dataCarro).toISOString().split('T')[0]
+            carroDoDiaAtual = dataCarroFormatada === hoje
+          }
+          
+          if (carroDoDiaAtual) {
+            const carroFormatado: CarroProduzido = {
+              id: carro.id,
+              nomeCarro: carro.nomeCarro || `${carro.colaboradores.join(" + ")}`,
+              colaboradores: carro.colaboradores,
+              data: carro.data,
+              turno: carro.turno,
+              destinoFinal: carro.destinoFinal,
+              quantidadeNFs: carro.quantidadeNFs,
+              totalVolumes: carro.totalVolumes,
+              dataCriacao: carro.dataProducao || carro.dataInicioEmbalagem || carro.dataCriacao || new Date().toISOString(),
+              status: carro.status,
+              posicoes: carro.posicoes,
+              palletes: carro.palletes,
+              gaiolas: carro.gaiolas,
+              caixasMangas: carro.caixasMangas,
+              dataInicioEmbalagem: carro.dataInicioEmbalagem,
+              dataFinalizacao: carro.dataFinalizacao,
+            };
+            carrosEncontrados.push(carroFormatado);
+          }
         });
       } catch (error) {
         console.error("Erro ao processar carros produzidos:", error);
@@ -613,7 +652,16 @@ export default function CarrosProduzidosSection({
         carros.forEach((carro: any) => {
           // Verificar se o carro já não foi adicionado da lista de carros produzidos
           const carroJaExiste = carrosEncontrados.find(c => c.id === carro.id);
-          if (!carroJaExiste) {
+          
+          // Filtrar apenas carros do dia atual
+          const dataCarro = carro.dataInicioEmbalagem || carro.dataCriacao
+          let carroDoDiaAtual = false
+          if (dataCarro) {
+            const dataCarroFormatada = new Date(dataCarro).toISOString().split('T')[0]
+            carroDoDiaAtual = dataCarroFormatada === hoje
+          }
+          
+          if (!carroJaExiste && carroDoDiaAtual) {
             const carroFormatado: CarroProduzido = {
               id: carro.id,
               nomeCarro: carro.nomeCarro || `${carro.colaboradores.join(" + ")}`,
@@ -623,14 +671,14 @@ export default function CarrosProduzidosSection({
               destinoFinal: carro.destinoFinal,
               quantidadeNFs: carro.quantidadeNFs,
               totalVolumes: carro.totalVolumes,
-                          dataCriacao: carro.dataInicioEmbalagem || carro.dataCriacao || new Date().toISOString(),
-            status: carro.status,
-            posicoes: carro.posicoes,
-            palletes: carro.palletes,
-            gaiolas: carro.gaiolas,
-            caixasMangas: carro.caixasMangas,
-            dataInicioEmbalagem: carro.dataInicioEmbalagem,
-            dataFinalizacao: carro.dataFinalizacao,
+              dataCriacao: carro.dataInicioEmbalagem || carro.dataCriacao || new Date().toISOString(),
+              status: carro.status,
+              posicoes: carro.posicoes,
+              palletes: carro.palletes,
+              gaiolas: carro.gaiolas,
+              caixasMangas: carro.caixasMangas,
+              dataInicioEmbalagem: carro.dataInicioEmbalagem,
+              dataFinalizacao: carro.dataFinalizacao,
             };
             carrosEncontrados.push(carroFormatado);
           }
@@ -778,11 +826,17 @@ export default function CarrosProduzidosSection({
       {/* Header com estatísticas */}
       <Card className="border-emerald-200">
         <CardHeader className="pb-2 sm:pb-6 px-3 sm:px-6 pt-3 sm:pt-6">
-          <CardTitle className="flex items-center space-x-2 text-base sm:text-lg">
-            <Truck className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-600 flex-shrink-0" />
-            <span className="text-sm sm:text-base lg:text-lg truncate">
-              Carros Produzidos
-            </span>
+          <CardTitle className="flex items-center justify-between text-base sm:text-lg">
+            <div className="flex items-center space-x-2">
+              <Truck className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-600 flex-shrink-0" />
+              <span className="text-sm sm:text-base lg:text-lg truncate">
+                Carros Produzidos
+              </span>
+            </div>
+            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+              <Calendar className="h-3 w-3 mr-1" />
+              Hoje
+            </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="px-3 sm:px-6 pb-3 sm:pb-6">

@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { FileText, Search, CalendarIcon, Eye, Package, CheckCircle, AlertTriangle, Filter, Loader2, Plus } from "lucide-react"
+import { FileText, Search, CalendarIcon, Eye, Package, CheckCircle, AlertTriangle, Filter, Loader2, Plus, RefreshCw } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { useRelatorios } from "@/hooks/use-database"
@@ -195,7 +195,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                           destino: nota.destino || 'Não informado',
                           fornecedor: nota.fornecedor || 'Não informado',
                           clienteDestino: nota.cliente_destino || 'Não informado',
-                          status: divergencia ? 'divergencia' : 'ok',
+                          status: nota.status === 'devolvida' ? 'devolvida' : (divergencia ? 'divergencia' : 'ok'),
                           divergencia: divergencia
                         }
                       })
@@ -506,7 +506,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
             </div>
 
             {/* Estatísticas */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 mb-4">
               <Card className="border-blue-200">
                 <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
                   <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">{relatorios.length}</div>
@@ -538,6 +538,14 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                     )}
                   </div>
                   <div className="text-xs text-gray-500 leading-tight">Divergências</div>
+                </CardContent>
+              </Card>
+              <Card className="border-red-200">
+                <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">
+                    {relatorios.reduce((sum, rel) => sum + (rel.notas ? rel.notas.filter((n) => n.status === "devolvida").length : 0), 0)}
+                  </div>
+                  <div className="text-xs text-gray-500 leading-tight">Devolvidas</div>
                 </CardContent>
               </Card>
              
@@ -718,6 +726,11 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                               <div className="flex items-center text-green-600">
                                 <CheckCircle className="h-3 w-3 mr-1" />
                                 <span className="text-xs">OK</span>
+                              </div>
+                            ) : nota.status === "devolvida" ? (
+                              <div className="flex items-center text-red-600">
+                                <RefreshCw className="h-3 w-3 mr-1" />
+                                <span className="text-xs">Devolvida</span>
                               </div>
                             ) : (
                               <div className="flex items-center text-orange-600">

@@ -1499,7 +1499,10 @@ export default function GerenciarCarrosSection() {
                         <span className="sm:hidden">🖨️</span>
                       </Button>
                       <Button
-                        onClick={() => copiarNFsParaSAP(carro.nfs)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          copiarNFsParaSAP(carro.nfs)
+                        }}
                         variant="outline"
                         className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
                         size="sm"
@@ -1714,7 +1717,10 @@ export default function GerenciarCarrosSection() {
                         <span className="sm:hidden">🖨️</span>
                       </Button>
                       <Button
-                        onClick={() => copiarNFsParaSAP(carro.nfs)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          copiarNFsParaSAP(carro.nfs)
+                        }}
                         variant="outline"
                         className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
                         size="sm"

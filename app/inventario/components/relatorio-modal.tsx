@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +28,8 @@ import {
   Download,
   CheckCircle,
   AlertTriangle,
+  Search,
+  Filter,
 } from "lucide-react";
 
 interface ItemInventario {
@@ -72,10 +76,29 @@ export function RelatorioModal({
 }: RelatorioModalProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [observacoes, setObservacoes] = useState("");
+  const [filtroTexto, setFiltroTexto] = useState("");
 
   const totalItens = itens.reduce((total, item) => total + (item.volumes || 0), 0);
   const tempoInicio = session?.loginTime || new Date().toISOString();
   const tempoFim = new Date().toISOString();
+
+  // Filtrar itens baseado no texto de busca
+  const itensFiltrados = useMemo(() => {
+    if (!filtroTexto.trim()) return itens;
+
+    const texto = filtroTexto.toLowerCase();
+    return itens.filter((item) => {
+      const numeroNF = item.numeroNF?.toLowerCase() || '';
+      const fornecedor = item.fornecedor?.toLowerCase() || '';
+      const destino = item.destino?.toLowerCase() || '';
+      const clienteDestino = item.clienteDestino?.toLowerCase() || '';
+
+      return numeroNF.includes(texto) ||
+             fornecedor.includes(texto) ||
+             destino.includes(texto) ||
+             clienteDestino.includes(texto);
+    });
+  }, [itens, filtroTexto]);
 
   const handleGenerateReport = async () => {
     setIsGenerating(true);
@@ -206,12 +229,44 @@ export function RelatorioModal({
             </CardContent>
           </Card>
 
+          {/* Filtro de Busca */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Filter className="h-5 w-5 text-blue-600" />
+                <span>Filtro de Busca</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label htmlFor="filtro-busca" className="text-sm">
+                  Buscar por Nota Fiscal, fornecedor ou destino
+                </Label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="filtro-busca"
+                    placeholder="Digite NF, fornecedor ou destino..."
+                    value={filtroTexto}
+                    onChange={(e) => setFiltroTexto(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                {filtroTexto && (
+                  <div className="text-sm text-gray-600">
+                    Mostrando {itensFiltrados.length} de {itens.length} itens
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Lista de Itens */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Package className="h-5 w-5 text-orange-600" />
-                <span>Notas Fiscais Inventariadas ({itens.length})</span>
+                <span>Notas Fiscais Inventariadas ({itensFiltrados.length})</span>
               </CardTitle>
               <CardDescription>
                 Notas fiscais escaneadas na rua {rua}
@@ -223,9 +278,15 @@ export function RelatorioModal({
                   <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                   <p>Nenhuma nota fiscal foi escaneada</p>
                 </div>
+              ) : itensFiltrados.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Search className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                  <p>Nenhum item encontrado para "{filtroTexto}"</p>
+                  <p className="text-sm text-gray-400 mt-1">Tente ajustar o filtro de busca</p>
+                </div>
               ) : (
                 <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {itens.map((item, index) => (
+                  {itensFiltrados.map((item, index) => (
                     <div
                       key={item.id}
                       className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
@@ -276,7 +337,7 @@ export function RelatorioModal({
           <div className="flex flex-col sm:flex-row gap-3">
             <Button
               onClick={handleGenerateReport}
-              disabled={isGenerating || itens.length === 0}
+              disabled={isGenerating || itensFiltrados.length === 0}
               className="flex-1 bg-purple-600 hover:bg-purple-700"
             >
               {isGenerating ? (
@@ -311,6 +372,14 @@ export function RelatorioModal({
           </div>
 
           {/* Aviso */}
+          {itensFiltrados.length === 0 && itens.length > 0 && (
+            <div className="flex items-center space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <Search className="h-5 w-5 text-blue-600" />
+              <span className="text-blue-800 text-sm">
+                Nenhum item encontrado com o filtro aplicado. Ajuste o filtro ou limpe para ver todos os itens.
+              </span>
+            </div>
+          )}
           {itens.length === 0 && (
             <div className="flex items-center space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <AlertTriangle className="h-5 w-5 text-yellow-600" />

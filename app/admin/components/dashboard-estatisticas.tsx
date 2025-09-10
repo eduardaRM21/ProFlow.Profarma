@@ -107,15 +107,14 @@ export default function DashboardEstatisticas() {
       const hoje = new Date().toISOString().split('T')[0]
       console.log('🔍 Buscando dados para:', hoje)
       
+      // Buscar carros ativos de hoje
       const { data: carrosHoje, error: errorCarros } = await supabase
         .from('carros_status')
         .select('*')
-        .gte('data', `${hoje}T00:00:00`)
-        .lte('data', `${hoje}T23:59:59`)
+        .eq('data', hoje)
 
       if (errorCarros) {
         console.error('❌ Erro ao buscar carros:', errorCarros)
-        // Não falhar se não houver dados de carros
         console.log('⚠️ Continuando sem dados de carros...')
       }
 
@@ -127,25 +126,35 @@ export default function DashboardEstatisticas() {
 
       if (errorNotas) {
         console.error('❌ Erro ao buscar notas:', errorNotas)
-        // Não falhar se não houver dados de notas
         console.log('⚠️ Continuando sem dados de notas...')
       }
 
       // Buscar dados de carros finalizados do setor de embalagem
       const { data: carrosFinalizados, error: errorCarrosFinalizados } = await supabase
         .from('embalagem_carros_finalizados')
-        .select('*')
-        .eq('data', hoje)
+        .select('carros')
+        .gte('created_at', `${hoje}T00:00:00`)
+        .lte('created_at', `${hoje}T23:59:59`)
 
       if (errorCarrosFinalizados) {
         console.error('❌ Erro ao buscar carros finalizados:', errorCarrosFinalizados)
         console.log('⚠️ Continuando sem dados de carros finalizados...')
       }
 
+      // Processar carros finalizados
+      let carrosFinalizadosHoje = 0
+      if (carrosFinalizados && carrosFinalizados.length > 0) {
+        carrosFinalizados.forEach(item => {
+          if (item.carros && Array.isArray(item.carros)) {
+            carrosFinalizadosHoje += item.carros.length
+          }
+        })
+      }
+
       console.log('📊 Dados carregados:', {
         carros: carrosHoje?.length || 0,
         notas: notasHoje?.length || 0,
-        carros_finalizados: carrosFinalizados?.length || 0
+        carros_finalizados: carrosFinalizadosHoje
       })
 
       // Calcular estatísticas por turno
@@ -156,6 +165,7 @@ export default function DashboardEstatisticas() {
         madrugada: 0
       }
 
+      // Processar carros ativos
       carrosHoje?.forEach(carro => {
         const dataCarro = carro.data as string
         const hora = new Date(dataCarro).getHours()
@@ -164,6 +174,24 @@ export default function DashboardEstatisticas() {
         else if (hora >= 18 && hora < 24) carrosPorTurno.noite++
         else carrosPorTurno.madrugada++
       })
+
+      // Processar carros finalizados
+      if (carrosFinalizados && carrosFinalizados.length > 0) {
+        carrosFinalizados.forEach(item => {
+          if (item.carros && Array.isArray(item.carros)) {
+            item.carros.forEach((carro: any) => {
+              const dataCarro = carro.data || carro.data_criacao
+              if (dataCarro) {
+                const hora = new Date(dataCarro).getHours()
+                if (hora >= 6 && hora < 12) carrosPorTurno.manha++
+                else if (hora >= 12 && hora < 18) carrosPorTurno.tarde++
+                else if (hora >= 18 && hora < 24) carrosPorTurno.noite++
+                else carrosPorTurno.madrugada++
+              }
+            })
+          }
+        })
+      }
 
       // Buscar colaboradores que se destacaram (últimos 7 dias)
       const dataInicio = new Date()
@@ -249,8 +277,25 @@ export default function DashboardEstatisticas() {
         data.setDate(data.getDate() - i)
         const dataStr = data.toISOString().split('T')[0]
         
-        const carrosDia = (carrosHoje?.filter(c => (c.data as string).startsWith(dataStr)).length || 0) + 
-                         (carrosFinalizados?.filter(c => (c.data as string).startsWith(dataStr)).length || 0)
+        // Carros ativos do dia
+        const carrosAtivosDia = carrosHoje?.filter(c => (c.data as string) === dataStr).length || 0
+        
+        // Carros finalizados do dia
+        let carrosFinalizadosDia = 0
+        if (carrosFinalizados && carrosFinalizados.length > 0) {
+          carrosFinalizados.forEach(item => {
+            if (item.carros && Array.isArray(item.carros)) {
+              item.carros.forEach((carro: any) => {
+                const dataCarro = carro.data || carro.data_criacao
+                if (dataCarro && dataCarro.startsWith(dataStr)) {
+                  carrosFinalizadosDia++
+                }
+              })
+            }
+          })
+        }
+        
+        const carrosDia = carrosAtivosDia + carrosFinalizadosDia
         const notasDia = notasHoje?.filter(n => n.data === dataStr).length || 0
         const volumesDia = notasHoje?.filter(n => n.data === dataStr)
           .reduce((acc, n) => acc + ((n.volumes as number) || 1), 0) || 0
@@ -263,11 +308,15 @@ export default function DashboardEstatisticas() {
         })
       }
 
+      const totalCarrosHoje = (carrosHoje?.length || 0) + carrosFinalizadosHoje
+      const totalNotasHoje = notasHoje?.length || 0
+      const totalVolumesHoje = notasHoje?.reduce((acc, n) => acc + ((n.volumes as number) || 1), 0) || 0
+
       const dashboardData: EstatisticasDashboard = {
-        total_carros_hoje: (carrosHoje?.length || 0) + (carrosFinalizados?.length || 0),
-        total_notas_hoje: notasHoje?.length || 0,
-        total_volumes_hoje: notasHoje?.reduce((acc, n) => acc + ((n.volumes as number) || 1), 0) || 0,
-        produtividade_media_hoje: (carrosHoje?.length || 0) + (carrosFinalizados?.length || 0) ? Math.round((notasHoje?.length || 0) / ((carrosHoje?.length || 0) + (carrosFinalizados?.length || 0)) * 100) / 100 : 0,
+        total_carros_hoje: totalCarrosHoje,
+        total_notas_hoje: totalNotasHoje,
+        total_volumes_hoje: totalVolumesHoje,
+        produtividade_media_hoje: totalCarrosHoje > 0 ? Math.round((totalNotasHoje / totalCarrosHoje) * 100) / 100 : 0,
         carros_por_turno: carrosPorTurno,
         evolucao_semanal: evolucaoSemanal,
         colaboradores_destaque: colaboradoresDestaque
@@ -384,20 +433,20 @@ export default function DashboardEstatisticas() {
 
       {/* Métricas Principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white select-none">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-blue-100 text-sm font-medium">Carros Processados</p>
                 <p className="text-3xl font-bold">{dashboardData?.total_carros_hoje || 0}</p>
                 <p className="text-blue-200 text-xs mt-1">Hoje</p>
-              </div>la 
+              </div> 
               <Truck className="h-12 w-12 text-blue-200" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
+        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white select-none">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -410,7 +459,7 @@ export default function DashboardEstatisticas() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white select-none">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -423,7 +472,7 @@ export default function DashboardEstatisticas() {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white">
+        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white select-none">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
@@ -438,7 +487,7 @@ export default function DashboardEstatisticas() {
       </div>
 
       {/* Produtividade por Turno */}
-      <Card>
+      <Card className="select-none">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Clock className="h-6 w-6 text-blue-600" />
