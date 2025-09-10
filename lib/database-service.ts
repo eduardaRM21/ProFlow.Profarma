@@ -168,18 +168,35 @@ export const SessionService = {
       const filterByArea = knownAreas.includes(sessionId) // Check if sessionId is a known area
       console.log('🔍 Filtro por área:', { sessionId, filterByArea, knownAreas })
 
-      // SOLUÇÃO: Buscar a sessão mais recente da área específica
-      // Isso garante que cada usuário veja sua própria sessão
+      // CORREÇÃO: Buscar sessão específica por ID ou mais recente da área
+      // Se sessionId for 'current', buscar a mais recente da área
+      // Se sessionId for um ID específico, buscar por esse ID
       const { data, error } = await retryWithBackoff(async () => {
         let query = getSupabase()
           .from('sessions')
           .select('*')
-          .order('updated_at', { ascending: false })
-          .limit(1)
 
-        if (filterByArea) { // Apply filter if it's a known area
+        if (sessionId === 'current') {
+          // Para 'current', buscar a mais recente da área (comportamento atual)
+          query = query
+            .order('updated_at', { ascending: false })
+            .limit(1)
+        } else if (sessionId.startsWith('session_')) {
+          // Para ID específico, buscar por esse ID exato
+          console.log('🔍 Buscando sessão específica por ID:', sessionId)
+          query = query.eq('id', sessionId)
+        } else if (filterByArea) {
+          // Para área conhecida, buscar a mais recente dessa área
           console.log('🔍 Aplicando filtro por área:', sessionId)
-          query = query.eq('area', sessionId)
+          query = query
+            .eq('area', sessionId)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+        } else {
+          // Fallback: buscar a mais recente
+          query = query
+            .order('updated_at', { ascending: false })
+            .limit(1)
         }
         
         console.log('🔍 Executando query...')
@@ -638,23 +655,28 @@ export const RelatoriosService = {
             if (userError || !userData) {
               console.log(`⚠️ Usuário não encontrado: ${nomeColaborador}, criando...`)
               
-              // Criar usuário se não existir
+              // CORREÇÃO: Usar upsert para evitar duplicatas
+              // Se o usuário já existir (mesmo nome + área), apenas ativar
               const { data: newUser, error: createUserError } = await supabase
                 .from('users')
-                .insert({
+                .upsert({
                   nome: nomeColaborador,
                   area: 'recebimento',
-                  ativo: true
+                  ativo: true,
+                  updated_at: new Date().toISOString()
+                }, {
+                  onConflict: 'nome,area',
+                  ignoreDuplicates: false
                 })
                 .select('id, nome')
                 .single()
               
               if (createUserError) {
-                console.error(`❌ Erro ao criar usuário ${nomeColaborador}:`, createUserError)
+                console.error(`❌ Erro ao criar/atualizar usuário ${nomeColaborador}:`, createUserError)
                 return null
               }
               
-              console.log(`✅ Usuário criado: ${nomeColaborador} com ID: ${newUser.id}`)
+              console.log(`✅ Usuário criado/atualizado: ${nomeColaborador} com ID: ${newUser.id}`)
               return newUser.id
             }
             

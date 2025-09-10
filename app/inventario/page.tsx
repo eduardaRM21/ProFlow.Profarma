@@ -25,7 +25,7 @@ import {
   Clock,
   Trash2,
 } from "lucide-react";
-import { useSession, useInventario } from "@/hooks/use-database";
+import { useSession, useInventario, useConnectivity } from "@/hooks/use-database";
 import { useRealtimeMonitoring } from "@/hooks/use-realtime-monitoring";
 import { BarcodeScanner } from "./components/barcode-scanner";
 import { RelatorioModal } from "./components/relatorio-modal";
@@ -68,17 +68,32 @@ export default function InventarioPage() {
 
   const router = useRouter();
   const { getSession, logout } = useSession();
+  const { isFullyConnected } = useConnectivity();
   const { saveInventario, getInventario, saveRelatorio } = useInventario();
   const { addRealtimeEvent } = useRealtimeMonitoring();
 
   useEffect(() => {
     const loadSession = async () => {
       try {
+        console.log('🔍 Verificando sessão para área inventário...')
+        console.log('🌐 Status da conectividade:', { isFullyConnected })
+        
         const sessionData = await getSession("current");
+        console.log('📊 Sessão retornada:', sessionData)
+        
         if (!sessionData) {
+          console.log('⚠️ Nenhuma sessão encontrada, redirecionando...')
           router.push("/");
           return;
         }
+        
+        if (sessionData.area !== "inventario") {
+          console.log('❌ Sessão não é de inventário:', sessionData.area, 'redirecionando...')
+          router.push("/");
+          return;
+        }
+        
+        console.log('✅ Sessão válida encontrada para inventário:', sessionData)
         setSession(sessionData);
 
         // Carregar inventário salvo
@@ -87,13 +102,42 @@ export default function InventarioPage() {
           setNotasInventario(inventarioSalvo);
         }
       } catch (error) {
-        console.error("Erro ao carregar sessão:", error);
-        router.push("/");
+        console.error("❌ Erro ao verificar sessão:", error);
+        console.log('⚠️ Usando fallback para localStorage...')
+        
+        // Fallback para localStorage
+        try {
+          const sessionLocal = localStorage.getItem("sistema_session")
+          if (sessionLocal) {
+            const sessionObj = JSON.parse(sessionLocal)
+            console.log('📋 Sessão local encontrada:', sessionObj)
+            
+            if (sessionObj.area === "inventario") {
+              console.log('✅ Usando sessão local de inventário')
+              setSession(sessionObj)
+              
+              // Carregar inventário salvo
+              const inventarioSalvo = await getInventario(sessionObj.id);
+              if (inventarioSalvo.length > 0) {
+                setNotasInventario(inventarioSalvo);
+              }
+            } else {
+              console.log('❌ Sessão local não é de inventário, redirecionando...')
+              router.push("/")
+            }
+          } else {
+            console.log('❌ Nenhuma sessão local disponível, redirecionando...')
+            router.push("/")
+          }
+        } catch (fallbackError) {
+          console.error('❌ Erro no fallback:', fallbackError)
+          router.push("/")
+        }
       }
     };
 
     loadSession();
-  }, [getSession, router]);
+  }, [getSession, router, isFullyConnected]);
 
   // Restrição do botão voltar do navegador
   useEffect(() => {

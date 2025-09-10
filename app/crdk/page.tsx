@@ -287,9 +287,10 @@ export default function CRDKPage() {
                 size="sm"
                 onClick={() => setShowChangePassword(true)}
                 className="flex items-center space-x-2 bg-transparent hover:bg-indigo-50 border-indigo-200"
+                title="Alterar Senha"
               >
                 <Users className="h-4 w-4" />
-                <span>Alterar Senha</span>
+                <span className="hidden sm:inline">Alterar Senha</span>
               </Button>
               <Button
                 variant="outline"

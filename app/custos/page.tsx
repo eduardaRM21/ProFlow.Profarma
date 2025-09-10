@@ -40,6 +40,7 @@ import {
   FileSpreadsheet,
   Database,
   RefreshCw,
+  KeyRound,
 } from "lucide-react";
 import { useSession, useRelatorios, useConnectivity, useDatabase } from "@/hooks/use-database";
 import { useRealtimeMonitoring } from "@/hooks/use-realtime-monitoring";
@@ -92,6 +93,7 @@ export default function CustosPage() {
 
   // Hooks do banco de dados
   const { getSession } = useSession();
+  const { isFullyConnected } = useConnectivity();
   const { getRelatorios, saveRelatorio, updateRelatorioStatus } = useRelatorios();
   const { addRealtimeEvent } = useRealtimeMonitoring();
   const { isMigrating, migrationComplete } = useDatabase();
@@ -114,71 +116,61 @@ export default function CustosPage() {
     const verificarSessao = async () => {
       try {
         console.log('🔍 Verificando sessão para área custos...')
-
-        // Obter sessão do banco de dados (específica para custos)
-        const session = await getSession("custos")
-
+        console.log('🌐 Status da conectividade:', { isFullyConnected })
+        
+        const session = await getSession("current")
+        console.log('📊 Sessão retornada:', session)
+        
         if (!session) {
-          console.log('⚠️ Nenhuma sessão encontrada no banco, verificando localStorage...')
-
-          // Fallback para localStorage
-          const sessionLocal = localStorage.getItem("sistema_session")
-          if (!sessionLocal) {
-            console.log('❌ Nenhuma sessão local encontrada, redirecionando...')
-            router.push("/")
-            return
-          }
-
-          const sessionObj = JSON.parse(sessionLocal)
-          console.log('📋 Sessão local encontrada:', sessionObj.area)
-
-          if (sessionObj.area !== "custos") {
-            console.log('❌ Sessão local não é de custos, redirecionando...')
-            router.push("/")
-            return
-          }
-
-          console.log('✅ Usando sessão local de custos')
-          setSessionData(sessionObj)
-          await carregarRelatorios()
-        } else {
-          console.log('✅ Sessão do banco encontrada para custos')
-          setSessionData(session)
-          await carregarRelatorios()
+          console.log('⚠️ Nenhuma sessão encontrada, redirecionando...')
+          router.push("/")
+          return
         }
+        
+        if (session.area !== "custos") {
+          console.log('❌ Sessão não é de custos:', session.area, 'redirecionando...')
+          router.push("/")
+          return
+        }
+        
+        console.log('✅ Sessão válida encontrada para custos:', session)
+        setSessionData(session)
+        await carregarRelatorios()
 
         // Polling para atualizações
         const interval = setInterval(carregarRelatorios, 60000)
         return () => clearInterval(interval)
       } catch (error) {
         console.error("❌ Erro ao verificar sessão:", error)
-        console.log("⚠️ Usando fallback para localStorage")
-
-        // Fallback temporário
-        const sessionLocal = localStorage.getItem("sistema_session")
-        if (!sessionLocal) {
-          console.log('❌ Nenhuma sessão local disponível, redirecionando...')
+        console.log('⚠️ Usando fallback para localStorage...')
+        
+        // Fallback para localStorage
+        try {
+          const sessionLocal = localStorage.getItem("sistema_session")
+          if (sessionLocal) {
+            const sessionObj = JSON.parse(sessionLocal)
+            console.log('📋 Sessão local encontrada:', sessionObj)
+            
+            if (sessionObj.area === "custos") {
+              console.log('✅ Usando sessão local de custos')
+              setSessionData(sessionObj)
+              await carregarRelatorios()
+            } else {
+              console.log('❌ Sessão local não é de custos, redirecionando...')
+              router.push("/")
+            }
+          } else {
+            console.log('❌ Nenhuma sessão local disponível, redirecionando...')
+            router.push("/")
+          }
+        } catch (fallbackError) {
+          console.error('❌ Erro no fallback:', fallbackError)
           router.push("/")
-          return
         }
-
-        const sessionObj = JSON.parse(sessionLocal)
-        console.log('📋 Sessão local de fallback:', sessionObj.area)
-
-        if (sessionObj.area !== "custos") {
-          console.log('❌ Sessão local não é de custos, redirecionando...')
-          router.push("/")
-          return
-        }
-
-        console.log('✅ Usando sessão local de fallback para custos')
-        setSessionData(sessionObj)
-        await carregarRelatorios()
       }
     }
-
     verificarSessao()
-  }, [router, getSession])
+  }, [router, getSession, isFullyConnected])
 
   // Função específica para diagnosticar e corrigir problema dos colaboradores
   const diagnosticarColaboradores = async (supabase: any, relatorioId: string) => {
@@ -1262,10 +1254,11 @@ NOTAS FISCAIS:`
                 variant="outline"
                 size="sm"
                 onClick={() => setShowChangePassword(true)}
-                className="flex items-center space-x-2 bg-transparent hover:bg-blue-50 border-blue-200"
+                className="flex items-center space-x-2 bg-transparent hover:bg-red-50 border-red-200"
+                title="Alterar Senha"
               >
-                <User className="h-4 w-4" />
-                <span>Alterar Senha</span>
+                <KeyRound className="h-4 w-4" />
+                <span className="hidden sm:inline">Alterar Senha</span>
               </Button>
               <Button
                 variant="outline"

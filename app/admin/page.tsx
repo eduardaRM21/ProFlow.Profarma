@@ -103,9 +103,59 @@ export default function AdminPage() {
     }
   }, [])
 
-  const verificarAcessoAdmin = () => {
+  const verificarAcessoAdmin = async () => {
     try {
-      // Verificar se há uma sessão ativa
+      console.log('🔍 Verificando acesso admin...')
+      
+      // Primeiro tentar buscar sessão do banco usando o sistema corrigido
+      try {
+        const { useSession } = await import("@/hooks/use-database")
+        const { useConnectivity } = await import("@/hooks/use-database")
+        
+        // Criar uma instância temporária dos hooks
+        const sessionHook = useSession()
+        const connectivityHook = useConnectivity()
+        
+        const session = await sessionHook.getSession("current")
+        
+        if (session) {
+          console.log("📊 Sessão do banco encontrada:", session)
+          
+          // Verificar se é do setor de embalagem ou admin embalagem
+          if (session.area !== "embalagem" && session.area !== "admin-embalagem") {
+            console.log("❌ Acesso negado: usuário não é do setor de embalagem ou admin embalagem")
+            setIsAuthenticated(false)
+            return
+          }
+
+          // Se for admin embalagem, acesso direto permitido
+          if (session.area === "admin-embalagem") {
+            console.log("🔐 Usuário do setor Admin Embalagem detectado, acesso liberado")
+            setIsAuthenticated(true)
+            return
+          }
+
+          // Verificar se há um usuário "admin_crdk" na lista de colaboradores (apenas para setor embalagem)
+          const hasAdminUser = session.colaboradores.some((colab: string) => 
+            colab.toLowerCase().includes("admin_crdk")
+          )
+
+          if (!hasAdminUser) {
+            console.log("❌ Acesso negado: usuário não é admin_crdk")
+            setIsAuthenticated(false)
+            return
+          }
+
+          // Se chegou até aqui, acesso direto permitido
+          console.log("🔐 Usuário admin_crdk detectado, acesso liberado")
+          setIsAuthenticated(true)
+          return
+        }
+      } catch (error) {
+        console.log("⚠️ Erro ao buscar sessão do banco, usando localStorage:", error)
+      }
+      
+      // Fallback para localStorage
       const sessionData = localStorage.getItem("sistema_session")
       if (!sessionData) {
         console.log("❌ Nenhuma sessão encontrada")
@@ -114,7 +164,7 @@ export default function AdminPage() {
       }
 
       const session = JSON.parse(sessionData)
-      console.log("🔍 Verificando sessão:", session)
+      console.log("📋 Sessão local encontrada:", session)
 
       // Verificar se é do setor de embalagem ou admin embalagem
       if (session.area !== "embalagem" && session.area !== "admin-embalagem") {
@@ -847,9 +897,10 @@ export default function AdminPage() {
                 variant="outline"
                 className="bg-transparent hover:bg-blue-50 border-blue-200"
                 size="sm"
+                title="Alterar Senha"
               >
                 <User className="h-4 w-4 mr-2" />
-                Alterar Senha
+                <span className="hidden sm:inline">Alterar Senha</span>
               </Button>
 
               {/* Botão Sair */}

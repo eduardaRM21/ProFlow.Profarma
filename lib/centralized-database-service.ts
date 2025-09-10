@@ -173,9 +173,16 @@ export class CentralizedDatabaseService {
       throw new Error('Banco de dados não está conectado')
     }
 
+    // CORREÇÃO: Usar upsert para evitar duplicatas
     const { data, error } = await this.supabase
       .from('users')
-      .insert([userData])
+      .upsert([{
+        ...userData,
+        updated_at: new Date().toISOString()
+      }], {
+        onConflict: 'nome,area',
+        ignoreDuplicates: false
+      })
       .select()
       .single()
 

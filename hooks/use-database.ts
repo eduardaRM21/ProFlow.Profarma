@@ -195,6 +195,22 @@ export const useSession = () => {
         const sessionObj = JSON.parse(sessionLocal)
         console.log('📋 Sessão local encontrada:', sessionObj)
         
+        // CORREÇÃO: Se temos um sessionId específico, tentar buscar essa sessão no banco
+        if (sessionObj.sessionId && sessionObj.sessionId.startsWith('session_')) {
+          console.log('🔍 Tentando buscar sessão específica do localStorage:', sessionObj.sessionId)
+          try {
+            const specificSession = await SessionService.getSession(sessionObj.sessionId)
+            if (specificSession) {
+              console.log('✅ Sessão específica encontrada no banco:', specificSession)
+              sessionCache = specificSession
+              lastSessionFetch = now
+              return specificSession
+            }
+          } catch (error) {
+            console.log('⚠️ Erro ao buscar sessão específica, usando localStorage:', error)
+          }
+        }
+        
         // SOLUÇÃO: Verificar se a sessão local é para a área correta
         if (sessionId === 'current' || sessionObj.area === sessionId) {
           console.log('✅ Sessão local válida para área solicitada')

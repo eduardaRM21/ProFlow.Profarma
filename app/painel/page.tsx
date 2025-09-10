@@ -32,7 +32,7 @@ import ChatModal from "./components/chat-modal";
 
 // Adicionar a importação do novo componente de ajuda
 import AjudaSection from "./components/ajuda-section";
-import { useSession } from "@/hooks/use-database";
+import { useSession, useConnectivity } from "@/hooks/use-database";
 import { useEmbalagemStats } from "@/hooks/use-embalagem-stats";
 import type { SessionData } from "@/lib/database-service";
 
@@ -48,44 +48,61 @@ export default function PainelPage() {
 
   // Hook do banco de dados
   const { getSession } = useSession();
+  const { isFullyConnected } = useConnectivity();
 
   useEffect(() => {
     const verificarSessao = async () => {
       try {
-        // Obter sessão do banco de dados
+        console.log('🔍 Verificando sessão para área embalagem...')
+        console.log('🌐 Status da conectividade:', { isFullyConnected })
+        
         const session = await getSession("current")
+        console.log('📊 Sessão retornada:', session)
         
         if (!session) {
-          // Fallback temporário para localStorage
-          const sessionLocal = localStorage.getItem("sistema_session")
-          if (!sessionLocal) {
-            router.push("/")
-            return
-          }
-          
-          const sessionObj = JSON.parse(sessionLocal)
-          setSessionData(sessionObj)
-        } else {
-          setSessionData(session)
-        }
-      } catch (error) {
-        console.error("Erro ao verificar sessão:", error)
-        console.log("⚠️ Usando fallback para localStorage")
-        
-        // Fallback temporário
-        const sessionLocal = localStorage.getItem("sistema_session")
-        if (!sessionLocal) {
+          console.log('⚠️ Nenhuma sessão encontrada, redirecionando...')
           router.push("/")
           return
         }
         
-        const sessionObj = JSON.parse(sessionLocal)
-        setSessionData(sessionObj)
+        if (session.area !== "embalagem") {
+          console.log('❌ Sessão não é de embalagem:', session.area, 'redirecionando...')
+          router.push("/")
+          return
+        }
+        
+        console.log('✅ Sessão válida encontrada para embalagem:', session)
+        setSessionData(session)
+      } catch (error) {
+        console.error("❌ Erro ao verificar sessão:", error)
+        console.log('⚠️ Usando fallback para localStorage...')
+        
+        // Fallback para localStorage
+        try {
+          const sessionLocal = localStorage.getItem("sistema_session")
+          if (sessionLocal) {
+            const sessionObj = JSON.parse(sessionLocal)
+            console.log('📋 Sessão local encontrada:', sessionObj)
+            
+            if (sessionObj.area === "embalagem") {
+              console.log('✅ Usando sessão local de embalagem')
+              setSessionData(sessionObj)
+            } else {
+              console.log('❌ Sessão local não é de embalagem, redirecionando...')
+              router.push("/")
+            }
+          } else {
+            console.log('❌ Nenhuma sessão local disponível, redirecionando...')
+            router.push("/")
+          }
+        } catch (fallbackError) {
+          console.error('❌ Erro no fallback:', fallbackError)
+          router.push("/")
+        }
       }
     }
-
     verificarSessao()
-  }, [router, getSession])
+  }, [router, getSession, isFullyConnected])
 
   // Restrição do botão voltar do navegador
   useEffect(() => {

@@ -253,22 +253,24 @@ export default function LoginPage() {
 
     try {
       // SOLUÇÃO: Salvar sessão com identificação única por usuário
-      await saveSession(loginData);
+      const sessionId = await saveSession(loginData);
       console.log("✅ Sessão salva com sucesso:", loginData);
+      console.log("🆔 ID da sessão gerado:", sessionId);
 
-      // SOLUÇÃO ADICIONAL: Salvar no localStorage com chave única por usuário
+      // SOLUÇÃO ADICIONAL: Salvar no localStorage com ID da sessão específica
       // Isso evita conflitos quando múltiplas pessoas fazem login no mesmo setor
       const sessionKey = 'sistema_session'
       const sessionData = {
         ...loginData,
         loginTime: new Date().toISOString(),
-        // NOVO: Adicionar hash único para identificar sessão específica do usuário
+        // NOVO: Usar o ID da sessão do banco para identificação única
+        sessionId: sessionId,
         userHash: `${area}_${(area === "embalagem" ? colaboradoresPreenchidos.join('_') : colaborador)}_${Date.now()}`,
         timestamp: new Date().toISOString()
       }
 
       localStorage.setItem(sessionKey, JSON.stringify(sessionData))
-      console.log("✅ Sessão também salva no localStorage com hash único:", sessionData.userHash)
+      console.log("✅ Sessão também salva no localStorage com ID específico:", sessionId)
 
       // Redirecionar para a área correspondente
       if (area === "recebimento") {
