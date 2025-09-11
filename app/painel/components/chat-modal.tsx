@@ -10,7 +10,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Send, MessageCircle, User, Clock, CheckCircle2 } from "lucide-react"
 import { getSupabase } from '@/lib/supabase-client'
 import { useToast } from '@/hooks/use-toast'
-import { useScreenOrientation } from "@/hooks/use-screen-orientation"
 
 interface ChatMessage {
   id: string
@@ -38,9 +37,6 @@ interface ChatModalProps {
 
 
 export default function ChatModal({ isOpen, onClose, sessionData }: ChatModalProps) {
-  // Hook para bloquear rotação da tela
-  useScreenOrientation()
-  
   const [mensagens, setMensagens] = useState<ChatMessage[]>([])
   const [novaMensagem, setNovaMensagem] = useState("")
   const [enviando, setEnviando] = useState(false)

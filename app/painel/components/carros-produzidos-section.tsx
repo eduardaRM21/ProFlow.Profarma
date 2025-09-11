@@ -34,7 +34,6 @@ import ChatModal from "./chat-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRealtimeMonitoring } from "@/hooks/use-realtime-monitoring";
-import { useScreenOrientation } from "@/hooks/use-screen-orientation";
 import { createClient } from '@supabase/supabase-js'
 import { EmbalagemNotasBipadasService } from "@/lib/embalagem-notas-bipadas-service";
 import { useCarrosRealtime } from "@/hooks/use-carros-realtime";
@@ -167,9 +166,6 @@ const formatarData = (dataString: string | null | undefined): string => {
 export default function CarrosProduzidosSection({
   sessionData,
 }: CarrosProduzidosSectionProps) {
-  // Hook para bloquear rotação da tela
-  useScreenOrientation();
-  
   const [carros, setCarros] = useState<CarroProduzido[]>([]);
   const [filtroDestino, setFiltroDestino] = useState<string>("todos");
   const [filtroColaborador, setFiltroColaborador] = useState<string>("todos");

@@ -39,9 +39,9 @@ export default function ConfirmacaoModal({
           </DialogTitle>
         </DialogHeader>
 
-        <div className={`${isColetor ? 'coletor-modal-content' : 'space-y-6'}`}>
+        <div className={`space-y-${isColetor ? '4' : '6'} ${isColetor ? 'coletor-modal-content' : ''}`}>
           {/* Informações da Nota */}
-          <div className={`bg-blue-50 p-${isColetor ? '3' : '4'} rounded-lg ${isColetor ? 'mb-3' : ''}`}>
+          <div className={`bg-blue-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
             <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '3'} ${isColetor ? 'text-sm' : ''}`}>
               Dados da Nota Fiscal
             </h3>
@@ -83,7 +83,7 @@ export default function ConfirmacaoModal({
           </div>
 
           {/* Pergunta de Confirmação */}
-          <div className={`text-center ${isColetor ? 'mb-3' : ''}`}>
+          <div className="text-center">
             <h3 className={`${isColetor ? 'text-base' : 'text-lg'} font-semibold text-gray-900 mb-2`}>
               Os dados estão corretos?
             </h3>
@@ -109,6 +109,7 @@ export default function ConfirmacaoModal({
               onClick={onConfirmar}
               className={`flex-1 bg-green-600 hover:bg-green-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}
               size={isColetor ? "default" : "lg"}
+              autoFocus
             >
               <CheckCircle className={`${isColetor ? 'h-4 w-4' : 'h-5 w-5'} mr-2`} />
               OK - Confirmar
@@ -116,7 +117,7 @@ export default function ConfirmacaoModal({
           </div>
 
           {/* Código Completo */}
-          <div className={`${isColetor ? 'text-xs mb-3' : 'text-xs'} text-gray-500 bg-gray-50 p-2 rounded font-mono break-all`}>
+          <div className={`${isColetor ? 'text-xs' : 'text-xs'} text-gray-500 bg-gray-50 p-2 rounded font-mono break-all`}>
             <strong>Código:</strong> {nota.codigoCompleto}
           </div>
         </div>

@@ -2,7 +2,6 @@
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { useScreenOrientation } from "@/hooks/use-screen-orientation"
 import { CheckCircle, Package, Truck } from "lucide-react"
 
 interface NFBipada {
@@ -29,8 +28,6 @@ interface ConfirmacaoModalProps {
 }
 
 export default function ConfirmacaoModal({ isOpen, onClose, nf, carroNome, onConfirm }: ConfirmacaoModalProps) {
-  // Hook para bloquear rotação da tela
-  useScreenOrientation()
   if (!nf) return null
 
   const handleConfirm = () => {

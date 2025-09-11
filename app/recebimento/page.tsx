@@ -32,7 +32,6 @@ import { useNotasBipadas } from "@/lib/notas-bipadas-service"
 import type { SessionData, NotaFiscal, Relatorio } from "@/lib/database-service"
 import { LocalAuthService } from "@/lib/local-auth-service"
 import { useIsColetor } from "@/hooks/use-coletor"
-import { useScreenOrientation } from "@/hooks/use-screen-orientation"
 import ColetorView from "./components/coletor-view"
 
 const TIPOS_DIVERGENCIA = [
@@ -66,9 +65,6 @@ export default function RecebimentoPage() {
   
   // Hook para detectar se é um coletor
   const isColetor = useIsColetor()
-  
-  // Hook para bloquear rotação da tela
-  useScreenOrientation()
 
   // Hooks do banco de dados
   const { getSession } = useSession()
@@ -927,7 +923,7 @@ export default function RecebimentoPage() {
   }
 
   return (
-    <div className="min-h-screen bg-blue-50 recebimento-page">
+    <div className="min-h-screen bg-blue-50">
       {/* Renderização condicional: Desktop vs Coletor */}
       {!isColetor ? (
         <>
