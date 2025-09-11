@@ -810,7 +810,7 @@ export default function AdminPage() {
                       value={novaMensagem}
                       onChange={handleInputChange}
                       onKeyDown={handleChatKeyPress}
-                      disabled={enviando}
+                      readOnly={enviando}
                       className="flex-1"
                     />
                     <Button

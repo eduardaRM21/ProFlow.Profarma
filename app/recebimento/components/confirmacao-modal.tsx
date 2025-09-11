@@ -39,9 +39,9 @@ export default function ConfirmacaoModal({
           </DialogTitle>
         </DialogHeader>
 
-        <div className={`space-y-${isColetor ? '4' : '6'} ${isColetor ? 'coletor-modal-content' : ''}`}>
+        <div className={`${isColetor ? 'coletor-modal-content' : 'space-y-6'}`}>
           {/* Informações da Nota */}
-          <div className={`bg-blue-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
+          <div className={`bg-blue-50 p-${isColetor ? '3' : '4'} rounded-lg ${isColetor ? 'mb-3' : ''}`}>
             <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '3'} ${isColetor ? 'text-sm' : ''}`}>
               Dados da Nota Fiscal
             </h3>
@@ -83,7 +83,7 @@ export default function ConfirmacaoModal({
           </div>
 
           {/* Pergunta de Confirmação */}
-          <div className="text-center">
+          <div className={`text-center ${isColetor ? 'mb-3' : ''}`}>
             <h3 className={`${isColetor ? 'text-base' : 'text-lg'} font-semibold text-gray-900 mb-2`}>
               Os dados estão corretos?
             </h3>
@@ -116,7 +116,7 @@ export default function ConfirmacaoModal({
           </div>
 
           {/* Código Completo */}
-          <div className={`${isColetor ? 'text-xs' : 'text-xs'} text-gray-500 bg-gray-50 p-2 rounded font-mono break-all`}>
+          <div className={`${isColetor ? 'text-xs mb-3' : 'text-xs'} text-gray-500 bg-gray-50 p-2 rounded font-mono break-all`}>
             <strong>Código:</strong> {nota.codigoCompleto}
           </div>
         </div>
