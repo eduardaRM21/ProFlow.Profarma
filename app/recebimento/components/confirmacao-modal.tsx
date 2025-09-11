@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +29,27 @@ export default function ConfirmacaoModal({
   onClose,
 }: ConfirmacaoModalProps) {
   const isColetor = useIsColetor();
+  const confirmarButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Garantir foco automático no botão de confirmar quando o modal abrir
+  useEffect(() => {
+    if (isOpen && confirmarButtonRef.current) {
+      // Pequeno delay para garantir que o modal esteja totalmente renderizado
+      const timer = setTimeout(() => {
+        confirmarButtonRef.current?.focus();
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  // Handler para tecla Enter
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onConfirmar();
+    }
+  };
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -46,7 +68,8 @@ export default function ConfirmacaoModal({
               Dados da Nota Fiscal
             </h3>
 
-            <div className={`grid ${isColetor ? 'grid-cols-1' : 'grid-cols-2'} gap-${isColetor ? '3' : '4'}`}>
+            <div className={`grid ${isColetor ? 'grid-cols-2' : 'grid-cols-2'} gap-${isColetor ? '3' : '4'}`}>
+              {/* Primeira linha - Número da NF e Volumes */}
               <div>
                 <div className="text-sm text-gray-600">Número da NF</div>
                 <div className="font-semibold text-lg">{nota.numeroNF}</div>
@@ -57,28 +80,40 @@ export default function ConfirmacaoModal({
                   {nota.volumes}
                 </div>
               </div>
+              
+              {/* Segunda linha - Data e Destino */}
               <div>
                 <div className="text-sm text-gray-600">Data</div>
-                <div className="font-medium">{nota.data}</div>
+                <div className="font-medium text-xs truncate">{nota.data}</div>
               </div>
               <div>
                 <div className="text-sm text-gray-600">Destino</div>
-                <Badge variant="outline" className="bg-white">
+                <div className="font-medium text-xs truncate">
                   {nota.destino}
-                </Badge>
+                </div>  
               </div>
+              
+              {/* Terceira linha - Fornecedor e Cliente Destino */}
               <div>
                 <div className="text-sm text-gray-600">Fornecedor</div>
-                <div className="font-medium">{nota.fornecedor}</div>
+                <div className="font-medium text-xs truncate" title={nota.fornecedor}>
+                  {nota.fornecedor}
+                </div>
               </div>
               <div>
                 <div className="text-sm text-gray-600">Cliente Destino</div>
-                <div className="font-medium">{nota.clienteDestino}</div>
+                <div className="font-medium text-xs truncate" title={nota.clienteDestino}>
+                  {nota.clienteDestino}
+                </div>
               </div>
-              <div className={isColetor ? '' : 'col-span-2'}>
-                <div className="text-sm text-gray-600">Tipo de Carga</div>
-                <div className="font-medium">{nota.tipoCarga}</div>
-              </div>
+              
+              {/* Tipo de Carga - apenas na versão desktop */}
+              {!isColetor && (
+                <div className="col-span-2">
+                  <div className="text-sm text-gray-600">Tipo de Carga</div>
+                  <div className="font-medium">{nota.tipoCarga}</div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -106,7 +141,9 @@ export default function ConfirmacaoModal({
               ALTERAR
             </Button>
             <Button
+              ref={confirmarButtonRef}
               onClick={onConfirmar}
+              onKeyDown={handleKeyDown}
               className={`flex-1 bg-green-600 hover:bg-green-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}
               size={isColetor ? "default" : "lg"}
               autoFocus

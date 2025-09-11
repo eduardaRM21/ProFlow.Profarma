@@ -88,20 +88,31 @@ export default function DivergenciaModal({
             <div className={`bg-orange-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
               <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '3'} ${isColetor ? 'text-sm' : ''}`}>Nota Fiscal: {nota.numeroNF}</h3>
 
-              <div className={`grid ${isColetor ? 'grid-cols-1' : 'grid-cols-3'} gap-${isColetor ? '3' : '4'} text-sm`}>
+              <div className={`grid ${isColetor ? 'grid-cols-2' : 'grid-cols-2'} gap-${isColetor ? '3' : '4'} text-sm`}>
+                {/* Primeira linha - Volumes Originais e Fornecedor */}
                 <div>
                   <div className="text-gray-600">Volumes Originais</div>
-                  <Badge variant="outline" className="bg-white">
+                  <div className="font-semibold text-lg text-red-600">
                     {nota.volumes}
-                  </Badge>
+                  </div>
                 </div>
                 <div>
                   <div className="text-gray-600">Fornecedor</div>
-                  <div className="font-medium">{nota.fornecedor}</div>
+                  <div className="font-medium text-xs truncate" title={nota.fornecedor}>
+                    {nota.fornecedor}
+                  </div>
                 </div>
+                
+                {/* Segunda linha - Destino e Data */}
                 <div>
                   <div className="text-gray-600">Destino</div>
-                  <div className="font-medium">{nota.destino}</div>
+                  <div className="font-medium text-xs truncate">{nota.destino}</div>
+                </div>
+                <div>
+                  <div className="text-gray-600">Data</div>
+                  <div className="font-medium text-xs truncate" title={nota.data}>
+                    {nota.data}
+                  </div>
                 </div>
               </div>
             </div>
