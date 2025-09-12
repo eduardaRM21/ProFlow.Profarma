@@ -16,6 +16,7 @@ import {
   CalendarIcon,
   FileText,
   RotateCcw,
+  KeyRound,
 } from "lucide-react";
 import ChangePasswordModal from "@/components/admin/change-password-modal";
 
@@ -289,7 +290,7 @@ export default function CRDKPage() {
                 className="flex items-center space-x-2 bg-transparent hover:bg-indigo-50 border-indigo-200"
                 title="Alterar Senha"
               >
-                <Users className="h-4 w-4" />
+                <KeyRound className="h-4 w-4" />
                 <span className="hidden sm:inline">Alterar Senha</span>
               </Button>
               <Button

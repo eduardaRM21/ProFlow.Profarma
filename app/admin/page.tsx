@@ -26,6 +26,7 @@ import {
   TrendingUp,
   LogOut,
   Search,
+  KeyRound,
 } from "lucide-react"
 import ChangePasswordModal from "@/components/admin/change-password-modal"
 
@@ -899,7 +900,7 @@ export default function AdminPage() {
                 size="sm"
                 title="Alterar Senha"
               >
-                <User className="h-4 w-4 mr-2" />
+                <KeyRound className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Alterar Senha</span>
               </Button>
 

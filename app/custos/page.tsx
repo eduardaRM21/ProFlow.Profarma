@@ -1242,8 +1242,8 @@ NOTAS FISCAIS:`
                       : 'Não informado'}
                   </span>
                 </div>
-                <div className="flex items-center space-x-4 text-xs text-gray-500">
-                  <div className="flex items-center space-x-1">
+                <div className="flex items-end space-x-1 text-xs text-gray-500">
+                  <div className="flex items-center space-x-2">
                     <Calendar className="h-3 w-3" />
                     <span>{sessionData.data}</span>
                   </div>
@@ -1264,7 +1264,7 @@ NOTAS FISCAIS:`
                 variant="outline"
                 size="sm"
                 onClick={handleLogout}
-                className="flex items-center space-x-2 bg-transparent hover:bg-blue-50 border-blue-200"
+                className="flex items-center space-x-2 bg-transparent hover:bg-red-50 border-red-200"
               >
                 <LogOut className="h-4 w-4" />
                 <span>Sair</span>

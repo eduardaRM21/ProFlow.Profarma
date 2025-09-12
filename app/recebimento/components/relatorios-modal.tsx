@@ -7,12 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { FileText, Search, CalendarIcon, Eye, Package, CheckCircle, AlertTriangle, Filter, Loader2, Plus, RefreshCw } from "lucide-react"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
 import { useRelatorios } from "@/hooks/use-database"
 import type { NotaFiscal, Relatorio } from "@/lib/database-service"
 
@@ -26,8 +22,8 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
   const [relatoriosFiltrados, setRelatoriosFiltrados] = useState<Relatorio[]>([])
   const [filtroTexto, setFiltroTexto] = useState("")
   const [filtroNF, setFiltroNF] = useState("")
-  const [dataFiltro, setDataFiltro] = useState<Date | undefined>(undefined)
-  const [popoverAberto, setPopoverAberto] = useState(false)
+  const [dataInicio, setDataInicio] = useState<string>("")
+  const [dataFim, setDataFim] = useState<string>("")
   const [relatorioSelecionado, setRelatorioSelecionado] = useState<Relatorio | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
@@ -288,17 +284,27 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
       })
     }
 
-    // Filtro por data
-    if (dataFiltro) {
-      const dataFormatada = format(dataFiltro, "dd/MM/yyyy")
-      
+    // Filtro por intervalo de datas
+    if (dataInicio || dataFim) {
       relatoriosFiltrados = relatoriosFiltrados.filter((rel) => {
-        const dataRelatorio = rel.data
+        try {
+          const dataRelatorio = new Date(rel.data.split('/').reverse().join('-'))
+          const dataInicioObj = dataInicio ? new Date(dataInicio) : null
+          const dataFimObj = dataFim ? new Date(dataFim) : null
+          
+          if (dataInicioObj && dataFimObj) {
+            return dataRelatorio >= dataInicioObj && dataRelatorio <= dataFimObj
+          } else if (dataInicioObj) {
+            return dataRelatorio >= dataInicioObj
+          } else if (dataFimObj) {
+            return dataRelatorio <= dataFimObj
+          }
+        } catch (error) {
+          console.error("❌ Erro ao processar data do relatório:", error)
+          return true // Em caso de erro, incluir o relatório
+        }
         
-        // Comparação simples de string
-        const match = dataRelatorio === dataFormatada
-        
-        return match
+        return true
       })
     }
 
@@ -312,7 +318,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
     }
 
     setRelatoriosFiltrados(relatoriosFiltrados)
-  }, [relatorios, filtroTexto, dataFiltro])
+  }, [relatorios, filtroTexto, dataInicio, dataFim])
 
   // Carregar relatórios quando o modal abrir
   useEffect(() => {
@@ -332,7 +338,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
       aplicarFiltros()
     }, 150)
     return () => clearTimeout(timer)
-  }, [relatorios, filtroTexto, dataFiltro, aplicarFiltros])
+  }, [relatorios, filtroTexto, dataInicio, dataFim, aplicarFiltros])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -363,7 +369,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto" aria-describedby="relatorios-description">
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto" aria-describedby="relatorios-description">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <FileText className="h-5 w-5 text-blue-600" />
@@ -394,7 +400,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                 <span className="font-medium text-gray-700">Filtros de Busca</span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Label className="mb-2 text-sm">Buscar por transportadora, colaboradores ou NF</Label>
                   <div className="relative">
@@ -409,70 +415,41 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                 </div>
 
                 <div>
-                  <Label className="mb-2 text-sm">Filtrar por data</Label>
+                  <Label className="mb-2 text-sm">Data Início</Label>
                   <div className="space-y-2">
-                    <Popover open={popoverAberto} onOpenChange={setPopoverAberto}>
-                      <PopoverTrigger asChild>
-                        <Button 
-                          variant="outline" 
-                          className={`w-full justify-start text-left font-normal cursor-pointer transition-colors ${
-                            dataFiltro 
-                              ? 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100' 
-                              : 'bg-white hover:bg-gray-50 border-gray-300 hover:border-gray-400'
-                          }`}
-                          type="button"
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {dataFiltro ? (
-                            <span className="flex items-center">
-                              {format(dataFiltro, "dd/MM/yyyy", { locale: ptBR })}
-                              <Badge variant="secondary" className="ml-2 text-xs bg-blue-100 text-blue-700">
-                                Filtro Ativo
-                              </Badge>
-                            </span>
-                          ) : (
-                            "Selecione uma data"
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent 
-                        className="w-auto p-0 z-[9999]" 
-                        align="start" 
-                        sideOffset={5}
-                        side="bottom"
-                      >
-                        <Calendar 
-                          mode="single" 
-                          selected={dataFiltro} 
-                          onSelect={(date) => {
-                            if (date) {
-                              setDataFiltro(date)
-                            }
-                            setPopoverAberto(false)
-                          }} 
-                          locale={ptBR}
-                          className="rounded-md border bg-white"
-                          disabled={(date) => {
-                            // Permitir apenas datas passadas
-                            return date > new Date()
-                          }}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    
-                    {dataFiltro && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setDataFiltro(undefined)
-                          setPopoverAberto(false)
+                    <div className="relative">
+                      <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        type="date"
+                        value={dataInicio}
+                        onChange={(e) => {
+                          setDataInicio(e.target.value)
+                          // Se data fim for anterior à data início, limpar data fim
+                          if (dataFim && e.target.value > dataFim) {
+                            setDataFim("")
+                          }
                         }}
-                        className="w-full text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        ✕ Limpar filtro de data
-                      </Button>
-                    )}
+                        className="pl-8 text-sm"
+                        max={new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+                  </div>  
+                </div>
+
+                <div>
+                  <Label className="mb-2 text-sm">Data Fim</Label> 
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        type="date"
+                        value={dataFim}
+                        onChange={(e) => setDataFim(e.target.value)}
+                        className="pl-8 text-sm"
+                        max={new Date().toISOString().split('T')[0]}
+                        min={dataInicio || undefined}
+                      />
+                    </div>
                   </div>  
                 </div>
               </div>
@@ -481,8 +458,8 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                 <Button
                   onClick={() => {
                     setFiltroTexto("")
-                    setDataFiltro(undefined)
-                    setPopoverAberto(false)
+                    setDataInicio("")
+                    setDataFim("")
                   }}
                   variant="outline"
                   size="sm"
@@ -509,14 +486,14 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 mb-4">
               <Card className="border-blue-200">
                 <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
-                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">{relatorios.length}</div>
-                  <div className="text-xs text-gray-600 leading-tight">Total Relatórios</div>
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">{relatoriosFiltrados.length}</div>
+                  <div className="text-xs text-gray-600 leading-tight">Relatórios</div>
                 </CardContent>
               </Card>
               <Card className="border-green-200">
                 <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
                   <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
-                    {relatorios.reduce((sum, rel) => sum + rel.quantidadeNotas, 0)}
+                    {relatoriosFiltrados.reduce((sum, rel) => sum + rel.quantidadeNotas, 0)}
                   </div>
                   <div className="text-xs text-gray-500 leading-tight">Total Notas</div>
                 </CardContent>
@@ -524,7 +501,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
               <Card className="border-purple-200">
                 <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
                   <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600">
-                    {relatorios.reduce((sum, rel) => sum + (rel.somaVolumes || 0), 0)}
+                    {relatoriosFiltrados.reduce((sum, rel) => sum + (rel.somaVolumes || 0), 0)}
                   </div>
                   <div className="text-xs text-gray-500 leading-tight">Total Volumes</div>
                 </CardContent>
@@ -532,7 +509,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
               <Card className="border-orange-200">
                 <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
                   <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
-                    {relatorios.reduce(
+                    {relatoriosFiltrados.reduce(
                       (sum, rel) => sum + (rel.notas ? rel.notas.filter((n) => n.status === "divergencia").length : 0),
                       0,
                     )}
@@ -543,7 +520,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
               <Card className="border-red-200">
                 <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
                   <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">
-                    {relatorios.reduce((sum, rel) => sum + (rel.notas ? rel.notas.filter((n) => n.status === "devolvida").length : 0), 0)}
+                    {relatoriosFiltrados.reduce((sum, rel) => sum + (rel.notas ? rel.notas.filter((n) => n.status === "devolvida").length : 0), 0)}
                   </div>
                   <div className="text-xs text-gray-500 leading-tight">Devolvidas</div>
                 </CardContent>
