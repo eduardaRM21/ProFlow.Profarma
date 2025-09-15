@@ -351,8 +351,8 @@ export default function LoginPage() {
 
   return (
     <div className={`min-h-screen bg-gradient-to-br ${getAreaColor(area)} flex items-center justify-center p-4`}>
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
+      <Card className="w-full max-w-md bg-white border-gray-200 shadow-lg">
+        <CardHeader className="text-center bg-white">
           <div className="flex justify-center mb-4">
             {!area ? (
               // Logo ProFlow quando nenhum setor estiver selecionado
@@ -389,7 +389,7 @@ export default function LoginPage() {
             )}
           </div>
 
-          <CardDescription className="text-lg text-center mb-2 mt-2">
+          <CardDescription className="text-lg text-center mb-2 mt-2 text-gray-600">
             {area === "recebimento" && "Recebimento de Notas Fiscais"}
             {area === "embalagem" && "Embalagem e Expedição"}
             {area === "admin-embalagem" && "Administração do Setor de Embalagem"}
@@ -400,11 +400,11 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-6 bg-white">
           <div className="space-y-2">
-            <Label className="text-base font-medium">Área de Trabalho *</Label>
+            <Label className="text-base font-medium text-gray-700">Área de Trabalho *</Label>
             <Select value={area} onValueChange={setArea}>
-              <SelectTrigger className="h-12 text-base hover:bg-green-50 border-green-200" onKeyDown={handleKeyPress}>
+              <SelectTrigger className="h-12 text-base hover:bg-green-50 border-green-200 bg-white text-gray-900" onKeyDown={handleKeyPress}>
                 <SelectValue placeholder="Selecione sua área" />
               </SelectTrigger>
               <SelectContent>
@@ -422,12 +422,12 @@ export default function LoginPage() {
           {area === "custos" && (
             <>
               <div className="space-y-2">
-                <Label className="text-base font-medium">Usuário (Custos) *</Label>
-                <Input placeholder="Usuário autorizado para Custos" value={usuarioCustos} onChange={(e) => setUsuarioCustos(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
+                <Label className="text-base font-medium text-gray-700">Usuário (Custos) *</Label>
+                <Input placeholder="Usuário autorizado para Custos" value={usuarioCustos} onChange={(e) => setUsuarioCustos(e.target.value)} className="text-base h-12 bg-white text-gray-900" onKeyPress={handleKeyPress} />
               </div>
               <div className="space-y-2">
-                <Label className="text-base font-medium">Senha *</Label>
-                <Input type="password" placeholder="Senha" value={senhaCustos} onChange={(e) => setSenhaCustos(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
+                <Label className="text-base font-medium text-gray-700">Senha *</Label>
+                <Input type="password" placeholder="Senha" value={senhaCustos} onChange={(e) => setSenhaCustos(e.target.value)} className="text-base h-12 bg-white text-gray-900" onKeyPress={handleKeyPress} />
               </div>
             </>
           )}
@@ -435,12 +435,12 @@ export default function LoginPage() {
           {area === "crdk" && (
             <>
               <div className="space-y-2">
-                <Label className="text-base font-medium">Usuário (CRDK) *</Label>
-                <Input placeholder="Usuário autorizado para CRDK" value={usuarioCustos} onChange={(e) => setUsuarioCustos(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
+                <Label className="text-base font-medium text-gray-700">Usuário (CRDK) *</Label>
+                <Input placeholder="Usuário autorizado para CRDK" value={usuarioCustos} onChange={(e) => setUsuarioCustos(e.target.value)} className="text-base h-12 bg-white text-gray-900" onKeyPress={handleKeyPress} />
               </div>
               <div className="space-y-2">
-                <Label className="text-base font-medium">Senha *</Label>
-                <Input type="password" placeholder="Senha" value={senhaCustos} onChange={(e) => setSenhaCustos(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
+                <Label className="text-base font-medium text-gray-700">Senha *</Label>
+                <Input type="password" placeholder="Senha" value={senhaCustos} onChange={(e) => setSenhaCustos(e.target.value)} className="text-base h-12 bg-white text-gray-900" onKeyPress={handleKeyPress} />
               </div>
             </>
           )}
@@ -450,7 +450,7 @@ export default function LoginPage() {
             <>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-base font-medium flex items-center space-x-2">
+                  <Label className="text-base font-medium flex items-center space-x-2 text-gray-700">
                     <Shield className="h-4 w-4 text-blue-600" />
                     <span>Usuário Admin *</span>
                   </Label>
@@ -458,7 +458,7 @@ export default function LoginPage() {
                     placeholder="Nome do usuário autorizado"
                     value={usuarioCustos}
                     onChange={(e) => setUsuarioCustos(e.target.value)}
-                    className="text-base h-12 border-blue-200 hover:border-blue-300"
+                    className="text-base h-12 border-blue-200 hover:border-blue-300 bg-white text-gray-900"
                     required
                     onKeyPress={handleKeyPress}
                   />
@@ -468,7 +468,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-base font-medium flex items-center space-x-2">
+                  <Label className="text-base font-medium flex items-center space-x-2 text-gray-700">
                     <Lock className="h-4 w-4 text-blue-600" />
                     <span>Senha *</span>
                   </Label>
@@ -477,7 +477,7 @@ export default function LoginPage() {
                     placeholder="Digite a senha"
                     value={senhaCustos}
                     onChange={(e) => setSenhaCustos(e.target.value)}
-                    className="text-base h-12 border-blue-200 hover:border-blue-300"
+                    className="text-base h-12 border-blue-200 hover:border-blue-300 bg-white text-gray-900"
                     required
                     onKeyPress={handleKeyPress}
                   />
@@ -491,12 +491,12 @@ export default function LoginPage() {
             <>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <Label className="text-base font-medium flex items-center space-x-2">
+                  <Label className="text-base font-medium flex items-center space-x-2 text-gray-700">
                     <Users className="h-4 w-4 text-green-600" />
                     <span>Colaborador(es) *</span>
                   </Label>
                   {colaboradores.length < 3 && (
-                    <Button type="button" variant="outline" size="sm" onClick={adicionarColaborador} className="text-green-600 border-green-300 hover:bg-green-50 bg-transparent">
+                    <Button type="button" variant="outline" size="sm" onClick={adicionarColaborador} className="text-green-600 border-green-300 hover:bg-green-50 bg-white">
                       <Plus className="h-4 w-4 mr-1" />Adicionar
                     </Button>
                   )}
@@ -507,7 +507,7 @@ export default function LoginPage() {
                       placeholder={`Nome do ${i === 0 ? "colaborador" : `${i + 1}º colaborador`}`}
                       value={colab}
                       onChange={(e) => atualizarColaborador(i, e.target.value)}
-                      className="text-base h-12 flex-1"
+                      className="text-base h-12 flex-1 bg-white text-gray-900"
                       onKeyPress={handleKeyPress}
                     />
                     {colaboradores.length > 1 && (
@@ -516,7 +516,7 @@ export default function LoginPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => removerColaborador(i)}
-                        className="text-red-500 border-red-300 hover:bg-red-50 h-12 px-3"
+                        className="text-red-500 border-red-300 hover:bg-red-50 h-12 px-3 bg-white"
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -537,36 +537,36 @@ export default function LoginPage() {
             <>
               {area !== "embalagem" && (
                 <div className="space-y-2">
-                  <Label className="text-base font-medium">Colaborador *</Label>
-                  <Input placeholder="Nome do colaborador" value={colaborador} onChange={(e) => setColaborador(e.target.value)} className="text-base h-12" onKeyPress={handleKeyPress} />
+                  <Label className="text-base font-medium text-gray-700">Colaborador *</Label>
+                  <Input placeholder="Nome do colaborador" value={colaborador} onChange={(e) => setColaborador(e.target.value)} className="text-base h-12 bg-white text-gray-900" onKeyPress={handleKeyPress} />
                 </div>
               )}
 
               <div className="space-y-2">
-                <Label className="text-base font-medium">Data *</Label>
+                <Label className="text-base font-medium text-gray-700">Data *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal h-12 text-base bg-transparent hover:bg-green-50 border-green-200" onKeyDown={handleKeyPress}>
+                    <Button variant="outline" className="w-full justify-start text-left font-normal h-12 text-base bg-white hover:bg-green-50 border-green-200 text-gray-900" onKeyDown={handleKeyPress}>
                       <CalendarIcon className="mr-2 h-4 w-4 text-green-600" />
                       {data ? format(data, "dd/MM/yyyy", { locale: ptBR }) : "Selecione a data"}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
+                  <PopoverContent className="w-auto p-0 bg-white">
                     <Calendar mode="single" selected={data} onSelect={setData} initialFocus />
                   </PopoverContent>
                 </Popover>
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-medium">Turno *</Label>
+                <Label className="text-base font-medium text-gray-700">Turno *</Label>
                 <Select value={turno} onValueChange={setTurno}>
-                  <SelectTrigger className="h-12 text-base hover:bg-green-50 border-green-200" onKeyDown={handleKeyPress}>
+                  <SelectTrigger className="h-12 text-base hover:bg-green-50 border-green-200 bg-white text-gray-900" onKeyDown={handleKeyPress}>
                     <SelectValue placeholder="Selecione o turno" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="A" className="text-base py-3">A (Manhã)</SelectItem>
-                    <SelectItem value="B" className="text-base py-3">B (Tarde)</SelectItem>
-                    <SelectItem value="C" className="text-base py-3">C (Noite)</SelectItem>
+                  <SelectContent className="bg-white">
+                    <SelectItem value="A" className="text-base py-3 text-gray-900">A (Manhã)</SelectItem>
+                    <SelectItem value="B" className="text-base py-3 text-gray-900">B (Tarde)</SelectItem>
+                    <SelectItem value="C" className="text-base py-3 text-gray-900">C (Noite)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

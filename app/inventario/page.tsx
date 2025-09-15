@@ -174,7 +174,32 @@ export default function InventarioPage() {
   }, [session])
 
   const handleLogout = () => {
+    // Limpar localStorage
+    localStorage.clear();
+    
+    // Limpar sessionStorage
+    sessionStorage.clear();
+    
+    // Limpar cookies
+    document.cookie.split(";").forEach((c) => {
+      const eqPos = c.indexOf("=");
+      const name = eqPos > -1 ? c.substr(0, eqPos) : c;
+      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+    });
+    
+    // Limpar cache do navegador (se suportado)
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        names.forEach((name) => {
+          caches.delete(name);
+        });
+      });
+    }
+    
+    // Usar a função de logout existente
     logout();
+    
+    // Redirecionar para a página inicial
     router.push("/");
   };
 

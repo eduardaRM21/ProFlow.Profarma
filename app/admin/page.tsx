@@ -29,6 +29,7 @@ import {
   KeyRound,
 } from "lucide-react"
 import ChangePasswordModal from "@/components/admin/change-password-modal"
+import AdminNavbar from "@/components/admin/admin-navbar"
 
 import GerenciarCarrosSection from "./components/gerenciar-carros-section"
 import DashboardEstatisticas from "./components/dashboard-estatisticas"
@@ -67,6 +68,9 @@ interface Conversa {
 export default function AdminPage() {
   // Estado de autenticação (sempre true para acesso direto)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
+  
+  // Estado para armazenar dados da sessão do usuário
+  const [sessionData, setSessionData] = useState<any>(null)
 
   // TODOS os outros Hooks vêm DEPOIS da verificação de autenticação
   const [conversas, setConversas] = useState<Conversa[]>([])
@@ -132,6 +136,7 @@ export default function AdminPage() {
           // Se for admin embalagem, acesso direto permitido
           if (session.area === "admin-embalagem") {
             console.log("🔐 Usuário do setor Admin Embalagem detectado, acesso liberado")
+            setSessionData(session)
             setIsAuthenticated(true)
             return
           }
@@ -149,6 +154,7 @@ export default function AdminPage() {
 
           // Se chegou até aqui, acesso direto permitido
           console.log("🔐 Usuário admin_crdk detectado, acesso liberado")
+          setSessionData(session)
           setIsAuthenticated(true)
           return
         }
@@ -177,6 +183,7 @@ export default function AdminPage() {
       // Se for admin embalagem, acesso direto permitido
       if (session.area === "admin-embalagem") {
         console.log("🔐 Usuário do setor Admin Embalagem detectado, acesso liberado")
+        setSessionData(session)
         setIsAuthenticated(true)
         return
       }
@@ -194,6 +201,7 @@ export default function AdminPage() {
 
       // Se chegou até aqui, acesso direto permitido
       console.log("🔐 Usuário admin_crdk detectado, acesso liberado")
+      setSessionData(session)
       setIsAuthenticated(true)
     } catch (error) {
       console.error("❌ Erro ao verificar acesso admin:", error)
@@ -218,14 +226,32 @@ export default function AdminPage() {
   }
 
   const handleLogout = () => {
-    // Limpar dados da sessão
-    localStorage.removeItem("sistema_session")
-    localStorage.removeItem("profarma_admin_active_section")
+    // Limpar localStorage
+    localStorage.clear();
+    
+    // Limpar sessionStorage
+    sessionStorage.clear();
+    
+    // Limpar cookies
+    document.cookie.split(";").forEach((c) => {
+      const eqPos = c.indexOf("=");
+      const name = eqPos > -1 ? c.substr(0, eqPos) : c;
+      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+    });
+    
+    // Limpar cache do navegador (se suportado)
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        names.forEach((name) => {
+          caches.delete(name);
+        });
+      });
+    }
     
     // Redirecionar para a página inicial
-    router.push("/")
+    router.push("/");
     
-    console.log("✅ Logout realizado com sucesso")
+    console.log("✅ Logout realizado com sucesso - Cache e cookies limpos");
   }
 
   const handleSectionChange = (section: string | null) => {
@@ -862,62 +888,31 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <Shield className="h-8 w-8 text-blue-600" />
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Painel Administrativo</h1>
-                <p className="text-sm text-gray-500 hidden sm:inline">Sistema de Bipagem Embalagem</p>
-              </div>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Navbar */}
+      <AdminNavbar 
+        sessionData={sessionData}
+        onLogout={handleLogout}
+        onPasswordChange={() => setShowChangePassword(true)}
+      />
+
+      {/* Botão flutuante para chat interno */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <Button
+          onClick={() => handleSectionChange("chat")}
+          className="relative bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
+          size="lg"
+        >
+          <MessageCircle className="h-6 w-6" />
+          
+          {/* Alerta vermelho com número de mensagens não lidas */}
+          {totalMensagensNaoLidas > 0 && (
+            <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center animate-pulse">
+              {totalMensagensNaoLidas > 99 ? '99+' : totalMensagensNaoLidas}
             </div>
-
-            <div className="flex items-center space-x-4">
-              {/* Botão flutuante para chat interno */}
-              <Button
-                onClick={() => handleSectionChange("chat")}
-                className="relative bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200"
-                size="sm"
-              >
-                <MessageCircle className="h-6 w-6" />
-                
-                {/* Alerta vermelho com número de mensagens não lidas */}
-                {totalMensagensNaoLidas > 0 && (
-                  <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center animate-pulse">
-                    {totalMensagensNaoLidas > 99 ? '99+' : totalMensagensNaoLidas}
-                  </div>
-                )}
-              </Button>
-
-              {/* Botão Alterar Senha */}
-              <Button
-                onClick={() => setShowChangePassword(true)}
-                variant="outline"
-                className="bg-transparent hover:bg-blue-50 border-blue-200"
-                size="sm"
-                title="Alterar Senha"
-              >
-                <KeyRound className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Alterar Senha</span>
-              </Button>
-
-              {/* Botão Sair */}
-              <Button
-                onClick={handleLogout}
-                variant="outline"
-                className="bg-red-50 hover:bg-red-100 border-red-200 text-red-700 hover:text-red-800 transition-all duration-200"
-                size="sm"
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                Sair
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+          )}
+        </Button>
+      </div>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!activeSection ? (
@@ -1002,8 +997,8 @@ export default function AdminPage() {
       <ChangePasswordModal
         isOpen={showChangePassword}
         onClose={() => setShowChangePassword(false)}
-        usuario="admin_embalagem"
-        area="admin-embalagem"
+        usuario={sessionData?.colaboradores?.[0] || "admin_embalagem"}
+        area={sessionData?.area || "admin-embalagem"}
         onSuccess={() => {
           alert("Senha alterada com sucesso!")
         }}

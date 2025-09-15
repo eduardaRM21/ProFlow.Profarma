@@ -33,6 +33,8 @@ import type { SessionData, NotaFiscal, Relatorio } from "@/lib/database-service"
 import { LocalAuthService } from "@/lib/local-auth-service"
 import { useIsColetor } from "@/hooks/use-coletor"
 import ColetorView from "./components/coletor-view"
+import DarEntrada from "./components/dar-entrada"
+import VerConsolidado from "./components/ver-consolidado"
 
 const TIPOS_DIVERGENCIA = [
   { codigo: "0063", descricao: "Avaria transportadora" },
@@ -78,6 +80,7 @@ export default function RecebimentoPage() {
   const [nomeTransportadora, setNomeTransportadora] = useState("")
   const [modalRelatorios, setModalRelatorios] = useState(false)
   const [finalizando, setFinalizando] = useState(false)
+  const [telaAtiva, setTelaAtiva] = useState("bipagem")
 
   // Lógica de sessão e carregamento inicial
   useEffect(() => {
@@ -845,8 +848,33 @@ export default function RecebimentoPage() {
   } 
 
   const handleLogout = () => {
-    LocalAuthService.logout()
-    router.push("/")
+    // Limpar localStorage
+    localStorage.clear();
+    
+    // Limpar sessionStorage
+    sessionStorage.clear();
+    
+    // Limpar cookies
+    document.cookie.split(";").forEach((c) => {
+      const eqPos = c.indexOf("=");
+      const name = eqPos > -1 ? c.substr(0, eqPos) : c;
+      document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+    });
+    
+    // Limpar cache do navegador (se suportado)
+    if ('caches' in window) {
+      caches.keys().then((names) => {
+        names.forEach((name) => {
+          caches.delete(name);
+        });
+      });
+    }
+    
+    // Usar o serviço de logout local
+    LocalAuthService.logout();
+    
+    // Redirecionar para a página inicial
+    router.push("/");
   }
 
   // Função para limpar a flag de scanner para bipar
@@ -921,7 +949,27 @@ export default function RecebimentoPage() {
       </div>
     )
   }
+  // Renderização condicional baseada na tela ativa
+  if (telaAtiva === "dar-entrada") {
+    return (
+      <DarEntrada
+        usuario={{ nome: Array.isArray(sessionData.colaboradores) ? sessionData.colaboradores.join(', ') : sessionData.colaboradores, loginTime: sessionData.loginTime }}
+        onVoltar={() => setTelaAtiva("bipagem")}
+        onVerConsolidado={() => setTelaAtiva("ver-consolidado")}
+        onLogout={handleLogout}
+      />
+    )
+  }
 
+  if (telaAtiva === "ver-consolidado") {
+    return (
+      <VerConsolidado
+        usuario={{ nome: Array.isArray(sessionData.colaboradores) ? sessionData.colaboradores.join(', ') : sessionData.colaboradores, loginTime: sessionData.loginTime }}
+        onVoltar={() => setTelaAtiva("dar-entrada")}
+        onLogout={handleLogout}
+      />
+    )
+  }
   return (
     <div className="min-h-screen bg-blue-50">
       {/* Renderização condicional: Desktop vs Coletor */}
@@ -1105,7 +1153,19 @@ export default function RecebimentoPage() {
             <Eye className="h-4 w-4 mr-2" />
             Ver Relatórios
           </Button>
+          {sessionData && (sessionData.colaboradores.includes("Elisangela") || sessionData.colaboradores.includes("Eduardarm")) && (
+            <Button
+              onClick={() => setTelaAtiva("dar-entrada")}
+              variant="outline"
+              className="mb-3 bg-purple-100 hover:bg-purple-200 text-purple-600"
+              size="sm"
+            >
+              <Package className="h-5 w-5 mr-2" />
+              Consolidado
+            </Button>
+          )}
         </div>
+
 
         {/* Lista de notas */}
         <Card className="border-blue-200">
