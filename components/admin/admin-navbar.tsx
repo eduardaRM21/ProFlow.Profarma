@@ -22,7 +22,7 @@ import {
   Moon,
   Monitor,
 } from "lucide-react";
-import { useTheme } from "@/contexts/theme-context";
+import { useTheme } from "next-themes";
 
 interface AdminNavbarProps {
   sessionData: any;
@@ -36,7 +36,7 @@ export default function AdminNavbar({
   onPasswordChange
 }: AdminNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const { theme, toggleTheme, setTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
 
   const getUserDisplayName = () => {
     if (sessionData?.colaboradores && sessionData.colaboradores.length > 0) {
@@ -65,6 +65,8 @@ export default function AdminNavbar({
         return <Sun className="h-4 w-4" />;
       case 'dark':
         return <Moon className="h-4 w-4" />;
+      case 'system':
+        return <Monitor className="h-4 w-4" />;
       default:
         return <Monitor className="h-4 w-4" />;
     }
@@ -76,6 +78,8 @@ export default function AdminNavbar({
         return 'Modo Claro';
       case 'dark':
         return 'Modo Escuro';
+      case 'system':
+        return 'Sistema';
       default:
         return 'Sistema';
     }
@@ -186,12 +190,12 @@ export default function AdminNavbar({
                  </DropdownMenuItem>
 
                  <DropdownMenuItem
-                   onClick={() => setTheme('system' as any)}
+                   onClick={() => setTheme('system')}
                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
                  >
                    <Monitor className="h-4 w-4" />
                    <span>Sistema</span>
-                   {(theme as any) === 'system' && <span className="ml-auto text-blue-600">✓</span>}
+                   {theme === 'system' && <span className="ml-auto text-blue-600">✓</span>}
                  </DropdownMenuItem>
 
                  <DropdownMenuSeparator />
