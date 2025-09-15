@@ -642,11 +642,12 @@ export const RelatoriosService = {
           relatorio.colaboradores.map(async (nomeColaborador: string) => {
             console.log(`🔍 Buscando usuário: ${nomeColaborador}`)
             
-            // Buscar usuário pelo nome na tabela users (para colaboradores operacionais)
+            // CORREÇÃO: Buscar usuário pelo nome usando ILIKE para case-insensitive
+            // e tentar diferentes variações do nome
             const { data: userData, error: userError } = await supabase
               .from('users')
               .select('id, nome, area, ativo')
-              .eq('nome', nomeColaborador)
+              .or(`nome.ilike.%${nomeColaborador}%,nome.ilike.%${nomeColaborador.trim()}%,nome.eq.${nomeColaborador}`)
               .eq('ativo', true)
               .single()
             
@@ -655,29 +656,54 @@ export const RelatoriosService = {
             if (userError || !userData) {
               console.log(`⚠️ Usuário não encontrado: ${nomeColaborador}, criando...`)
               
-              // CORREÇÃO: Usar upsert para evitar duplicatas
-              // Se o usuário já existir (mesmo nome + área), apenas ativar
-              const { data: newUser, error: createUserError } = await supabase
-                .from('users')
-                .upsert({
-                  nome: nomeColaborador,
-                  area: 'recebimento',
-                  ativo: true,
-                  updated_at: new Date().toISOString()
-                }, {
-                  onConflict: 'nome,area',
-                  ignoreDuplicates: false
-                })
-                .select('id, nome')
-                .single()
-              
-              if (createUserError) {
-                console.error(`❌ Erro ao criar/atualizar usuário ${nomeColaborador}:`, createUserError)
+              // CORREÇÃO: Tentar inserir primeiro, depois fazer upsert se necessário
+              try {
+                // Primeiro, tentar inserir diretamente
+                const { data: newUser, error: insertError } = await supabase
+                  .from('users')
+                  .insert({
+                    nome: nomeColaborador.trim(),
+                    area: 'recebimento',
+                    ativo: true,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                  })
+                  .select('id, nome')
+                  .single()
+                
+                if (insertError) {
+                  console.log(`⚠️ Erro na inserção direta, tentando upsert:`, insertError.message)
+                  
+                  // Se falhar, tentar upsert
+                  const { data: upsertUser, error: upsertError } = await supabase
+                    .from('users')
+                    .upsert({
+                      nome: nomeColaborador.trim(),
+                      area: 'recebimento',
+                      ativo: true,
+                      updated_at: new Date().toISOString()
+                    }, {
+                      onConflict: 'nome,area',
+                      ignoreDuplicates: false
+                    })
+                    .select('id, nome')
+                    .single()
+                  
+                  if (upsertError) {
+                    console.error(`❌ Erro ao criar/atualizar usuário ${nomeColaborador}:`, upsertError)
+                    return null
+                  }
+                  
+                  console.log(`✅ Usuário criado/atualizado via upsert: ${nomeColaborador} com ID: ${upsertUser.id}`)
+                  return upsertUser.id
+                } else {
+                  console.log(`✅ Usuário criado via inserção: ${nomeColaborador} com ID: ${newUser.id}`)
+                  return newUser.id
+                }
+              } catch (error) {
+                console.error(`❌ Erro geral ao criar usuário ${nomeColaborador}:`, error)
                 return null
               }
-              
-              console.log(`✅ Usuário criado/atualizado: ${nomeColaborador} com ID: ${newUser.id}`)
-              return newUser.id
             }
             
             console.log(`✅ Usuário encontrado: ${nomeColaborador} com ID: ${userData.id}`)
@@ -700,17 +726,41 @@ export const RelatoriosService = {
           
           console.log('🔍 Relacionamentos a serem salvos:', colaboradoresRelacionamentos)
           
+          // CORREÇÃO: Usar upsert para evitar duplicatas e garantir que todos sejam salvos
           const { error: colaboradoresError } = await supabase
             .from('relatorio_colaboradores')
-            .insert(colaboradoresRelacionamentos)
+            .upsert(colaboradoresRelacionamentos, {
+              onConflict: 'relatorio_id,user_id',
+              ignoreDuplicates: false
+            })
           
           if (colaboradoresError) {
             console.error('❌ Erro ao salvar colaboradores:', colaboradoresError)
+            
+            // CORREÇÃO: Tentar inserir individualmente se o upsert falhar
+            console.log('🔄 Tentando inserir colaboradores individualmente...')
+            for (const relacionamento of colaboradoresRelacionamentos) {
+              try {
+                const { error: individualError } = await supabase
+                  .from('relatorio_colaboradores')
+                  .insert(relacionamento)
+                
+                if (individualError) {
+                  console.error(`❌ Erro ao salvar colaborador individual ${relacionamento.user_id}:`, individualError)
+                } else {
+                  console.log(`✅ Colaborador individual salvo: ${relacionamento.user_id}`)
+                }
+              } catch (error) {
+                console.error(`❌ Erro geral ao salvar colaborador individual ${relacionamento.user_id}:`, error)
+              }
+            }
           } else {
-            console.log('✅ Colaboradores salvos:', colaboradoresRelacionamentos.length)
+            console.log('✅ Colaboradores salvos via upsert:', colaboradoresRelacionamentos.length)
           }
         } else {
           console.log('⚠️ Nenhum ID válido de colaborador encontrado')
+          console.log('🔍 Colaboradores recebidos:', relatorio.colaboradores)
+          console.log('🔍 IDs obtidos:', colaboradoresIds)
         }
       } else {
         console.log('⚠️ Nenhum colaborador para salvar ou formato inválido:', relatorio.colaboradores)

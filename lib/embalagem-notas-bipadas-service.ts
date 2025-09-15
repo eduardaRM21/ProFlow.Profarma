@@ -635,21 +635,28 @@ export class EmbalagemNotasBipadasService {
           console.error('❌ Erro ao buscar notas restantes do carro:', notasError)
           // Não retornar erro aqui, pois a nota já foi removida
         } else {
-          // Se não há mais notas, remover o carro da tabela carros_status
+          // Se não há mais notas, atualizar o carro para refletir que não tem mais NFs
           if (!notasRestantes || notasRestantes.length === 0) {
-            console.log(`🗑️ Carro ${carroId} não tem mais notas, removendo da tabela carros_status`)
+            console.log(`🔄 Carro ${carroId} não tem mais notas, atualizando estatísticas para zero`)
             
-            const { error: carroDeleteError } = await retryWithBackoff(async () => {
+            // Atualizar o carro com estatísticas zeradas mas mantê-lo visível
+            const { error: carroUpdateError } = await retryWithBackoff(async () => {
               return await getSupabase()
                 .from('carros_status')
-                .delete()
+                .update({
+                  quantidade_nfs: 0,
+                  total_volumes: 0,
+                  nfs: [],
+                  estimativa_pallets: 0,
+                  updated_at: new Date().toISOString()
+                })
                 .eq('carro_id', carroId)
             })
 
-            if (carroDeleteError) {
-              console.warn('⚠️ Aviso: Nota removida mas falha ao remover carro da tabela carros_status:', carroDeleteError)
+            if (carroUpdateError) {
+              console.warn('⚠️ Aviso: Nota removida mas falha ao atualizar carro na tabela carros_status:', carroUpdateError)
             } else {
-              console.log(`✅ Carro ${carroId} removido da tabela carros_status`)
+              console.log(`✅ Carro ${carroId} atualizado com estatísticas zeradas (mantido visível)`)
             }
           } else {
             // Se ainda há notas, atualizar o carro com as estatísticas corretas

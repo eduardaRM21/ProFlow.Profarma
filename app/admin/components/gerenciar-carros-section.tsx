@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -162,6 +162,7 @@ export default function GerenciarCarrosSection() {
   const [carroLancamentoSelecionado, setCarroLancamentoSelecionado] = useState<CarroLancamento | null>(null)
   const [modalDetalhes, setModalDetalhes] = useState(false)
   const [carroParaExcluir, setCarroParaExcluir] = useState<CarroStatus | null>(null)
+  const [modalExclusaoAberto, setModalExclusaoAberto] = useState(false)
 
 
 
@@ -231,6 +232,7 @@ export default function GerenciarCarrosSection() {
           duration: 3000,
         })
         setCarroParaExcluir(null)
+        setModalExclusaoAberto(false)
       } else {
         console.error('❌ [COMPONENTE] Falha ao excluir carro:', result.error)
         toast({
@@ -1512,43 +1514,20 @@ export default function GerenciarCarrosSection() {
                         <span className="sm:hidden">📋</span>
                       </Button>
 
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8 text-red-600 border-red-200 hover:bg-red-50"
-                            onClick={() => setCarroParaExcluir(carro)}
-                          >
-                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                            <span className="hidden sm:inline">Excluir</span>
-                            <span className="sm:hidden">🗑️</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Tem certeza que deseja excluir o carro "{carroParaExcluir?.numeros_sap && carroParaExcluir.numeros_sap.length > 0
-                                ? `Carro SAP: ${carroParaExcluir.numeros_sap.join(', ')}`
-                                : carroParaExcluir?.nome_carro
-                              }"?
-                              <br />
-                              <br />
-                              <strong>Atenção:</strong> Esta ação não pode ser desfeita e todos os dados do carro serão perdidos permanentemente.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => carroParaExcluir && handleExcluirCarro(carroParaExcluir)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Excluir Carro
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs sm:text-xs lg:text-sm h-9 sm:h-8 text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setCarroParaExcluir(carro)
+                          setModalExclusaoAberto(true)
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                        <span className="hidden sm:inline">Excluir</span>
+                        <span className="sm:hidden">🗑️</span>
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -2294,6 +2273,47 @@ export default function GerenciarCarrosSection() {
       </Dialog>
 
 
+
+      {/* Modal de Confirmação de Exclusão */}
+      <Dialog open={modalExclusaoAberto} onOpenChange={setModalExclusaoAberto}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Exclusão</DialogTitle>
+            <DialogDescription>
+              Tem certeza que deseja excluir o carro "{carroParaExcluir?.numeros_sap && carroParaExcluir.numeros_sap.length > 0
+                ? `Carro SAP: ${carroParaExcluir.numeros_sap.join(', ')}`
+                : carroParaExcluir?.nome_carro
+              }"?
+              <br />
+              <br />
+              <strong>Atenção:</strong> Esta ação não pode ser desfeita e todos os dados do carro serão perdidos permanentemente.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end space-x-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setModalExclusaoAberto(false)
+                setCarroParaExcluir(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (carroParaExcluir) {
+                  handleExcluirCarro(carroParaExcluir)
+                  setModalExclusaoAberto(false)
+                  setCarroParaExcluir(null)
+                }
+              }}
+            >
+              Excluir Carro
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Toaster para notificações */}
       <Toaster />
