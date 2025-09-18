@@ -811,21 +811,8 @@ NOTAS FISCAIS:`
       });
     }
 
-    // Aplicar filtro de status
-    if (filtroStatus !== "todos") {
-      console.log('🔍 Aplicando filtro de status:', filtroStatus);
-      const notasAntes = notasProcessadas.length;
-
-      notasProcessadas = notasProcessadas.filter(
-        (nota) => nota.status === filtroStatus
-      );
-
-      console.log('🔍 Filtro de status aplicado:', {
-        notasAntes,
-        notasDepois: notasProcessadas.length,
-        status: filtroStatus
-      });
-    }
+    // Nota: O filtro de status é aplicado apenas aos relatórios, não às notas individuais
+    // As notas têm status diferentes (ok, divergencia, devolvida) dos relatórios (liberado, em_lancamento, lancado)
 
     // Aplicar ordenação
     switch (ordenacao) {
@@ -1630,7 +1617,6 @@ NOTAS FISCAIS:`
                               setRelatorioSelecionado(relatorio);
                               setNotasFiltradas(relatorio.notas);
                               setFiltroTexto("");
-                              setFiltroStatus("todos");
                               setOrdenacao("data_desc");
                             }}
                           >
@@ -1639,7 +1625,7 @@ NOTAS FISCAIS:`
                             <span className="sm:hidden">Detalhes</span>
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto">
+                        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
                           <DialogHeader>
                             <DialogTitle className="flex items-center space-x-2">
                               <Package className="h-4 w-4 text-orange-600" />
