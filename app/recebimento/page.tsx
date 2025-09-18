@@ -1153,7 +1153,7 @@ export default function RecebimentoPage() {
             <Eye className="h-4 w-4 mr-2" />
             Ver Relatórios
           </Button>
-          {sessionData && (sessionData.colaboradores.includes("Elisangela") || sessionData.colaboradores.includes("Eduardarm")) && (
+          {sessionData && (sessionData.colaboradores.includes("Elisangela") || sessionData.colaboradores.includes("Eduardarm") || sessionData.colaboradores.includes("Amanda Santos") || sessionData.colaboradores.includes("Ana Carolina Neves")) && (
             <Button
               onClick={() => setTelaAtiva("dar-entrada")}
               variant="outline"

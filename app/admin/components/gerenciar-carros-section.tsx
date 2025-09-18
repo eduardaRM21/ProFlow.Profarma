@@ -140,6 +140,7 @@ export default function GerenciarCarrosSection() {
   const [filtroStatus, setFiltroStatus] = useState<string>("todos")
   const [filtroBusca, setFiltroBusca] = useState("")
 
+
   // Filtros avançados
   const [filtrosAvancados, setFiltrosAvancados] = useState<FiltrosAvancadosType>({
     filtroData: "hoje",
@@ -337,7 +338,7 @@ export default function GerenciarCarrosSection() {
       case "lancado":
         return <Send className="h-4 w-4 text-blue-600" />
       default:
-        return <Clock className="h-4 w-4 text-gray-600" />
+        return <Clock className="h-4 w-4 text-gray-600 dark:text-gray-400" />
     }
   }
 
@@ -354,7 +355,7 @@ export default function GerenciarCarrosSection() {
       case "lancado":
         return "bg-blue-100 text-blue-800"
       default:
-        return "bg-gray-100 text-gray-800"
+        return "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200"
     }
   }
 
@@ -965,6 +966,7 @@ export default function GerenciarCarrosSection() {
     setNumerosSAP(numerosSAP.filter((_, i) => i !== index))
   }
 
+
   const confirmarNumerosSAP = async () => {
     if (!carroParaSAP || numerosSAP.length === 0) {
       toast({
@@ -1240,7 +1242,7 @@ export default function GerenciarCarrosSection() {
                   {isConnected ? 'Conectado em Tempo Real' : 'Desconectado'}
                 </span>
               </div>
-              <div className="text-gray-500">
+              <div className="text-gray-500 dark:text-gray-400">
                 Última atualização: {lastUpdate.toLocaleTimeString('pt-BR')}
               </div>
             </div>
@@ -1250,28 +1252,28 @@ export default function GerenciarCarrosSection() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-2 sm:gap-4 mb-6">
             <div className="text-center p-2 sm:p-3 bg-blue-50 rounded-lg">
               <div className="text-lg sm:text-xl md:text-2xl font-bold text-blue-600">{estatisticasCombinadas.total}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Total</div>
+              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total</div>
             </div>
             <div className="text-center p-2 sm:p-3 bg-orange-50 rounded-lg">
               <div className="text-lg sm:text-xl md:text-2xl font-bold text-orange-600">{estatisticasCombinadas.embalando}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Embalando</div>
+              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Embalando</div>
             </div>
 
             <div className="text-center p-2 sm:p-3 bg-yellow-50 rounded-lg">
               <div className="text-lg sm:text-xl md:text-2xl font-bold text-yellow-600">{estatisticasCombinadas.aguardandoLancamento}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Aguardando Lançamento</div>
+              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Aguardando Lançamento</div>
             </div>
             <div className="text-center p-2 sm:p-3 bg-red-50 rounded-lg">
               <div className="text-lg sm:text-xl md:text-2xl font-bold text-red-600">{estatisticasCombinadas.divergencia}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Divergências</div>
+              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Divergências</div>
             </div>
             <div className="text-center p-2 sm:p-3 bg-teal-50 rounded-lg">
               <div className="text-lg sm:text-xl md:text-2xl font-bold text-teal-600">{estatisticasCombinadas.lancados}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Lançados</div>
+              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Lançados</div>
             </div>
             <div className="text-center p-2 sm:p-3 bg-purple-50 rounded-lg">
               <div className="text-lg sm:text-xl md:text-2xl font-bold text-purple-600">{estatisticasCombinadas.finalizados}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Finalizados</div>
+              <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Finalizados</div>
             </div>
             <div className="text-center p-2 sm:p-3 bg-indigo-50 rounded-lg">
               <div className="text-lg sm:text-xl md:text-2xl font-bold text-indigo-600">{estatisticasCombinadas.totalNFs}</div>
@@ -1310,6 +1312,19 @@ export default function GerenciarCarrosSection() {
                 </SelectContent>
               </Select>
             </div>
+            <Button
+              onClick={() => {
+                const pesquisaSection = document.querySelector('[data-pesquisa-notas]')
+                if (pesquisaSection) {
+                  pesquisaSection.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
+              }}
+              variant="outline"
+              className="w-full sm:w-auto text-sm h-10 bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
+            >
+              <Search className="h-4 w-4 mr-2" />
+              Pesquisar Notas
+            </Button>
           </div>
         </CardContent>
       </Card>

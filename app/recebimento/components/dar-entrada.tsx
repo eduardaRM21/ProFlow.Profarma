@@ -59,7 +59,7 @@ interface DarEntradaProps {
 }
 
 const REGEX_NOTA =
-  /^(\d{2}\/\d{2}\/\d{4})\|(\d{6,12})\|(\d{1,5})\|([A-Za-z0-9\-_/]{2,})\|([^|]{1,50})\|([A-Za-z0-9\-_/]{2,})\|([A-Za-z]{2,4})$/
+  /^(\d{2}\/\d{2}\/\d{4})\|(\d{6,12})\|(\d{1,5})\|([A-Za-z0-9\-_/]{2,})\|([^|]{1,50})\|([A-Za-z0-9\-_/ ]{2,})\|([A-Za-z]{2,4})$/
 
 export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogout }: DarEntradaProps) {
   const [transportadora, setTransportadora] = useState("")
@@ -96,6 +96,17 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
       }
 
       const [, data, nota, volume, destino, fornecedor, cliente_destino, tipo] = match
+
+      // Debug: verificar dados extraídos
+      console.log('🔍 Dados extraídos do regex:', {
+        data,
+        nota,
+        volume,
+        destino,
+        fornecedor,
+        cliente_destino,
+        tipo
+      })
 
       // Validar data
       const partesData = data.split("/")
@@ -145,8 +156,8 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
         fornecedor: fornecedor.trim(),
         clienteDestino: cliente_destino.toUpperCase(),
         tipo: tipo.toUpperCase(),
-        transportadora: transportadora.trim(),
-        usuario: usuario.nome,
+        transportadora: transportadora.trim() || 'N/A', // Fallback para transportadora vazia
+        usuario: usuario.nome || 'N/A', // Fallback para usuário vazio
         dataEntrada: new Date().toISOString(),
         codigoCompleto: codigo,
       }
@@ -191,6 +202,10 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
       const todasNotas = [...notasExistentes, ...novasNotas]
       localStorage.setItem("sistema_notas_consolidado", JSON.stringify(todasNotas))
 
+      // Debug: verificar dados antes de salvar
+      console.log('🔍 Dados das novas notas antes de salvar:', novasNotas)
+      console.log('🔍 Total de notas no localStorage:', todasNotas.length)
+
       // Salvar no banco de dados automaticamente
       try {
         console.log('💾 Salvando notas no banco de dados...')
@@ -201,6 +216,9 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
         } else {
           console.warn('⚠️ Erro ao salvar no banco:', saveResult.message)
           console.warn('📝 Notas salvas apenas no localStorage')
+          if (saveResult.errors && saveResult.errors.length > 0) {
+            console.warn('❌ Detalhes dos erros:', saveResult.errors)
+          }
         }
       } catch (error) {
         console.error('❌ Erro ao salvar no banco:', error)

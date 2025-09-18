@@ -125,7 +125,7 @@ interface CarroProduzido {
     tipoCarga: string;
   }>;
   estimativaPallets?: number;
-  status?: "embalando" | "concluido" | "finalizado" | "pronto" | "liberado" | "lancado";
+  status?: "embalando" | "divergencia" | "finalizado" | "aguardando_lancamento" | "lancado";
   posicoes?: number | null;
   palletes?: number | null;
   gaiolas?: number | null;
@@ -401,14 +401,12 @@ export default function CarrosProduzidosSection({
     switch (status) {
       case "embalando":
         return "Embalando";
-      case "concluido":
-        return "Concluído";
+      case "divergencia":
+        return "Divergência";
+      case "aguardando_lancamento":
+        return "Aguardando Lançamento";
       case "finalizado":
         return "Finalizado";
-      case "pronto":
-        return "Pronto";
-      case "liberado":
-        return "Liberado";
       case "lancado":
         return "Lançado";
       default:
@@ -420,10 +418,10 @@ export default function CarrosProduzidosSection({
     switch (status) {
       case "embalando":
         return "bg-orange-100 text-orange-800";
-      case "pronto":
-        return "bg-green-100 text-green-800";
-      case "concluido":
-        return "bg-purple-100 text-purple-800";
+      case "divergencia":
+        return "bg-red-100 text-red-800";
+      case "aguardando_lancamento":
+        return "bg-yellow-100 text-yellow-800";
       case "finalizado":
         return "bg-blue-100 text-blue-800";
       case "lancado":
@@ -697,9 +695,8 @@ export default function CarrosProduzidosSection({
           try {
             const sessao = JSON.parse(dados);
 
-            // Verificar se o carro foi finalizado (tem status "liberado" ou "em_producao")
+            // Verificar se o carro foi finalizado (tem status "finalizado" ou "em_producao")
             if (
-              sessao.statusCarro === "liberado" ||
               sessao.statusCarro === "em_producao"
             ) {
               const nfsValidas =
@@ -743,8 +740,8 @@ export default function CarrosProduzidosSection({
                   estimativaPallets: Math.ceil(totalVolumes / 100), // Estimativa: 100 volumes por pallet
                   status:
                     sessao.statusCarro === "em_producao"
-                      ? "concluido"
-                      : "liberado",
+                      ? "embalando"
+                      : "finalizado",
                 };
 
                 carrosEncontrados.push(carro);
@@ -971,12 +968,6 @@ export default function CarrosProduzidosSection({
                       {getStatusLabel(carro.status)}
                     </Badge>
 
-                    {/* Indicador especial para carros prontos */}
-                    {carro.status === "pronto" && (
-                      <Badge className="text-xs bg-emerald-100 text-emerald-800 border-emerald-200">
-                        🟢 Pronto para Admin
-                      </Badge>
-                    )}
                     <Badge className={`text-xs ${getTurnoColor(carro.turno)}`}>
                       <span className="hidden sm:inline">Turno</span>
                       {" "} {carro.turno}
@@ -1171,7 +1162,7 @@ export default function CarrosProduzidosSection({
                     </DialogContent>
                   </Dialog>
 
-                  {(carro.status === "embalando" || carro.status === "concluido" || carro.status === "finalizado" || carro.status === "lancado") && (
+                  {(carro.status === "embalando" || carro.status === "divergencia" || carro.status === "aguardando_lancamento" || carro.status === "finalizado" || carro.status === "lancado") && (
                     <Button
                       onClick={() =>
                         abrirModalPallets(
@@ -1181,7 +1172,7 @@ export default function CarrosProduzidosSection({
                       }
                       className={`flex-2 ${(carro.status as string) === "embalando"
                         ? "bg-green-600 hover:bg-green-700"
-                        : (carro.status as string) === "pronto"
+                        : (carro.status as string) === "aguardando_lancamento"
                           ? "bg-emerald-600 hover:bg-emerald-700"
                           : (carro.status as string) === "finalizado"
                             ? "bg-gray-600 hover:bg-gray-700"
@@ -1190,14 +1181,13 @@ export default function CarrosProduzidosSection({
                               : "bg-blue-600 hover:bg-blue-700"
                         } text-white text-xs sm:text-sm`}
                       size="sm"
-                      disabled={(carro.status as string) === "finalizado" || (carro.status as string) === "pronto" || (carro.status as string) === "concluido"}
                     >
                       <CheckCircle2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
                       <span className="hidden sm:inline">
-                        {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "pronto" ? "Pronto ✓" : (carro.status as string) === "finalizado" ? "Finalizado" : (carro.status as string) === "lancado" ? "Atualizar Pallets" : "Atualizar Pallets"}
+                        {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "divergencia" ? "Finalizar mesmo assim" : (carro.status as string) === "aguardando_lancamento" ? "Finalizar" : (carro.status as string) === "finalizado" ? "Finalizado" : (carro.status as string) === "lancado" ? "Atualizar Pallets" : "Atualizar Pallets"}
                       </span>
                       <span className="sm:hidden">
-                        {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "pronto" ? "✓" : (carro.status as string) === "finalizado" ? "Finalizado" : (carro.status as string) === "lancado" ? "Pallets" : "Pallets"}
+                        {(carro.status as string) === "embalando" ? "Finalizar" : (carro.status as string) === "divergencia" ? "Finalizar" : (carro.status as string) === "aguardando_lancamento" ? "Finalizar" : (carro.status as string) === "finalizado" ? "Finalizado" : (carro.status as string) === "lancado" ? "Pallets" : "Pallets"}
                       </span>
                     </Button>
                   )}

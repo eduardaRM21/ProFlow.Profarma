@@ -32,6 +32,7 @@ import ChangePasswordModal from "@/components/admin/change-password-modal"
 import AdminNavbar from "@/components/admin/admin-navbar"
 
 import GerenciarCarrosSection from "./components/gerenciar-carros-section"
+import PesquisaNotasSection from "./components/pesquisa-notas-section"
 import DashboardEstatisticas from "./components/dashboard-estatisticas"
 import { useEstatisticas } from "@/hooks/use-estatisticas"
 
@@ -68,7 +69,7 @@ interface Conversa {
 export default function AdminPage() {
   // Estado de autenticação (sempre true para acesso direto)
   const [isAuthenticated, setIsAuthenticated] = useState(true)
-  
+
   // Estado para armazenar dados da sessão do usuário
   const [sessionData, setSessionData] = useState<any>(null)
 
@@ -79,16 +80,33 @@ export default function AdminPage() {
   const [novaMensagem, setNovaMensagem] = useState("")
   const [filtro, setFiltro] = useState("")
   const [enviando, setEnviando] = useState(false)
+  const [usuarioDigitando, setUsuarioDigitando] = useState(false)
+  const [timeoutDigitacao, setTimeoutDigitacao] = useState<NodeJS.Timeout | null>(null)
+  const [inputFocado, setInputFocado] = useState(false)
+  const lastTsRef = useRef<string>("")
+
+
+  // Debug do estado enviando
+  useEffect(() => {
+    console.log('🔄 Estado enviando mudou para:', enviando, 'Stack trace:', new Error().stack)
+  }, [enviando])
+
+  // Debug do estado digitando
+  useEffect(() => {
+    console.log('⌨️ Usuário digitando mudou para:', usuarioDigitando)
+  }, [usuarioDigitando])
+
+  const [ultimaAtualizacaoMensagens, setUltimaAtualizacaoMensagens] = useState<string>("")
   const [activeSection, setActiveSection] = useState<string | null>(null)
   const [showChangePassword, setShowChangePassword] = useState(false)
 
-  
+
   // Cliente Supabase - será obtido quando necessário
   const [supabase, setSupabase] = useState<any>(null)
-  
+
   // Referência para o input de mensagem
   const inputRef = useRef<HTMLInputElement>(null)
-  
+
   const router = useRouter()
 
   useEffect(() => {
@@ -97,9 +115,9 @@ export default function AdminPage() {
     const supabaseClient = getSupabase();
     setSupabase(supabaseClient);
     console.log('✅ Cliente Supabase inicializado:', !!supabaseClient)
-    
+
     verificarAcessoAdmin()
-    
+
     // Restaurar seção ativa do localStorage
     const secaoSalva = localStorage.getItem("profarma_admin_active_section")
     if (secaoSalva) {
@@ -111,21 +129,21 @@ export default function AdminPage() {
   const verificarAcessoAdmin = async () => {
     try {
       console.log('🔍 Verificando acesso admin...')
-      
+
       // Primeiro tentar buscar sessão do banco usando o sistema corrigido
       try {
         const { useSession } = await import("@/hooks/use-database")
         const { useConnectivity } = await import("@/hooks/use-database")
-        
+
         // Criar uma instância temporária dos hooks
         const sessionHook = useSession()
         const connectivityHook = useConnectivity()
-        
+
         const session = await sessionHook.getSession("current")
-        
+
         if (session) {
           console.log("📊 Sessão do banco encontrada:", session)
-          
+
           // Verificar se é do setor de embalagem ou admin embalagem
           if (session.area !== "embalagem" && session.area !== "admin-embalagem") {
             console.log("❌ Acesso negado: usuário não é do setor de embalagem ou admin embalagem")
@@ -142,7 +160,7 @@ export default function AdminPage() {
           }
 
           // Verificar se há um usuário "admin_crdk" na lista de colaboradores (apenas para setor embalagem)
-          const hasAdminUser = session.colaboradores.some((colab: string) => 
+          const hasAdminUser = session.colaboradores.some((colab: string) =>
             colab.toLowerCase().includes("admin_crdk")
           )
 
@@ -161,7 +179,7 @@ export default function AdminPage() {
       } catch (error) {
         console.log("⚠️ Erro ao buscar sessão do banco, usando localStorage:", error)
       }
-      
+
       // Fallback para localStorage
       const sessionData = localStorage.getItem("sistema_session")
       if (!sessionData) {
@@ -189,7 +207,7 @@ export default function AdminPage() {
       }
 
       // Verificar se há um usuário "admin_crdk" na lista de colaboradores (apenas para setor embalagem)
-      const hasAdminUser = session.colaboradores.some((colab: string) => 
+      const hasAdminUser = session.colaboradores.some((colab: string) =>
         colab.toLowerCase().includes("admin_crdk")
       )
 
@@ -214,31 +232,50 @@ export default function AdminPage() {
 
 
   const handleChatKeyPress = (e: React.KeyboardEvent) => {
+    console.log('⌨️ Tecla pressionada:', e.key, 'enviando:', enviando)
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
+      console.log('📤 Enter pressionado, chamando enviarMensagem')
       enviarMensagem()
     }
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const valor = e.target.value
+    console.log('📝 Input change:', valor, 'enviando:', enviando, 'readOnly:', e.target.readOnly)
     setNovaMensagem(valor)
+
+    // Marcar que usuário está digitando
+    setUsuarioDigitando(true)
+
+    // Limpar timeout anterior
+    if (timeoutDigitacao) {
+      clearTimeout(timeoutDigitacao)
+    }
+
+    // Definir novo timeout para resetar estado de digitação
+    const novoTimeout = setTimeout(() => {
+      console.log('⏰ Timeout de digitação - resetando estado')
+      setUsuarioDigitando(false)
+    }, 1000) // 1 segundo de inatividade (mais responsivo)
+
+    setTimeoutDigitacao(novoTimeout)
   }
 
   const handleLogout = () => {
     // Limpar localStorage
     localStorage.clear();
-    
+
     // Limpar sessionStorage
     sessionStorage.clear();
-    
+
     // Limpar cookies
     document.cookie.split(";").forEach((c) => {
       const eqPos = c.indexOf("=");
       const name = eqPos > -1 ? c.substr(0, eqPos) : c;
       document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
     });
-    
+
     // Limpar cache do navegador (se suportado)
     if ('caches' in window) {
       caches.keys().then((names) => {
@@ -247,10 +284,10 @@ export default function AdminPage() {
         });
       });
     }
-    
+
     // Redirecionar para a página inicial
     router.push("/");
-    
+
     console.log("✅ Logout realizado com sucesso - Cache e cookies limpos");
   }
 
@@ -265,14 +302,15 @@ export default function AdminPage() {
     }
   }
 
-  const carregarConversasDoSupabase = useCallback(async () => {
+
+  const carregarConversas = useCallback(async () => {
     try {
       console.log('🔍 Carregando conversas do Supabase...')
 
       // **Padrão seguro**: use client local
       const client = supabase ?? getSupabase()
       if (!supabase) setSupabase(client)
-      
+
       // Buscar todas as mensagens únicas para criar conversas
       const { data: allMessages, error } = await client
         .from('messages')
@@ -281,12 +319,13 @@ export default function AdminPage() {
 
       if (error) {
         console.error('❌ Erro ao buscar mensagens do Supabase:', error)
-        console.log('🔄 Tentando usar localStorage como fallback...')
+        setConversas([])
         return
       }
 
       if (!allMessages || allMessages.length === 0) {
         console.log('ℹ️ Nenhuma mensagem encontrada no Supabase')
+        setConversas([])
         return
       }
 
@@ -297,11 +336,24 @@ export default function AdminPage() {
 
       allMessages.forEach((msg: any) => {
         const conversaId = msg.remetente_id === 'admin' ? msg.destinatario_id : msg.remetente_id
-        
+
         if (!conversasMap.has(conversaId)) {
+          // Para conversas de colaboradores, usar o nome do colaborador (não do admin)
+          const nomeColaborador = msg.remetente_tipo === 'colaborador' 
+            ? msg.remetente_nome 
+            : (msg.destinatario_id === 'admin' ? 'Colaborador' : msg.destinatario_id)
+          
+          console.log('🔍 Criando conversa:', {
+            conversaId,
+            remetente_tipo: msg.remetente_tipo,
+            remetente_nome: msg.remetente_nome,
+            destinatario_id: msg.destinatario_id,
+            nomeColaborador
+          })
+          
           conversasMap.set(conversaId, {
             id: conversaId,
-            colaboradores: [msg.remetente_nome || 'Colaborador'],
+            colaboradores: [nomeColaborador || 'Colaborador'],
             data: new Date(msg.timestamp).toISOString().split('T')[0],
             turno: 'manhã', // Default
             ultimaMensagem: msg.mensagem,
@@ -332,53 +384,36 @@ export default function AdminPage() {
       if (conversaSelecionada) {
         const conversaAtualizada = conversasArray.find((c: Conversa) => c.id === conversaSelecionada.id)
         if (conversaAtualizada) {
-          console.log('🔄 Atualizando conversa selecionada do Supabase:', conversaAtualizada)
-          setConversaSelecionada(conversaAtualizada)
-        } else {
+          // Só atualizar se houver mudanças reais
+          const hasChanges = JSON.stringify(conversaSelecionada) !== JSON.stringify(conversaAtualizada)
+          if (hasChanges) {
+            console.log('🔄 Atualizando conversa selecionada do Supabase:', conversaAtualizada)
+            setConversaSelecionada(conversaAtualizada)
+          } else {
+            console.log('ℹ️ Conversa selecionada sem mudanças, mantendo estado atual')
+          }
+                        } else {
           console.log('⚠️ Conversa selecionada não encontrada nas conversas do Supabase')
           setConversaSelecionada(null)
         }
       }
-      
+      const ultimoTs = conversasArray.length ? conversasArray[conversasArray.length - 1].ultimoTimestamp : ""
+      const hasChanges = ultimoTs !== lastTsRef.current
+
+      if (hasChanges) {
+        // ... (seu fluxo de atualização)
+        lastTsRef.current = ultimoTs
+        setUltimaAtualizacaoMensagens(ultimoTs) // opcional manter
+      } else {
+        console.log('ℹ️ Nenhuma mudança nas conversas, mantendo estado atual')
+      }
       setConversas(conversasArray)
-      
+
     } catch (error) {
       console.error('❌ Erro ao carregar conversas do Supabase:', error)
+        setConversas([])
     }
-  }, [supabase])
-
-  const carregarConversas = useCallback(() => {
-    const chaveListaGeral = "profarma_conversas_admin"
-    const conversasSalvas = localStorage.getItem(chaveListaGeral)
-
-    console.log('🔍 Carregando conversas do localStorage...')
-    console.log('📋 Chave:', chaveListaGeral)
-    console.log('📋 Dados salvos:', conversasSalvas)
-
-    if (conversasSalvas) {
-      const conversasArray = JSON.parse(conversasSalvas)
-      console.log('📊 Conversas carregadas:', conversasArray.length)
-      console.log('📋 Conversas:', conversasArray)
-      
-      // Preservar a conversa selecionada se ela ainda existir
-      if (conversaSelecionada) {
-        const conversaAtualizada = conversasArray.find((c: Conversa) => c.id === conversaSelecionada.id)
-        if (conversaAtualizada) {
-          console.log('🔄 Atualizando conversa selecionada:', conversaAtualizada)
-          setConversaSelecionada(conversaAtualizada)
-        } else {
-          console.log('⚠️ Conversa selecionada não encontrada nas conversas atualizadas')
-          setConversaSelecionada(null)
-        }
-      }
-      
-      setConversas(conversasArray)
-    } else {
-      console.log('⚠️ Nenhuma conversa encontrada no localStorage')
-      // Não carregar do Supabase aqui para evitar loop infinito
-      setConversas([])
-    }
-  }, [conversaSelecionada])
+  }, [supabase, conversaSelecionada])
 
   // useEffect para carregar conversas
   useEffect(() => {
@@ -392,21 +427,16 @@ export default function AdminPage() {
 
 
 
-  const atualizarContadorConversa = (conversaId: string) => {
-    const chaveListaGeral = "profarma_conversas_admin"
-    const conversasSalvas = localStorage.getItem(chaveListaGeral)
-
-    if (conversasSalvas) {
-      const conversasArray = JSON.parse(conversasSalvas)
-      const conversaIndex = conversasArray.findIndex((c: Conversa) => c.id === conversaId)
-
-      if (conversaIndex !== -1) {
-        conversasArray[conversaIndex].mensagensNaoLidas = 0
-        localStorage.setItem(chaveListaGeral, JSON.stringify(conversasArray))
-        setConversas(conversasArray)
-      }
-    }
-  }
+  const atualizarContadorConversa = useCallback((conversaId: string) => {
+    // Atualizar contador localmente
+    setConversas(prevConversas =>
+      prevConversas.map(conversa =>
+        conversa.id === conversaId
+          ? { ...conversa, mensagensNaoLidas: 0 }
+          : conversa
+      )
+    )
+  }, [])
 
   const carregarMensagens = useCallback(async (conversaId: string) => {
     try {
@@ -414,10 +444,10 @@ export default function AdminPage() {
       // **Padrão seguro**: use client local
       const client = supabase ?? getSupabase()
       if (!supabase) setSupabase(client)
-      
+
       // Primeiro, tentar carregar do Supabase
       console.log('🔍 Executando consulta para conversa:', conversaId)
-      
+
       const { data: supabaseMessages, error } = await client
         .from('messages')
         .select('*')
@@ -437,6 +467,17 @@ export default function AdminPage() {
 
       let mensagensArray: ChatMessage[] = []
 
+      const ultimoTs = mensagensArray.length ? mensagensArray[mensagensArray.length - 1].timestamp : ""
+      const hasChanges = ultimoTs !== lastTsRef.current
+
+      if (hasChanges) {
+        // ... (seu fluxo de atualização)
+        lastTsRef.current = ultimoTs
+        setUltimaAtualizacaoMensagens(ultimoTs) // opcional manter
+      } else {
+        console.log('ℹ️ Nenhuma mudança nas mensagens, mantendo estado atual')
+      }
+
       if (supabaseMessages && supabaseMessages.length > 0) {
         // Converter formato do Supabase para o formato local
         mensagensArray = supabaseMessages.map((msg: any) => ({
@@ -450,68 +491,87 @@ export default function AdminPage() {
           lida: msg.lida,
         }))
 
-        // Salvar no localStorage para cache
-        const chaveStorage = `profarma_chat_${conversaId}`
-        localStorage.setItem(chaveStorage, JSON.stringify(mensagensArray))
-      } else {
-        // Fallback para localStorage se não houver dados no Supabase
-        const chaveStorage = `profarma_chat_${conversaId}`
-        const mensagensSalvas = localStorage.getItem(chaveStorage)
-        if (mensagensSalvas) {
-          mensagensArray = JSON.parse(mensagensSalvas)
+        if (hasChanges) {
+          // ... (seu fluxo de atualização)
+          lastTsRef.current = ultimoTs
+          setUltimaAtualizacaoMensagens(ultimoTs) // opcional manter
+        } else {
+          console.log('ℹ️ Nenhuma mudança nas mensagens, mantendo estado atual')
         }
       }
 
       console.log('📊 Mensagens processadas:', mensagensArray.length)
-      
+
       if (mensagensArray.length > 0) {
         console.log('📋 Primeira mensagem:', mensagensArray[0])
         console.log('📋 Última mensagem:', mensagensArray[mensagensArray.length - 1])
-        
-        // Verificar se o input está focado antes de atualizar as mensagens
-        const inputFocado = document.activeElement === inputRef.current
-        
-        setMensagens(mensagensArray)
-        
-        // Restaurar o foco se estava focado antes
-        if (inputFocado && inputRef.current) {
-          setTimeout(() => {
-            inputRef.current?.focus()
-          }, 0)
-        }
 
-        // Marcar mensagens dos colaboradores como lida
-        const mensagensAtualizadas = mensagensArray.map((msg: ChatMessage) => {
-          if (msg.remetenteTipo === "colaborador" && !msg.lida) {
-            return { ...msg, lida: true }
-          }
-          return msg
+        // Verificar se há mudanças usando timestamp da última mensagem
+        const ultimaMensagemTimestamp = mensagensArray.length > 0 ? mensagensArray[mensagensArray.length - 1].timestamp : ""
+        const hasChanges = ultimaMensagemTimestamp !== ultimaAtualizacaoMensagens
+
+        // Verificar se o usuário está digitando ativamente
+        const inputFocado = document.activeElement === inputRef.current
+        const usuarioDigitandoAtivo = inputFocado && novaMensagem.length > 0
+
+        console.log('🔍 Verificando mudanças:', {
+          ultimaMensagemTimestamp,
+          ultimaAtualizacaoMensagens,
+          hasChanges,
+          totalMensagens: mensagensArray.length,
+          inputFocado,
+          usuarioDigitandoAtivo
         })
 
-        if (JSON.stringify(mensagensArray) !== JSON.stringify(mensagensAtualizadas)) {
-          localStorage.setItem(`profarma_chat_${conversaId}`, JSON.stringify(mensagensAtualizadas))
-          setMensagens(mensagensAtualizadas)
+        if (hasChanges) {
+          console.log('🔄 Mensagens alteradas, atualizando estado...')
 
-          // Atualizar contador na lista de conversas
-          atualizarContadorConversa(conversaId)
+          // Verificar se o input está focado e salvar posição do cursor
+          const inputFocado = document.activeElement === inputRef.current
+          const cursorPosition = inputRef.current?.selectionStart || 0
 
-          // Marcar como lida no Supabase também
-          const mensagensParaMarcar = mensagensAtualizadas.filter((msg: ChatMessage) => 
-            msg.remetenteTipo === "colaborador" && !msg.lida
+          setMensagens(mensagensArray)
+          setUltimaAtualizacaoMensagens(ultimaMensagemTimestamp)
+
+          // Restaurar o foco e posição do cursor se estava focado antes
+          if (inputFocado && inputRef.current) {
+            // Usar requestAnimationFrame para garantir que o DOM foi atualizado
+            requestAnimationFrame(() => {
+              if (inputRef.current) {
+                inputRef.current.focus()
+                // Restaurar posição do cursor
+                inputRef.current.setSelectionRange(cursorPosition, cursorPosition)
+              }
+            })
+          }
+        } else {
+          console.log('ℹ️ Nenhuma mudança nas mensagens, mantendo estado atual')
+        }
+
+        // Marcar mensagens dos colaboradores como lida (apenas se houve mudanças)
+        if (hasChanges) {
+          // ids que ainda não estão lidos no banco
+          const idsParaMarcar = mensagensArray
+            .filter((m) => m.remetenteTipo === "colaborador" && !m.lida)
+            .map((m) => m.id)
+
+          // atualize o estado local (sinalizando lidas)
+          const mensagensAtualizadas = mensagensArray.map((msg) =>
+            msg.remetenteTipo === "colaborador" ? { ...msg, lida: true } : msg
           )
 
-          if (mensagensParaMarcar.length > 0) {
-            console.log('📝 Marcando mensagens como lidas no Supabase:', mensagensParaMarcar.length)
-            
-            for (const msg of mensagensParaMarcar) {
-              const { error: updateError } = await client
-                .from('messages')
-                .update({ lida: true })
-                .eq('id', msg.id)
-              
-              if (updateError) {
-                console.error('❌ Erro ao marcar mensagem como lida:', updateError)
-              }
+          setMensagens(mensagensAtualizadas)
+          atualizarContadorConversa(conversaId)
+
+          // marque como lida no Supabase (em lote)
+          if (idsParaMarcar.length > 0) {
+            const { error: updateError } = await client
+              .from('messages')
+              .update({ lida: true })
+              .in('id', idsParaMarcar)
+
+            if (updateError) {
+              console.error('❌ Erro ao marcar mensagens como lidas:', updateError)
             }
           }
         }
@@ -520,34 +580,36 @@ export default function AdminPage() {
       }
     } catch (error) {
       console.error('Erro ao carregar mensagens:', error)
-      // Fallback para localStorage em caso de erro
-      const chaveStorage = `profarma_chat_${conversaId}`
-      const mensagensSalvas = localStorage.getItem(chaveStorage)
-      if (mensagensSalvas) {
-        const mensagensArray = JSON.parse(mensagensSalvas)
-        setMensagens(mensagensArray)
-      }
+      setMensagens([])
     }
-  // deps atualizados para refletir usos reais
+    // deps atualizados para refletir usos reais
   }, [supabase, atualizarContadorConversa, /* setSupabase/setMensagens são estáveis */])
 
-  // useEffect para carregar mensagens da conversa selecionada
+  // useEffect para carregar mensagens da conversa selecionada (apenas uma vez)
   useEffect(() => {
     if (isAuthenticated && conversaSelecionada) {
-      carregarMensagens(conversaSelecionada.id)
-      // Polling para mensagens da conversa selecionada (a cada 3 segundos)
+      const conversaId = conversaSelecionada.id
+      console.log('🔄 Carregando mensagens iniciais para conversa:', conversaId)
+      carregarMensagens(conversaId)
+    }
+  }, [isAuthenticated, conversaSelecionada?.id, carregarMensagens])
+
+  // useEffect separado para gerenciar polling baseado no estado de digitação
+  useEffect(() => {
+    if (isAuthenticated && conversaSelecionada && !usuarioDigitando && !enviando && !inputFocado) {
+      const conversaId = conversaSelecionada.id
       const interval = setInterval(() => {
-        if (conversaSelecionada) {
-          carregarMensagens(conversaSelecionada.id)
-        }
+        console.log('🔄 Polling de mensagens executando...')
+        carregarMensagens(conversaId)
       }, 3000)
       return () => clearInterval(interval)
     }
-  }, [isAuthenticated, conversaSelecionada?.id])
+  }, [isAuthenticated, conversaSelecionada?.id, carregarMensagens, usuarioDigitando, enviando, inputFocado])
 
   const enviarMensagem = async () => {
     if (!novaMensagem.trim() || !conversaSelecionada || enviando) return
 
+    console.log('📤 Iniciando envio de mensagem, setEnviando(true)')
     setEnviando(true)
 
     try {
@@ -579,7 +641,7 @@ export default function AdminPage() {
       }
 
       console.log('📤 Enviando mensagem para o Supabase:', mensagemParaSupabase)
-      
+
       const { error } = await client
         .from('messages')
         .insert([mensagemParaSupabase])
@@ -587,6 +649,7 @@ export default function AdminPage() {
       if (error) {
         console.error('❌ Erro ao enviar mensagem para o Supabase:', error)
         alert('Erro ao enviar mensagem: ' + error.message)
+        console.log('❌ Erro no envio, setEnviando(false)')
         setEnviando(false)
         return
       }
@@ -596,30 +659,25 @@ export default function AdminPage() {
       // Adicionar à lista local
       const novasMensagens = [...mensagens, mensagem]
       setMensagens(novasMensagens)
+      setUltimaAtualizacaoMensagens(mensagem.timestamp)
 
-      // Salvar no localStorage
-      const chaveStorage = `profarma_chat_${conversaSelecionada.id}`
-      localStorage.setItem(chaveStorage, JSON.stringify(novasMensagens))
-
-      // Atualizar lista de conversas
-      const chaveListaGeral = "profarma_conversas_admin"
-      const conversasSalvas = localStorage.getItem(chaveListaGeral)
-
-      if (conversasSalvas) {
-        const conversasArray = JSON.parse(conversasSalvas)
-        const conversaIndex = conversasArray.findIndex((c: Conversa) => c.id === conversaSelecionada.id)
-
-        if (conversaIndex !== -1) {
-          conversasArray[conversaIndex].ultimaMensagem = mensagem.mensagem
-          conversasArray[conversaIndex].ultimoTimestamp = mensagem.timestamp
-          localStorage.setItem(chaveListaGeral, JSON.stringify(conversasArray))
-          setConversas(conversasArray)
-        }
-      }
+      // Atualizar lista de conversas localmente
+      setConversas(prevConversas =>
+        prevConversas.map(conversa =>
+          conversa.id === conversaSelecionada.id
+            ? {
+              ...conversa,
+              ultimaMensagem: mensagem.mensagem,
+              ultimoTimestamp: mensagem.timestamp
+            }
+            : conversa
+        )
+      )
 
       setNovaMensagem("")
+      setUsuarioDigitando(false) // Resetar estado de digitação
       console.log('✅ Mensagem processada com sucesso')
-      
+
       // Restaurar foco no input após enviar mensagem
       setTimeout(() => {
         inputRef.current?.focus()
@@ -628,6 +686,7 @@ export default function AdminPage() {
       console.error('❌ Erro ao enviar mensagem:', error)
       alert('Erro ao enviar mensagem. Tente novamente.')
     } finally {
+      console.log('✅ Finalizando envio, setEnviando(false)')
       setEnviando(false)
     }
   }
@@ -701,14 +760,14 @@ export default function AdminPage() {
                 onChange={(e) => setFiltro(e.target.value)}
                 className="pl-8"
               />
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
             </div>
           </CardHeader>
           <CardContent className="p-0">
             <ScrollArea className="h-[500px]">
               {conversasFiltradas.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                   <p>Nenhuma conversa encontrada</p>
                 </div>
               ) : (
@@ -717,20 +776,19 @@ export default function AdminPage() {
                     <div
                       key={conversa.id}
                       onClick={() => setConversaSelecionada(conversa)}
-                      className={`p-4 cursor-pointer hover:bg-gray-50 border-l-4 transition-all ${
-                        conversaSelecionada?.id === conversa.id
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-transparent"
-                      }`}
+                      className={`p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 border-l-4 transition-all ${conversaSelecionada?.id === conversa.id
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                        : "border-transparent"
+                        }`}
                     >
                       <div className="flex justify-between items-start">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-2">
                             <div className="flex-1">
-                              <p className="text-sm font-medium text-gray-900 truncate">
+                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                                 {conversa.colaboradores.join(" + ")}
                               </p>
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {conversa.data} • Turno {conversa.turno}
                               </p>
                             </div>
@@ -741,7 +799,7 @@ export default function AdminPage() {
                             )}
                           </div>
                           {conversa.ultimaMensagem && (
-                            <p className="text-xs text-gray-600 mt-1 truncate">
+                            <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 truncate">
                               {conversa.ultimaMensagem}
                             </p>
                           )}
@@ -764,7 +822,7 @@ export default function AdminPage() {
                   <User className="h-5 w-5 text-green-600" />
                   <span>{conversaSelecionada.colaboradores.join(" + ")}</span>
                 </CardTitle>
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 dark:text-gray-400">
                   {conversaSelecionada.data} • Turno {conversaSelecionada.turno}
                 </div>
               </CardHeader>
@@ -773,8 +831,8 @@ export default function AdminPage() {
                 {/* Mensagens */}
                 <ScrollArea className="flex-1 p-4">
                   {Object.keys(mensagensAgrupadas).length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                      <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                       <p>Nenhuma mensagem ainda.</p>
                     </div>
                   ) : (
@@ -783,7 +841,7 @@ export default function AdminPage() {
                         <div key={data}>
                           {/* Separador de data */}
                           <div className="flex items-center justify-center my-4">
-                            <div className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full">{data}</div>
+                            <div className="bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs px-3 py-1 rounded-full">{data}</div>
                           </div>
 
                           {/* Mensagens do dia */}
@@ -794,11 +852,10 @@ export default function AdminPage() {
                                 className={`flex ${mensagem.remetenteTipo === "admin" ? "justify-end" : "justify-start"}`}
                               >
                                 <div
-                                  className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                                    mensagem.remetenteTipo === "admin"
-                                      ? "bg-blue-600 text-white"
-                                      : "bg-gray-100 text-gray-900"
-                                  }`}
+                                  className={`max-w-[80%] rounded-lg px-3 py-2 ${mensagem.remetenteTipo === "admin"
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                                    }`}
                                 >
                                   {mensagem.remetenteTipo === "colaborador" && (
                                     <div className="flex items-center space-x-1 mb-1">
@@ -808,9 +865,8 @@ export default function AdminPage() {
                                   )}
                                   <p className="text-sm whitespace-pre-wrap">{mensagem.mensagem}</p>
                                   <div
-                                    className={`flex items-center justify-end space-x-1 mt-1 text-xs ${
-                                      mensagem.remetenteTipo === "admin" ? "text-blue-100" : "text-gray-500"
-                                    }`}
+                                    className={`flex items-center justify-end space-x-1 mt-1 text-xs ${mensagem.remetenteTipo === "admin" ? "text-blue-100" : "text-gray-500 dark:text-gray-400"
+                                      }`}
                                   >
                                     <Clock className="h-3 w-3" />
                                     <span>{formatarHora(mensagem.timestamp)}</span>
@@ -829,7 +885,7 @@ export default function AdminPage() {
                 </ScrollArea>
 
                 {/* Campo de envio */}
-                <div className="p-4 border-t bg-gray-50">
+                <div className="p-4 border-t bg-gray-50 dark:bg-gray-800">
                   <div className="flex space-x-2">
                     <Input
                       ref={inputRef}
@@ -837,29 +893,27 @@ export default function AdminPage() {
                       value={novaMensagem}
                       onChange={handleInputChange}
                       onKeyDown={handleChatKeyPress}
-                      readOnly={enviando}
+                      onFocus={() => { setInputFocado(true); console.log('🎯 Input focado, enviando:', enviando) }}
+                      onBlur={() => { setInputFocado(false); console.log('👋 Input perdeu foco, enviando:', enviando) }}
+                      // ❌ readOnly={enviando}
                       className="flex-1"
                     />
                     <Button
                       onClick={enviarMensagem}
-                      disabled={!novaMensagem.trim() || enviando}
+                      disabled={!novaMensagem.trim() || enviando} // desabilite só o botão
                       className="bg-blue-600 hover:bg-blue-700"
                     >
-                      {enviando ? (
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
+                      {enviando ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-4 w-4" />}
                     </Button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">Pressione Enter para enviar</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">Pressione Enter para enviar</p>
                 </div>
               </CardContent>
             </>
           ) : (
             <CardContent className="flex items-center justify-center h-[500px]">
-              <div className="text-center text-gray-500">
-                <MessageCircle className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <div className="text-center text-gray-500 dark:text-gray-400">
+                <MessageCircle className="h-16 w-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                 <h3 className="text-lg font-medium mb-2">Selecione uma conversa</h3>
                 <p>Escolha uma conversa da lista ao lado para começar a responder</p>
               </div>
@@ -874,11 +928,11 @@ export default function AdminPage() {
   // Se não estiver autenticado, mostrar tela de acesso negado
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <Shield className="h-16 w-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Acesso Negado</h1>
-          <p className="text-gray-600 mb-6">Você não tem permissão para acessar esta área.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Acesso Negado</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">Você não tem permissão para acessar esta área.</p>
           <Button onClick={() => router.push("/")} className="bg-blue-600 hover:bg-blue-700">
             Voltar ao Início
           </Button>
@@ -890,7 +944,7 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Navbar */}
-      <AdminNavbar 
+      <AdminNavbar
         sessionData={sessionData}
         onLogout={handleLogout}
         onPasswordChange={() => setShowChangePassword(true)}
@@ -904,7 +958,7 @@ export default function AdminPage() {
           size="lg"
         >
           <MessageCircle className="h-6 w-6" />
-          
+
           {/* Alerta vermelho com número de mensagens não lidas */}
           {totalMensagensNaoLidas > 0 && (
             <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center animate-pulse">
@@ -916,7 +970,7 @@ export default function AdminPage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!activeSection ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"> 
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Gerenciar Carros */}
             <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-blue-300">
               <CardHeader className="text-center pb-4">
@@ -925,10 +979,10 @@ export default function AdminPage() {
                     <Truck className="h-12 w-12 text-blue-600" />
                   </div>
                 </div>
-                <CardTitle className="text-xl font-bold text-gray-900">Gerenciar Carros</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900 dark:text-gray-100">Gerenciar Carros</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <p className="text-gray-600 mb-6">Visualizar, excluir, gerenciar e lançar</p>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">Visualizar, excluir, gerenciar e lançar</p>
                 <Button
                   className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700"
                   onClick={() => handleSectionChange("gerenciar-carros")}
@@ -938,6 +992,7 @@ export default function AdminPage() {
               </CardContent>
             </Card>
 
+
             {/* Chat Interno */}
             <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-indigo-300">
               <CardHeader className="text-center pb-4">
@@ -946,10 +1001,10 @@ export default function AdminPage() {
                     <MessageSquare className="h-12 w-12 text-indigo-600" />
                   </div>
                 </div>
-                <CardTitle className="text-xl font-bold text-gray-900">Chat Interno</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900 dark:text-gray-100">Chat Interno</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <p className="text-gray-600 mb-6">Comunicação e suporte em tempo real</p>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">Comunicação e suporte em tempo real</p>
                 <Button
                   className="w-full h-12 text-base font-semibold bg-indigo-600 hover:bg-indigo-700"
                   onClick={() => handleSectionChange("chat")}
@@ -967,10 +1022,10 @@ export default function AdminPage() {
                     <BarChart3 className="h-12 w-12 text-green-600" />
                   </div>
                 </div>
-                <CardTitle className="text-xl font-bold text-gray-900">Dashboard</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900 dark:text-gray-100">Dashboard</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
-                <p className="text-gray-600 mb-6">Estatísticas, produtividade e destaques</p>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">Estatísticas, produtividade e destaques</p>
                 <Button
                   className="w-full h-12 text-base font-semibold bg-green-600 hover:bg-green-700"
                   onClick={() => handleSectionChange("relatorios")}
@@ -987,7 +1042,12 @@ export default function AdminPage() {
             </Button>
 
             {activeSection === "chat" && <ChatSection />}
-            {activeSection === "gerenciar-carros" && <GerenciarCarrosSection />}
+            {activeSection === "gerenciar-carros" && (
+              <div className="space-y-6">
+                <GerenciarCarrosSection />
+                <PesquisaNotasSection />
+              </div>
+            )}
             {activeSection === "relatorios" && <DashboardEstatisticas />}
           </div>
         )}

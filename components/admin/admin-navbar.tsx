@@ -22,7 +22,7 @@ import {
   Moon,
   Monitor,
 } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/contexts/theme-context";
 
 interface AdminNavbarProps {
   sessionData: any;
@@ -36,7 +36,19 @@ export default function AdminNavbar({
   onPasswordChange
 }: AdminNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const { theme, setTheme } = useTheme();
+  
+  // Fallback seguro para o tema durante build estático
+  let theme: 'light' | 'dark' | 'system' = 'system';
+  let setTheme = (newTheme: 'light' | 'dark' | 'system') => {};
+  
+  try {
+    const themeContext = useTheme();
+    theme = themeContext.theme || 'system';
+    setTheme = themeContext.setTheme || ((newTheme: 'light' | 'dark' | 'system') => {});
+  } catch (error) {
+    // Fallback durante build estático
+    console.log('Theme context not available during build');
+  }
 
   const getUserDisplayName = () => {
     if (sessionData?.colaboradores && sessionData.colaboradores.length > 0) {

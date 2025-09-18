@@ -202,8 +202,26 @@ export class SaveNotesService {
     const errors: string[] = []
     let validCount = 0
 
-    for (const nota of notes) {
+    console.log('🔍 Iniciando validação de notas:', notes.length)
+
+    for (let i = 0; i < notes.length; i++) {
+      const nota = notes[i]
       const notaErrors: string[] = []
+
+      console.log(`🔍 Validando nota ${i + 1}:`, {
+        id: nota.id,
+        nota: nota.nota,
+        data: nota.data,
+        volume: nota.volume,
+        destino: nota.destino,
+        fornecedor: nota.fornecedor,
+        transportadora: nota.transportadora,
+        usuario: nota.usuario,
+        clienteDestino: nota.clienteDestino,
+        tipo: nota.tipo,
+        dataEntrada: nota.dataEntrada,
+        codigoCompleto: nota.codigoCompleto
+      })
 
       // Validar campos obrigatórios
       if (!nota.id) notaErrors.push('ID é obrigatório')
@@ -227,9 +245,16 @@ export class SaveNotesService {
 
       if (notaErrors.length === 0) {
         validCount++
+        console.log(`✅ Nota ${i + 1} válida`)
       } else {
+        console.log(`❌ Nota ${i + 1} inválida:`, notaErrors)
         errors.push(`Nota ${nota.nota || nota.id}: ${notaErrors.join(', ')}`)
       }
+    }
+
+    console.log(`📊 Resultado da validação: ${validCount}/${notes.length} notas válidas`)
+    if (errors.length > 0) {
+      console.log('❌ Erros encontrados:', errors)
     }
 
     return {

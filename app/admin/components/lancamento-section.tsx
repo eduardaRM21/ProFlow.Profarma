@@ -310,7 +310,7 @@ export default function LancamentoSection() {
       </Card>
 
       {/* Lista de carros */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {carrosFiltrados.length === 0 ? (
           <Card className="col-span-full">
             <CardContent className="text-center py-8 text-gray-500">

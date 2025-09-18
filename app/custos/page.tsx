@@ -117,22 +117,22 @@ export default function CustosPage() {
       try {
         console.log('🔍 Verificando sessão para área custos...')
         console.log('🌐 Status da conectividade:', { isFullyConnected })
-        
+
         const session = await getSession("current")
         console.log('📊 Sessão retornada:', session)
-        
+
         if (!session) {
           console.log('⚠️ Nenhuma sessão encontrada, redirecionando...')
           router.push("/")
           return
         }
-        
+
         if (session.area !== "custos") {
           console.log('❌ Sessão não é de custos:', session.area, 'redirecionando...')
           router.push("/")
           return
         }
-        
+
         console.log('✅ Sessão válida encontrada para custos:', session)
         setSessionData(session)
         await carregarRelatorios()
@@ -143,14 +143,14 @@ export default function CustosPage() {
       } catch (error) {
         console.error("❌ Erro ao verificar sessão:", error)
         console.log('⚠️ Usando fallback para localStorage...')
-        
+
         // Fallback para localStorage
         try {
           const sessionLocal = localStorage.getItem("sistema_session")
           if (sessionLocal) {
             const sessionObj = JSON.parse(sessionLocal)
             console.log('📋 Sessão local encontrada:', sessionObj)
-            
+
             if (sessionObj.area === "custos") {
               console.log('✅ Usando sessão local de custos')
               setSessionData(sessionObj)
@@ -175,61 +175,61 @@ export default function CustosPage() {
   // Função específica para diagnosticar e corrigir problema dos colaboradores
   const diagnosticarColaboradores = async (supabase: any, relatorioId: string) => {
     console.log(`🔍 DIAGNÓSTICO: Verificando colaboradores para relatório ${relatorioId}`)
-    
+
     try {
       // 1. Verificar se a tabela relatorio_colaboradores existe
       const { data: tabelaExiste, error: erroTabela } = await supabase
         .from('relatorio_colaboradores')
         .select('id')
         .limit(1)
-      
+
       if (erroTabela) {
         console.log(`❌ Tabela relatorio_colaboradores não existe ou erro:`, erroTabela)
         return []
       }
-      
+
       // 2. Verificar se há registros para este relatório
       const { data: registrosExistentes, error: erroRegistros } = await supabase
         .from('relatorio_colaboradores')
         .select('*')
         .eq('relatorio_id', relatorioId)
-      
+
       console.log(`🔍 Registros encontrados para relatório ${relatorioId}:`, {
         count: registrosExistentes?.length || 0,
         data: registrosExistentes,
         error: erroRegistros
       })
-      
+
       if (erroRegistros || !registrosExistentes || registrosExistentes.length === 0) {
         console.log(`⚠️ Nenhum registro encontrado em relatorio_colaboradores para relatório ${relatorioId}`)
         return []
       }
-      
+
       // 3. Buscar nomes dos usuários
       const userIds = registrosExistentes.map((rc: any) => rc.user_id)
       console.log(`🔍 User IDs encontrados:`, userIds)
-      
+
       const { data: usuarios, error: erroUsuarios } = await supabase
         .from('users')
         .select('id, nome')
         .in('id', userIds)
-      
+
       if (erroUsuarios) {
         console.log(`❌ Erro ao buscar usuários:`, erroUsuarios)
         return []
       }
-      
+
       console.log(`🔍 Usuários encontrados:`, usuarios)
-      
+
       // 4. Mapear nomes dos colaboradores
       const colaboradores = registrosExistentes.map((rc: any) => {
         const usuario = usuarios?.find((u: any) => u.id === rc.user_id)
         return usuario?.nome || `Usuário ${rc.user_id} sem nome`
       })
-      
+
       console.log(`✅ Colaboradores mapeados para relatório ${relatorioId}:`, colaboradores)
       return colaboradores
-      
+
     } catch (error) {
       console.error(`❌ Erro no diagnóstico de colaboradores para relatório ${relatorioId}:`, error)
       return []
@@ -275,7 +275,7 @@ export default function CustosPage() {
             // 1. Buscar colaboradores usando função de diagnóstico
             console.log(`🔍 Buscando colaboradores para relatório ${relatorio.id}...`)
             const colaboradores = await diagnosticarColaboradores(supabase, relatorio.id)
-            
+
             console.log(`✅ Colaboradores para relatório ${relatorio.id}:`, colaboradores)
 
             // 2. Buscar notas deste relatório
@@ -302,7 +302,7 @@ export default function CustosPage() {
                 const notasComDivergencias = await Promise.all(
                   notasData.map(async (nota: any) => {
                     console.log(`🔍 Buscando divergências para nota ${nota.id}`)
-                    
+
                     const { data: divergenciaData, error: divergenciaError } = await supabase
                       .from('divergencias')
                       .select('*')
@@ -386,37 +386,37 @@ export default function CustosPage() {
 
       console.log("✅ Todos os relatórios processados:", relatoriosCompletos.length)
       console.log("🔍 Primeiro relatório completo:", relatoriosCompletos[0])
-      
+
       // Preservar mudanças locais recentes (últimos 5 minutos)
       const agora = Date.now()
       const cincoMinutosAtras = agora - (5 * 60 * 1000)
-      
+
       const relatoriosComMudancasLocais = relatoriosCompletos.map(relatorioBanco => {
         const relatorioLocal = relatorios.find(r => r.id === relatorioBanco.id)
-        
+
         // Se existe relatório local com atualização recente, preservar o status local
-        if (relatorioLocal && 
-            relatorioLocal.ultimaAtualizacaoLocal && 
-            relatorioLocal.ultimaAtualizacaoLocal > cincoMinutosAtras) {
+        if (relatorioLocal &&
+          relatorioLocal.ultimaAtualizacaoLocal &&
+          relatorioLocal.ultimaAtualizacaoLocal > cincoMinutosAtras) {
           console.log(`🔄 Preservando mudança local para relatório ${relatorioBanco.id}: ${relatorioLocal.status}`)
           return {
             ...relatorioBanco,
             status: relatorioLocal.status
           }
         }
-        
+
         return relatorioBanco
       })
-      
+
       // Verificar se há colaboradores nos relatórios
       const relatoriosComColaboradores = relatoriosComMudancasLocais.filter((r: any) => r.colaboradores && r.colaboradores.length > 0)
       const relatoriosSemColaboradores = relatoriosComMudancasLocais.filter((r: any) => !r.colaboradores || r.colaboradores.length === 0)
-      
+
       console.log("📊 Estatísticas dos relatórios:")
       console.log(`   - Total: ${relatoriosComMudancasLocais.length}`)
       console.log(`   - Com colaboradores: ${relatoriosComColaboradores.length}`)
       console.log(`   - Sem colaboradores: ${relatoriosSemColaboradores.length}`)
-      
+
       if (relatoriosSemColaboradores.length > 0) {
         console.log("⚠️ Relatórios sem colaboradores:", relatoriosSemColaboradores.map((r: any) => ({ id: r.id, nome: r.nome })))
       }
@@ -552,12 +552,12 @@ export default function CustosPage() {
     // Verificar estatísticas dos relatórios processados
     const relatoriosComColaboradores = relatoriosProcessadosFinal.filter((r: any) => r.colaboradores && r.colaboradores.length > 0)
     const relatoriosSemColaboradores = relatoriosProcessadosFinal.filter((r: any) => !r.colaboradores || r.colaboradores.length === 0)
-    
+
     console.log("📊 Estatísticas dos relatórios (fallback):")
     console.log(`   - Total: ${relatoriosProcessadosFinal.length}`)
     console.log(`   - Com colaboradores: ${relatoriosComColaboradores.length}`)
     console.log(`   - Sem colaboradores: ${relatoriosSemColaboradores.length}`)
-    
+
     if (relatoriosSemColaboradores.length > 0) {
       console.log("⚠️ Relatórios sem colaboradores (fallback):", relatoriosSemColaboradores.map((r: any) => ({ id: r.id, nome: r.nome })))
     }
@@ -565,21 +565,21 @@ export default function CustosPage() {
     // Preservar mudanças locais recentes (últimos 5 minutos)
     const agora = Date.now()
     const cincoMinutosAtras = agora - (5 * 60 * 1000)
-    
+
     const relatoriosComMudancasLocais = relatoriosProcessadosFinal.map(relatorioBanco => {
       const relatorioLocal = relatorios.find(r => r.id === relatorioBanco.id)
-      
+
       // Se existe relatório local com atualização recente, preservar o status local
-      if (relatorioLocal && 
-          relatorioLocal.ultimaAtualizacaoLocal && 
-          relatorioLocal.ultimaAtualizacaoLocal > cincoMinutosAtras) {
+      if (relatorioLocal &&
+        relatorioLocal.ultimaAtualizacaoLocal &&
+        relatorioLocal.ultimaAtualizacaoLocal > cincoMinutosAtras) {
         console.log(`🔄 Preservando mudança local para relatório ${relatorioBanco.id}: ${relatorioLocal.status}`)
         return {
           ...relatorioBanco,
           status: relatorioLocal.status
         }
       }
-      
+
       return relatorioBanco
     })
 
@@ -663,19 +663,19 @@ export default function CustosPage() {
     console.log("🔍 === DEBUG DADOS ===")
     console.log("📊 Relatórios no estado:", relatorios)
     console.log("📊 Quantidade de relatórios:", relatorios.length)
-    
+
     if (relatorios.length > 0) {
       console.log("🔍 Primeiro relatório:", relatorios[0])
       console.log("🔍 Notas do primeiro relatório:", relatorios[0].notas)
       console.log("🔍 Quantidade de notas:", relatorios[0].notas?.length || 0)
-      
+
       if (relatorios[0].notas && relatorios[0].notas.length > 0) {
         console.log("🔍 Primeira nota:", relatorios[0].notas[0])
         console.log("🔍 Status da primeira nota:", relatorios[0].notas[0].status)
         console.log("🔍 Divergência da primeira nota:", relatorios[0].notas[0].divergencia)
       }
     }
-    
+
     console.log("🔍 Fonte de dados:", fonteDados)
     console.log("🔍 === FIM DEBUG ===")
   }
@@ -683,17 +683,17 @@ export default function CustosPage() {
   const handleLogout = () => {
     // Limpar localStorage
     localStorage.clear();
-    
+
     // Limpar sessionStorage
     sessionStorage.clear();
-    
+
     // Limpar cookies
     document.cookie.split(";").forEach((c) => {
       const eqPos = c.indexOf("=");
       const name = eqPos > -1 ? c.substr(0, eqPos) : c;
       document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
     });
-    
+
     // Limpar cache do navegador (se suportado)
     if ('caches' in window) {
       caches.keys().then((names) => {
@@ -702,7 +702,7 @@ export default function CustosPage() {
         });
       });
     }
-    
+
     // Redirecionar para a página inicial
     router.push("/");
   }
@@ -777,7 +777,7 @@ NOTAS FISCAIS:`
     if (filtroTexto) {
       console.log('🔍 Aplicando filtro de texto:', filtroTexto);
       const notasAntes = notasProcessadas.length;
-      
+
       notasProcessadas = notasProcessadas.filter(
         (nota) => {
           const numeroNF = nota.numeroNF?.toLowerCase() || '';
@@ -785,12 +785,12 @@ NOTAS FISCAIS:`
           const destino = nota.destino?.toLowerCase() || '';
           const clienteDestino = nota.clienteDestino?.toLowerCase() || '';
           const filtroLower = filtroTexto.toLowerCase();
-          
+
           const match = numeroNF.includes(filtroLower) ||
-                       fornecedor.includes(filtroLower) ||
-                       destino.includes(filtroLower) ||
-                       clienteDestino.includes(filtroLower);
-          
+            fornecedor.includes(filtroLower) ||
+            destino.includes(filtroLower) ||
+            clienteDestino.includes(filtroLower);
+
           console.log('🔍 Verificando nota:', {
             numeroNF,
             fornecedor,
@@ -799,11 +799,11 @@ NOTAS FISCAIS:`
             filtro: filtroLower,
             match
           });
-          
+
           return match;
         }
       );
-      
+
       console.log('🔍 Filtro de texto aplicado:', {
         notasAntes,
         notasDepois: notasProcessadas.length,
@@ -815,11 +815,11 @@ NOTAS FISCAIS:`
     if (filtroStatus !== "todos") {
       console.log('🔍 Aplicando filtro de status:', filtroStatus);
       const notasAntes = notasProcessadas.length;
-      
+
       notasProcessadas = notasProcessadas.filter(
         (nota) => nota.status === filtroStatus
       );
-      
+
       console.log('🔍 Filtro de status aplicado:', {
         notasAntes,
         notasDepois: notasProcessadas.length,
@@ -889,7 +889,7 @@ NOTAS FISCAIS:`
       relatorioId: relatorioSelecionado?.id,
       totalNotas: relatorioSelecionado?.notas?.length || 0
     });
-    
+
     if (relatorioSelecionado) {
       console.log('🔍 Aplicando filtros ao relatório:', relatorioSelecionado.nome);
       const notas = filtrarEOrdenarNotas(relatorioSelecionado.notas);
@@ -1072,14 +1072,14 @@ NOTAS FISCAIS:`
     if (filtroColaborador === "todos" || !relatorio) return true;
 
     const termo = filtroColaborador.toLowerCase().trim();
-    
+
     // Verificar se é um número (possivelmente NF)
     const isNumero = /^\d+$/.test(termo);
-    
+
     if (isNumero) {
       // Buscar por NF
       if (Array.isArray(relatorio.notas) && relatorio.notas.length > 0) {
-        return relatorio.notas.some(nota => 
+        return relatorio.notas.some(nota =>
           nota.numeroNF && nota.numeroNF.includes(termo)
         );
       }
@@ -1094,25 +1094,47 @@ NOTAS FISCAIS:`
     }
   });
 
-  // Filtrar relatórios por data
+  // Filtrar relatórios por data e status
   const relatoriosFiltradosPorData = relatoriosFiltradosPorColaboradorENF.filter((relatorio) => {
-    if (!filtroDataInicio && !filtroDataFim || !relatorio) return true;
+    if (!relatorio) return false;
 
-    try {
-      const dataRelatorio = new Date(relatorio.data);
-      const dataInicio = filtroDataInicio ? new Date(filtroDataInicio) : null;
-      const dataFim = filtroDataFim ? new Date(filtroDataFim) : null;
+    // Aplicar filtro de data
+    if (filtroDataInicio || filtroDataFim) {
+      try {
+        const dataRelatorio = new Date(relatorio.data);
+        const dataInicio = filtroDataInicio ? new Date(filtroDataInicio) : null;
+        const dataFim = filtroDataFim ? new Date(filtroDataFim) : null;
 
-      if (dataInicio && dataFim) {
-        return dataRelatorio >= dataInicio && dataRelatorio <= dataFim;
-      } else if (dataInicio) {
-        return dataRelatorio >= dataInicio;
-      } else if (dataFim) {
-        return dataRelatorio <= dataFim;
+        if (dataInicio && dataFim) {
+          if (!(dataRelatorio >= dataInicio && dataRelatorio <= dataFim)) {
+            return false;
+          }
+        } else if (dataInicio) {
+          if (!(dataRelatorio >= dataInicio)) {
+            return false;
+          }
+        } else if (dataFim) {
+          if (!(dataRelatorio <= dataFim)) {
+            return false;
+          }
+        }
+      } catch (error) {
+        console.error("❌ Erro ao processar data do relatório:", error)
+        return false; // Em caso de erro, excluir o relatório
       }
-    } catch (error) {
-      console.error("❌ Erro ao processar data do relatório:", error)
-      return true; // Em caso de erro, incluir o relatório
+    }
+
+    // Aplicar filtro de status
+    if (filtroStatus !== "todos") {
+      console.log('🔍 Aplicando filtro de status do relatório:', {
+        filtroStatus,
+        relatorioStatus: relatorio.status,
+        match: relatorio.status === filtroStatus
+      });
+
+      if (relatorio.status !== filtroStatus) {
+        return false;
+      }
     }
 
     return true;
@@ -1130,7 +1152,7 @@ NOTAS FISCAIS:`
 
   const alterarStatusRelatorio = async (relatorioId: string, novoStatus: string) => {
     console.log('🔄 Alterando status do relatório:', relatorioId, 'para:', novoStatus)
-    
+
     const relatoriosAtualizados = relatorios.map((rel) =>
       rel.id === relatorioId ? { ...rel, status: novoStatus } : rel
     )
@@ -1146,7 +1168,7 @@ NOTAS FISCAIS:`
       if (relatorioAtualizado) {
         // Adicionar timestamp de atualização local
         relatorioAtualizado.ultimaAtualizacaoLocal = Date.now()
-        
+
         // Disparar evento em tempo real
         addRealtimeEvent({
           id: Date.now().toString(),
@@ -1156,13 +1178,13 @@ NOTAS FISCAIS:`
           message: `Status do relatório alterado para ${novoStatus}`,
           data: { relatorioId, novoStatus, area: relatorioAtualizado.area }
         });
-        
+
         console.log('✅ Status do relatório atualizado com sucesso')
       }
     } catch (error) {
       console.error("❌ Erro ao atualizar status no banco:", error)
       alert("Erro ao atualizar dados no banco. Verifique sua conexão.")
-      
+
       // Reverter mudança local em caso de erro
       setRelatorios(relatorios)
     }
@@ -1175,7 +1197,7 @@ NOTAS FISCAIS:`
       // Atualizar no banco de dados
       const { getSupabase } = await import('@/lib/supabase-client');
       const supabase = getSupabase();
-      
+
       const { error } = await supabase
         .from('notas_fiscais')
         .update({ status: 'devolvida' })
@@ -1196,7 +1218,7 @@ NOTAS FISCAIS:`
       };
 
       setRelatorioSelecionado(relatorioAtualizado);
-      
+
       // Atualizar também na lista de relatórios
       const relatoriosAtualizados = relatorios.map(rel =>
         rel.id === relatorioAtualizado.id ? relatorioAtualizado : rel
@@ -1272,7 +1294,7 @@ NOTAS FISCAIS:`
                   </div>
                 </div>
               </div>
-              <ConnectionStatus/>
+              <ConnectionStatus />
               <Button
                 variant="outline"
                 size="sm"
@@ -1299,9 +1321,9 @@ NOTAS FISCAIS:`
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-       
+
         {/* Estatísticas */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 mb-4">
           <Card className="border-orange-200">
             <CardContent className="text-center p-4">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
@@ -1347,6 +1369,21 @@ NOTAS FISCAIS:`
               </div>
             </CardContent>
           </Card>
+          <Card className="border-red-200">
+            <CardContent className="text-center p-4">
+              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">
+                {relatoriosFiltrados.reduce(
+                  (sum, rel) =>
+                    sum +
+                    rel.notas.filter((n) => n.status === "devolvida").length,
+                  0
+                )}
+              </div>
+              <div className="text-xs text-gray-600 leading-tight">
+                Desvolvidas
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Lista de Relatórios */}
@@ -1364,20 +1401,21 @@ NOTAS FISCAIS:`
                 className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700 mt-2"
                 size="sm"
               >
-                <FileSpreadsheet className="h-4 w-4 mr-2"/>
+                <FileSpreadsheet className="h-4 w-4 mr-2" />
                 Exportar Todos ({relatoriosFiltrados.length})
               </Button>
             )}
           </div>
 
           {/* Filtros */}
+
           <div className="bg-white p-4 rounded-lg border border-orange-200 space-y-4">
             <div className="flex items-center space-x-2 mb-3">
               <Filter className="h-4 w-4 text-gray-500" />
               <span className="font-medium text-gray-700">Filtros</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-5">
               {/* Filtro de texto geral */}
               <div>
                 <Label className="text-sm">Buscar por texto</Label>
@@ -1409,6 +1447,24 @@ NOTAS FISCAIS:`
                   className="w-full"
                 />
               </div>
+              {/* Filtro de status */}
+              <div>
+                <Label className="text-sm">Status</Label>
+                <Select
+                  value={filtroStatus}
+                  onValueChange={(value) => setFiltroStatus(value)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Todos os status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos os status</SelectItem>
+                    <SelectItem value="liberado">Liberados</SelectItem>
+                    <SelectItem value="em_lancamento">Em Lançamento</SelectItem>
+                    <SelectItem value="lancado">Lançados</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
               {/* Botão limpar filtros */}
               <div className="flex items-end">
@@ -1418,6 +1474,7 @@ NOTAS FISCAIS:`
                     setFiltroColaborador("todos");
                     setFiltroDataInicio("");
                     setFiltroDataFim("");
+                    setFiltroStatus("todos");
                   }}
                   variant="outline"
                   size="sm"
@@ -1429,13 +1486,14 @@ NOTAS FISCAIS:`
             </div>
 
             {/* Resumo dos filtros aplicados */}
-            {(filtroTexto || filtroColaborador !== "todos" || filtroDataInicio || filtroDataFim) && (
+            {(filtroTexto || filtroColaborador !== "todos" || filtroDataInicio || filtroDataFim || filtroStatus !== "todos") && (
               <div className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
                 <span className="font-medium">Filtros ativos:</span>
                 {filtroTexto && ` Busca: "${filtroTexto}" (transportadora, colaborador, NF)`}
                 {filtroColaborador !== "todos" && ` Colaborador/NF: "${filtroColaborador}"`}
                 {filtroDataInicio && ` Data início: ${filtroDataInicio}`}
                 {filtroDataFim && ` Data fim: ${filtroDataFim}`}
+                {filtroStatus !== "todos" && ` Status: ${filtroStatus === "liberado" ? "Liberados" : filtroStatus === "em_lancamento" ? "Em Lançamento" : filtroStatus === "lancado" ? "Lançados" : filtroStatus}`}
                 <span className="ml-2">({relatoriosFiltrados.length} relatórios encontrados)</span>
               </div>
             )}
@@ -1492,10 +1550,10 @@ NOTAS FISCAIS:`
                       </div>
                       <Badge
                         className={`text-xs ${relatorio.status === "lancado"
-                            ? "bg-green-100 text-green-800"
-                            : relatorio.status === "em_lancamento"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-orange-100 text-orange-800"
+                          ? "bg-green-100 text-green-800"
+                          : relatorio.status === "em_lancamento"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-orange-100 text-orange-800"
                           }`}
                       >
                         {relatorio.status === "lancado"
@@ -1606,7 +1664,7 @@ NOTAS FISCAIS:`
                                 </div>
                                 <div className="font-medium">
                                   {Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
-                                    ? relatorio.colaboradores.join(', ') 
+                                    ? relatorio.colaboradores.join(', ')
                                     : 'Não informado'}
                                 </div>
                               </div>
@@ -1827,8 +1885,8 @@ NOTAS FISCAIS:`
                                   <div
                                     key={nota.id}
                                     className={`px-4 py-2 grid grid-cols-8 gap-4 text-sm ${index % 2 === 0
-                                        ? "bg-white"
-                                        : "bg-gray-50"
+                                      ? "bg-white"
+                                      : "bg-gray-50"
                                       }`}
                                   >
                                     <div className="font-medium">

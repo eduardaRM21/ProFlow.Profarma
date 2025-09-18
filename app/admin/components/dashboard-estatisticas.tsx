@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -92,8 +92,10 @@ export default function DashboardEstatisticas() {
   }
 
   // Carregar dados do dashboard
-  const carregarDashboardData = async () => {
+  const carregarDashboardData = useCallback(async () => {
     try {
+      console.log('🔄 Iniciando carregamento dos dados do dashboard...')
+      console.log('📅 Período selecionado:', periodoSelecionado)
       setLoading(true)
       setError(null)
 
@@ -103,15 +105,46 @@ export default function DashboardEstatisticas() {
         throw new Error('Cliente Supabase não inicializado')
       }
 
-      // Buscar dados dos carros para hoje
+      // Calcular período baseado na seleção
+      let dataInicio: string
+      let dataFim: string
       const hoje = new Date().toISOString().split('T')[0]
-      console.log('🔍 Buscando dados para:', hoje)
+
+      switch (periodoSelecionado) {
+        case 'hoje':
+          dataInicio = hoje
+          dataFim = hoje
+          break
+        case 'semana':
+          const inicioSemana = new Date()
+          inicioSemana.setDate(inicioSemana.getDate() - 7)
+          dataInicio = inicioSemana.toISOString().split('T')[0]
+          dataFim = hoje
+          break
+        case 'mes':
+          const inicioMes = new Date()
+          inicioMes.setDate(inicioMes.getDate() - 30)
+          dataInicio = inicioMes.toISOString().split('T')[0]
+          dataFim = hoje
+          break
+        default:
+          dataInicio = hoje
+          dataFim = hoje
+      }
+
+      console.log('🔍 Período de busca:', { dataInicio, dataFim, periodoSelecionado })
+      console.log('📊 Filtros aplicados:', {
+        carros: `data >= ${dataInicio} AND data <= ${dataFim}`,
+        notas: `data >= ${dataInicio} AND data <= ${dataFim}`,
+        colaboradores: `data >= ${dataInicio} AND data <= ${dataFim}`
+      })
       
-      // Buscar carros ativos de hoje
+      // Buscar carros ativos do período
       const { data: carrosHoje, error: errorCarros } = await supabase
         .from('carros_status')
         .select('*')
-        .eq('data', hoje)
+        .gte('data', dataInicio)
+        .lte('data', dataFim)
 
       if (errorCarros) {
         console.error('❌ Erro ao buscar carros:', errorCarros)
@@ -122,7 +155,8 @@ export default function DashboardEstatisticas() {
       const { data: notasHoje, error: errorNotas } = await supabase
         .from('embalagem_notas_bipadas')
         .select('*')
-        .eq('data', hoje)
+        .gte('data', dataInicio)
+        .lte('data', dataFim)
 
       if (errorNotas) {
         console.error('❌ Erro ao buscar notas:', errorNotas)
@@ -132,30 +166,82 @@ export default function DashboardEstatisticas() {
       // Buscar dados de carros finalizados do setor de embalagem
       const { data: carrosFinalizados, error: errorCarrosFinalizados } = await supabase
         .from('embalagem_carros_finalizados')
-        .select('carros')
-        .gte('created_at', `${hoje}T00:00:00`)
-        .lte('created_at', `${hoje}T23:59:59`)
+        .select('carros, data')
+        .gte('data', dataInicio)
+        .lte('data', dataFim)
 
       if (errorCarrosFinalizados) {
         console.error('❌ Erro ao buscar carros finalizados:', errorCarrosFinalizados)
         console.log('⚠️ Continuando sem dados de carros finalizados...')
       }
 
-      // Processar carros finalizados
-      let carrosFinalizadosHoje = 0
-      if (carrosFinalizados && carrosFinalizados.length > 0) {
-        carrosFinalizados.forEach(item => {
-          if (item.carros && Array.isArray(item.carros)) {
-            carrosFinalizadosHoje += item.carros.length
+      // Processar carros e coletar IDs únicos
+      const carrosIdsUnicos = new Set<string>()
+      const carrosIdsAtivos: string[] = []
+      const carrosIdsFinalizados: string[] = []
+      
+      // Adicionar carros ativos (carros_status) - apenas estes por enquanto
+      if (carrosHoje && carrosHoje.length > 0) {
+        carrosHoje.forEach(carro => {
+          if (carro.id) {
+            const id = String(carro.id)
+            carrosIdsUnicos.add(id)
+            carrosIdsAtivos.push(id)
           }
         })
       }
 
+      // Adicionar carros finalizados (embalagem_carros_finalizados) - apenas se não estiverem em carros_status
+      if (carrosFinalizados && carrosFinalizados.length > 0) {
+        carrosFinalizados.forEach(item => {
+          if (item.carros && Array.isArray(item.carros)) {
+            item.carros.forEach((carro: any) => {
+              if (carro.id) {
+                const id = String(carro.id)
+                // Só adicionar se não estiver já na lista de carros ativos
+                if (!carrosIdsAtivos.includes(id)) {
+                  carrosIdsUnicos.add(id)
+                  carrosIdsFinalizados.push(id)
+                }
+              }
+            })
+          }
+        })
+      }
+
+      console.log('🔍 Debug - IDs de carros ativos:', carrosIdsAtivos)
+      console.log('🔍 Debug - IDs de carros finalizados:', carrosIdsFinalizados)
+      console.log('🔍 Debug - IDs únicos totais:', Array.from(carrosIdsUnicos))
+
+      const totalCarrosHoje = carrosIdsUnicos.size
+
       console.log('📊 Dados carregados:', {
-        carros: carrosHoje?.length || 0,
+        periodo: periodoSelecionado,
+        data_inicio: dataInicio,
+        data_fim: dataFim,
+        carros_unicos: totalCarrosHoje,
+        carros_ativos: carrosHoje?.length || 0,
         notas: notasHoje?.length || 0,
-        carros_finalizados: carrosFinalizadosHoje
+        carros_finalizados: carrosFinalizados?.length || 0
       })
+      
+      console.log('🔍 Debug - Carros encontrados no período:', carrosHoje?.map(c => ({ id: c.id, data: c.data })))
+      console.log('🔍 Debug - Notas encontradas no período:', notasHoje?.map(n => ({ id: n.id, data: n.data })))
+
+      // Debug detalhado dos carros
+      console.log('🔍 Debug - Carros ativos (carros_status):', carrosHoje?.map(c => ({ id: c.id, nome: c.nome_carro, data: c.data })))
+      console.log('🔍 Debug - Carros finalizados (embalagem_carros_finalizados):', carrosFinalizados)
+      
+      if (carrosFinalizados && carrosFinalizados.length > 0) {
+        carrosFinalizados.forEach((item, index) => {
+          console.log(`🔍 Debug - Item ${index} de carros finalizados:`, item.carros && Array.isArray(item.carros) ? item.carros.map((c: any) => ({ id: c.id, nome: c.nome_carro, data: c.data })) : 'Não é array')
+        })
+      }
+
+      // Debug: verificar turnos dos carros
+      if (carrosHoje && carrosHoje.length > 0) {
+        console.log('🔍 Debug - Turnos dos carros:', carrosHoje.map(c => ({ id: c.id, turno: c.turno, data: c.data })))
+      }
 
       // Calcular estatísticas por turno
       const carrosPorTurno = {
@@ -165,46 +251,80 @@ export default function DashboardEstatisticas() {
         madrugada: 0
       }
 
-      // Processar carros ativos
+      console.log('🔍 Debug - Iniciando cálculo de turnos...')
+
+      // Processar carros ativos usando o campo turno da tabela
       carrosHoje?.forEach(carro => {
-        const dataCarro = carro.data as string
-        const hora = new Date(dataCarro).getHours()
-        if (hora >= 6 && hora < 12) carrosPorTurno.manha++
-        else if (hora >= 12 && hora < 18) carrosPorTurno.tarde++
-        else if (hora >= 18 && hora < 24) carrosPorTurno.noite++
-        else carrosPorTurno.madrugada++
+        const turno = String(carro.turno || 'A').toUpperCase()
+        switch (turno) {
+          case 'A':
+            carrosPorTurno.manha++
+            break
+          case 'B':
+            carrosPorTurno.tarde++
+            break
+          case 'C':
+            carrosPorTurno.noite++
+            break
+          case 'D':
+            carrosPorTurno.madrugada++
+            break
+          default:
+            // Fallback para turnos não reconhecidos - usar hora como backup
+            const dataCarro = carro.data as string
+            const hora = new Date(dataCarro).getHours()
+            if (hora >= 6 && hora < 12) carrosPorTurno.manha++
+            else if (hora >= 12 && hora < 18) carrosPorTurno.tarde++
+            else if (hora >= 18 && hora < 24) carrosPorTurno.noite++
+            else carrosPorTurno.madrugada++
+        }
       })
 
-      // Processar carros finalizados
+      // Processar carros finalizados usando o campo turno
       if (carrosFinalizados && carrosFinalizados.length > 0) {
         carrosFinalizados.forEach(item => {
           if (item.carros && Array.isArray(item.carros)) {
             item.carros.forEach((carro: any) => {
-              const dataCarro = carro.data || carro.data_criacao
-              if (dataCarro) {
-                const hora = new Date(dataCarro).getHours()
-                if (hora >= 6 && hora < 12) carrosPorTurno.manha++
-                else if (hora >= 12 && hora < 18) carrosPorTurno.tarde++
-                else if (hora >= 18 && hora < 24) carrosPorTurno.noite++
-                else carrosPorTurno.madrugada++
+              const turno = String(carro.turno || 'A').toUpperCase()
+              switch (turno) {
+                case 'A':
+                  carrosPorTurno.manha++
+                  break
+                case 'B':
+                  carrosPorTurno.tarde++
+                  break
+                case 'C':
+                  carrosPorTurno.noite++
+                  break
+                case 'D':
+                  carrosPorTurno.madrugada++
+                  break
+                default:
+                  // Fallback para turnos não reconhecidos - usar hora como backup
+                  const dataCarro = carro.data || carro.data_criacao
+                  if (dataCarro) {
+                    const hora = new Date(dataCarro).getHours()
+                    if (hora >= 6 && hora < 12) carrosPorTurno.manha++
+                    else if (hora >= 12 && hora < 18) carrosPorTurno.tarde++
+                    else if (hora >= 18 && hora < 24) carrosPorTurno.noite++
+                    else carrosPorTurno.madrugada++
+                  }
               }
             })
           }
         })
       }
 
-      // Buscar colaboradores que se destacaram (últimos 7 dias)
-      const dataInicio = new Date()
-      dataInicio.setDate(dataInicio.getDate() - 7)
-      const dataInicioStr = dataInicio.toISOString().split('T')[0]
+      console.log('🔍 Debug - Carros por turno calculados:', carrosPorTurno)
 
+      // Buscar colaboradores que se destacaram no período selecionado
       let colaboradoresData: any[] = []
       try {
         const { data: colaboradoresResult, error: errorColaboradores } = await supabase
           .from('embalagem_notas_bipadas')
           .select('colaboradores, data, volumes, timestamp_bipagem')
-          .gte('data', dataInicioStr)
-          .lte('data', hoje)
+          .gte('data', dataInicio)
+          .lte('data', dataFim)
 
         if (errorColaboradores) {
           console.error('❌ Erro ao buscar colaboradores:', errorColaboradores)
@@ -231,12 +351,31 @@ export default function DashboardEstatisticas() {
         // Processar array de colaboradores
         const colaboradores = Array.isArray(nota.colaboradores) ? nota.colaboradores : [nota.colaboradores || 'Colaborador']
         const data = nota.data
-        const hora = new Date(nota.timestamp_bipagem).getHours()
         
-        let turno = 'manha'
-        if (hora >= 12 && hora < 18) turno = 'tarde'
-        else if (hora >= 18 && hora < 24) turno = 'noite'
-        else if (hora >= 0 && hora < 6) turno = 'madrugada'
+        // Usar o campo turno do banco de dados
+        let turno = 'manha' // Default
+        const turnoNota = String(nota.turno || 'A').toUpperCase()
+        switch (turnoNota) {
+          case 'A':
+            turno = 'manha'
+            break
+          case 'B':
+            turno = 'tarde'
+            break
+          case 'C':
+            turno = 'noite'
+            break
+          case 'D':
+            turno = 'madrugada'
+            break
+          default:
+            // Fallback para turnos não reconhecidos - usar hora como backup
+            const hora = new Date(nota.timestamp_bipagem).getHours()
+            if (hora >= 12 && hora < 18) turno = 'tarde'
+            else if (hora >= 18 && hora < 24) turno = 'noite'
+            else if (hora >= 0 && hora < 6) turno = 'madrugada'
+            else turno = 'manha'
+        }
 
         colaboradores.forEach((colaborador: string) => {
           if (!colaboradoresMap.has(colaborador)) {
@@ -261,41 +400,58 @@ export default function DashboardEstatisticas() {
         colab.carros_processados = Math.ceil(colab.notas_processadas / 10) // Aproximação: 10 notas por carro
       })
 
-      // Ordenar colaboradores por produtividade
+      // Ordenar colaboradores por produtividade baseada no tempo
       const colaboradoresDestaque = Array.from(colaboradoresMap.values())
-        .map(colab => ({
-          ...colab,
-          produtividade_media: colab.volumes_processados / 7 // média por dia
-        }))
+        .map(colab => {
+          // Calcular produtividade baseada no tempo de trabalho
+          const horasTrabalhadas = 7 * 8 // 7 dias * 8 horas por dia (assumindo 8h por turno)
+          const produtividadePorHora = colab.volumes_processados / horasTrabalhadas
+          
+          return {
+            ...colab,
+            produtividade_media: Math.round(produtividadePorHora * 100) / 100
+          }
+        })
         .sort((a, b) => b.produtividade_media - a.produtividade_media)
         .slice(0, 5)
 
-      // Buscar evolução semanal
+      // Buscar evolução do período
       const evolucaoSemanal = []
-      for (let i = 6; i >= 0; i--) {
-        const data = new Date()
+      const diasDiferenca = Math.ceil((new Date(dataFim).getTime() - new Date(dataInicio).getTime()) / (1000 * 60 * 60 * 24))
+      const diasParaMostrar = Math.min(diasDiferenca + 1, 7) // Máximo 7 dias
+      
+      for (let i = diasParaMostrar - 1; i >= 0; i--) {
+        const data = new Date(dataFim)
         data.setDate(data.getDate() - i)
         const dataStr = data.toISOString().split('T')[0]
         
+        // Coletar IDs únicos de carros do dia
+        const carrosIdsDia = new Set<string>()
+        
         // Carros ativos do dia
-        const carrosAtivosDia = carrosHoje?.filter(c => (c.data as string) === dataStr).length || 0
+        if (carrosHoje) {
+          carrosHoje.forEach(carro => {
+            if ((carro.data as string) === dataStr && carro.id) {
+              carrosIdsDia.add(String(carro.id))
+            }
+          })
+        }
         
         // Carros finalizados do dia
-        let carrosFinalizadosDia = 0
         if (carrosFinalizados && carrosFinalizados.length > 0) {
           carrosFinalizados.forEach(item => {
             if (item.carros && Array.isArray(item.carros)) {
               item.carros.forEach((carro: any) => {
                 const dataCarro = carro.data || carro.data_criacao
-                if (dataCarro && dataCarro.startsWith(dataStr)) {
-                  carrosFinalizadosDia++
+                if (dataCarro && dataCarro.startsWith(dataStr) && carro.id) {
+                  carrosIdsDia.add(String(carro.id))
                 }
               })
             }
           })
         }
         
-        const carrosDia = carrosAtivosDia + carrosFinalizadosDia
+        const carrosDia = carrosIdsDia.size
         const notasDia = notasHoje?.filter(n => n.data === dataStr).length || 0
         const volumesDia = notasHoje?.filter(n => n.data === dataStr)
           .reduce((acc, n) => acc + ((n.volumes as number) || 1), 0) || 0
@@ -308,21 +464,65 @@ export default function DashboardEstatisticas() {
         })
       }
 
-      const totalCarrosHoje = (carrosHoje?.length || 0) + carrosFinalizadosHoje
       const totalNotasHoje = notasHoje?.length || 0
       const totalVolumesHoje = notasHoje?.reduce((acc, n) => acc + ((n.volumes as number) || 1), 0) || 0
+
+      // Calcular produtividade baseada no período
+      const calcularProdutividadePorTempo = () => {
+        if (totalNotasHoje === 0) return 0
+        
+        if (periodoSelecionado === 'hoje') {
+          // Para hoje: calcular baseado nas horas trabalhadas
+          const agora = new Date()
+          const horaAtual = agora.getHours()
+          
+          let horasTrabalhadas = 0
+          
+          // Determinar turno atual e calcular horas trabalhadas
+          if (horaAtual >= 6 && horaAtual < 12) {
+            // Turno manhã (6h às 12h)
+            horasTrabalhadas = Math.max(0, horaAtual - 6)
+          } else if (horaAtual >= 12 && horaAtual < 18) {
+            // Turno tarde (12h às 18h)
+            horasTrabalhadas = Math.max(0, horaAtual - 12)
+          } else if (horaAtual >= 18 && horaAtual < 24) {
+            // Turno noite (18h às 24h)
+            horasTrabalhadas = Math.max(0, horaAtual - 18)
+          } else {
+            // Turno madrugada (0h às 6h)
+            horasTrabalhadas = Math.max(0, horaAtual + 6)
+          }
+          
+          // Se for início do dia, assumir 1 hora para evitar divisão por zero
+          if (horasTrabalhadas === 0) {
+            horasTrabalhadas = 1
+          }
+          
+          // Produtividade = notas por hora
+          const produtividade = totalNotasHoje / horasTrabalhadas
+          return Math.round(produtividade * 100) / 100
+        } else {
+          // Para semana/mês: calcular baseado no número de dias
+          const diasDiferenca = Math.ceil((new Date(dataFim).getTime() - new Date(dataInicio).getTime()) / (1000 * 60 * 60 * 24)) + 1
+          const produtividade = totalNotasHoje / diasDiferenca
+          return Math.round(produtividade * 100) / 100
+        }
+      }
+
+      const produtividadeMediaHoje = calcularProdutividadePorTempo()
 
       const dashboardData: EstatisticasDashboard = {
         total_carros_hoje: totalCarrosHoje,
         total_notas_hoje: totalNotasHoje,
         total_volumes_hoje: totalVolumesHoje,
-        produtividade_media_hoje: totalCarrosHoje > 0 ? Math.round((totalNotasHoje / totalCarrosHoje) * 100) / 100 : 0,
+        produtividade_media_hoje: produtividadeMediaHoje,
         carros_por_turno: carrosPorTurno,
         evolucao_semanal: evolucaoSemanal,
         colaboradores_destaque: colaboradoresDestaque
       }
 
       console.log('✅ Dashboard data criado:', dashboardData)
+      console.log('🔍 Debug - Total de carros hoje:', totalCarrosHoje)
       setDashboardData(dashboardData)
     } catch (err) {
       console.error('❌ Erro ao carregar dados do dashboard:', err)
@@ -348,16 +548,17 @@ export default function DashboardEstatisticas() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [periodoSelecionado])
 
   useEffect(() => {
+    console.log('🔄 useEffect executado, periodoSelecionado:', periodoSelecionado)
     carregarDashboardData()
-  }, [dataSelecionada])
+  }, [periodoSelecionado, carregarDashboardData])
 
   const getVariacaoIcon = (valor: number, comparacao: number) => {
     if (valor > comparacao) return <ArrowUp className="h-4 w-4 text-green-500" />
     if (valor < comparacao) return <ArrowDown className="h-4 w-4 text-red-500" />
-    return <Minus className="h-4 w-4 text-gray-500" />
+    return <Minus className="h-4 w-4 text-gray-500 dark:text-gray-400" />
   }
 
   if (loading) {
@@ -403,8 +604,8 @@ export default function DashboardEstatisticas() {
       {/* Header do Dashboard */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard de Estatísticas</h1>
-          <p className="text-gray-600 mt-1">Visão geral da produtividade e performance do sistema</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Dashboard de Estatísticas</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">Visão geral da produtividade e performance do sistema</p>
         </div>
         <div className="flex space-x-2">
           <Button
@@ -439,7 +640,11 @@ export default function DashboardEstatisticas() {
               <div>
                 <p className="text-blue-100 text-sm font-medium">Carros Processados</p>
                 <p className="text-3xl font-bold">{dashboardData?.total_carros_hoje || 0}</p>
-                <p className="text-blue-200 text-xs mt-1">Hoje</p>
+                <p className="text-blue-200 text-xs mt-1">
+                  {periodoSelecionado === 'hoje' ? 'Hoje' : 
+                   periodoSelecionado === 'semana' ? 'Última Semana' : 
+                   'Último Mês'}
+                </p>
               </div> 
               <Truck className="h-12 w-12 text-blue-200" />
             </div>
@@ -452,7 +657,11 @@ export default function DashboardEstatisticas() {
               <div>
                 <p className="text-green-100 text-sm font-medium">Notas Bipadas</p>
                 <p className="text-3xl font-bold">{dashboardData?.total_notas_hoje || 0}</p>
-                <p className="text-green-200 text-xs mt-1">Hoje</p>
+                <p className="text-green-200 text-xs mt-1">
+                  {periodoSelecionado === 'hoje' ? 'Hoje' : 
+                   periodoSelecionado === 'semana' ? 'Última Semana' : 
+                   'Último Mês'}
+                </p>
               </div>
               <Activity className="h-12 w-12 text-green-200" />
             </div>
@@ -465,7 +674,11 @@ export default function DashboardEstatisticas() {
               <div>
                 <p className="text-purple-100 text-sm font-medium">Volumes Processados</p>
                 <p className="text-3xl font-bold">{dashboardData?.total_volumes_hoje || 0}</p>
-                <p className="text-purple-200 text-xs mt-1">Hoje</p>
+                <p className="text-purple-200 text-xs mt-1">
+                  {periodoSelecionado === 'hoje' ? 'Hoje' : 
+                   periodoSelecionado === 'semana' ? 'Última Semana' : 
+                   'Último Mês'}
+                </p>
               </div>
               <Package className="h-12 w-12 text-purple-200" />
             </div>
@@ -478,7 +691,11 @@ export default function DashboardEstatisticas() {
               <div>
                 <p className="text-orange-100 text-sm font-medium">Produtividade Média</p>
                 <p className="text-3xl font-bold">{dashboardData?.produtividade_media_hoje || 0}</p>
-                <p className="text-orange-200 text-xs mt-1">Notas/Carro</p>
+                <p className="text-orange-200 text-xs mt-1">
+                  {periodoSelecionado === 'hoje' ? 'Notas/Hora' : 
+                   periodoSelecionado === 'semana' ? 'Notas/Dia' : 
+                   'Notas/Dia'}
+                </p>
               </div>
               <Target className="h-12 w-12 text-orange-200" />
             </div>
@@ -497,23 +714,30 @@ export default function DashboardEstatisticas() {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {Object.entries(dashboardData?.carros_por_turno || {}).map(([turno, quantidade]) => (
-              <div key={turno} className="bg-gray-50 p-4 rounded-lg border">
+              <div key={turno} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border dark:border-gray-700">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-gray-800">{formatarTurno(turno)}</h4>
+                  <h4 className="font-semibold text-gray-800 dark:text-gray-200">{formatarTurno(turno)}</h4>
                   <Badge variant="outline" className="text-xs">
                     {quantidade} carros
                   </Badge>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div 
                     className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                     style={{ 
-                      width: `${Math.min((quantidade / Math.max(...Object.values(dashboardData?.carros_por_turno || {}))) * 100, 100)}%` 
+                      width: `${(() => {
+                        const valores = Object.values(dashboardData?.carros_por_turno || {})
+                        const maxValor = Math.max(...valores, 1) // Evitar divisão por zero
+                        return Math.min((quantidade / maxValor) * 100, 100)
+                      })()}%` 
                     }}
                   ></div>
                 </div>
-                <p className="text-xs text-gray-600 mt-2">
-                  {Math.round((quantidade / (dashboardData?.total_carros_hoje || 1)) * 100)}% do total
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                  {(() => {
+                    const total = dashboardData?.total_carros_hoje || 0
+                    return total > 0 ? Math.round((quantidade / total) * 100) : 0
+                  })()}% do total
                 </p>
               </div>
             ))}
@@ -526,13 +750,13 @@ export default function DashboardEstatisticas() {
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <TrendingUp className="h-6 w-6 text-green-600" />
-            <span>Evolução da Produtividade (Últimos 7 dias)</span>
+            <span>Evolução da Produtividade ({periodoSelecionado === 'hoje' ? 'Hoje' : periodoSelecionado === 'semana' ? 'Última Semana' : 'Último Mês'})</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {/* Gráfico de linha simples */}
-            <div className="bg-gray-50 p-6 rounded-lg">
+            <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg">
               <div className="h-64 relative">
                 <svg className="w-full h-full" viewBox="0 0 800 200" preserveAspectRatio="xMidYMid meet">
                   {/* Grid lines */}
@@ -628,7 +852,7 @@ export default function DashboardEstatisticas() {
             {/* Tabela de dados */}
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 dark:bg-gray-800">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Carros</th>
@@ -667,7 +891,7 @@ export default function DashboardEstatisticas() {
             <Award className="h-6 w-6 text-yellow-600" />
             <span>Colaboradores que se Destacaram</span>
           </CardTitle>
-          <p className="text-sm text-gray-600">Top 5 colaboradores com maior produtividade nos últimos 7 dias</p>
+          <p className="text-sm text-gray-600">Top 5 colaboradores com maior produtividade {periodoSelecionado === 'hoje' ? 'hoje' : periodoSelecionado === 'semana' ? 'na última semana' : 'no último mês'}</p>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -699,7 +923,7 @@ export default function DashboardEstatisticas() {
                   </div>
                   <div className="text-center">
                     <p className="text-lg font-bold text-orange-600">{Math.round(colaborador.produtividade_media * 100) / 100}</p>
-                    <p className="text-xs text-gray-600">Média/Dia</p>
+                    <p className="text-xs text-gray-600">Volumes/Hora</p>
                   </div>
                 </div>
               </div>
