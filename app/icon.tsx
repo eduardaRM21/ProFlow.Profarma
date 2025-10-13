@@ -1,20 +1,32 @@
-import { NextRequest } from 'next/server'
-import { readFile } from 'fs/promises'
-import { join } from 'path'
+import { ImageResponse } from 'next/og'
 
-export async function GET(request: NextRequest) {
-  try {
-    const iconPath = join(process.cwd(), 'public', 'favicon.png')
-    const iconBuffer = await readFile(iconPath)
-    
-    return new Response(iconBuffer as BodyInit, {
-      headers: {
-        'Content-Type': 'image/png',
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      },
-    })
-  } catch (error) {
-    console.error('Erro ao carregar ícone:', error)
-    return new Response('Ícone não encontrado', { status: 404 })
-  }
+export const size = {
+  width: 32,
+  height: 32,
+}
+
+export const contentType = 'image/png'
+
+export default function Icon() {
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          fontSize: 24,
+          background: 'linear-gradient(90deg, #000 0%, #fff 100%)',
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+        }}
+      >
+        P
+      </div>
+    ),
+    {
+      ...size,
+    }
+  )
 }
