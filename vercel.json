@@ -11,7 +11,7 @@
   "env": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://ehqxboqxtubeumaupjeq.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVocXhib3F4dHViZXVtYXVwamVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MzcyODQsImV4cCI6MjA3NDMxMzI4NH0.Er0IuDQeEtJ6AzFua_BAPFkcG_rmgg35QgdF0gpfwWw",
-    "NEXT_PUBLIC_APP_NAME": "Profarma Bipagem",
+    "NEXT_PUBLIC_APP_NAME": "ProFlow Bipagem",
     "NEXT_PUBLIC_APP_VERSION": "1.0.0",
     "NEXT_PUBLIC_APP_ENVIRONMENT": "production",
     "NEXT_PUBLIC_SCANNER_TIMEOUT": "30000",
