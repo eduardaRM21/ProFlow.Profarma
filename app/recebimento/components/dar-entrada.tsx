@@ -23,6 +23,7 @@ import {
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { SaveNotesService } from "@/lib/save-notes-service"
+import { getSupabase } from "@/lib/supabase-client"
 
 interface Usuario {
   nome: string
@@ -67,6 +68,7 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
   const [codigosTexto, setCodigosTexto] = useState("")
   const [notasValidacao, setNotasValidacao] = useState<NotaValidacao[]>([])
   const [processando, setProcessando] = useState(false)
+  const [transportadoraDuplicada, setTransportadoraDuplicada] = useState(false)
 
   const validarCodigos = () => {
     if (!codigosTexto.trim()) {
@@ -147,6 +149,11 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
 
       notasNaRemessa.add(nota)
 
+      // Concatenar data antes do nome da transportadora para garantir unicidade
+      const transportadoraNome = transportadora.trim() || 'N/A'
+      const dataFormatada = format(dataEntrada, 'dd/MM/yyyy')
+      const transportadoraComData = `${dataFormatada} - ${transportadoraNome}`
+      
       const notaFiscal: NotaFiscal = {
         id: `${nota}_${Date.now()}`,
         data,
@@ -156,7 +163,7 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
         fornecedor: fornecedor.trim(),
         clienteDestino: cliente_destino.toUpperCase(),
         tipo: tipo.toUpperCase(),
-        transportadora: transportadora.trim() || 'N/A', // Fallback para transportadora vazia
+        transportadora: transportadoraComData, // Data + nome da transportadora
         usuario: usuario.nome || 'N/A', // Fallback para usuário vazio
         dataEntrada: new Date().toISOString(),
         codigoCompleto: codigo,
@@ -177,9 +184,54 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
     return notasSalvas ? JSON.parse(notasSalvas) : []
   }
 
+  const verificarTransportadoraDuplicada = async (nomeTransportadora: string, data: Date): Promise<boolean> => {
+    const dataFormatada = format(data, 'dd/MM/yyyy')
+    const transportadoraComData = `${dataFormatada} - ${nomeTransportadora.trim()}`
+    
+    try {
+      // Verificar no banco de dados primeiro
+      const supabase = getSupabase()
+      const { data: notasBanco, error } = await supabase
+        .from('notas_consolidado')
+        .select('transportadora')
+        .eq('transportadora', transportadoraComData)
+        .limit(1)
+
+      if (error) {
+        console.warn('⚠️ Erro ao verificar no banco, verificando localStorage:', error.message)
+      } else if (notasBanco && notasBanco.length > 0) {
+        console.log('🚫 Transportadora duplicada encontrada no banco:', transportadoraComData)
+        return true
+      }
+
+      // Verificar no localStorage também
+      const notasExistentes = carregarNotasExistentes()
+      const duplicadaLocal = notasExistentes.some(nota => nota.transportadora === transportadoraComData)
+      
+      if (duplicadaLocal) {
+        console.log('🚫 Transportadora duplicada encontrada no localStorage:', transportadoraComData)
+        return true
+      }
+
+      return false
+    } catch (error) {
+      console.error('❌ Erro ao verificar transportadora duplicada:', error)
+      // Em caso de erro, verificar apenas no localStorage
+      const notasExistentes = carregarNotasExistentes()
+      return notasExistentes.some(nota => nota.transportadora === transportadoraComData)
+    }
+  }
+
   const consolidar = async () => {
     if (!transportadora.trim()) {
       alert("Por favor, informe o nome da transportadora.")
+      return
+    }
+
+    // Verificar se já existe uma transportadora com o mesmo nome no mesmo dia
+    const transportadoraDuplicada = await verificarTransportadoraDuplicada(transportadora, dataEntrada)
+    if (transportadoraDuplicada) {
+      alert(`A transportadora "${transportadora.trim()}" já foi inserida hoje (${format(dataEntrada, 'dd/MM/yyyy')}).\n\nPor favor, escolha um nome diferente ou aguarde até amanhã.`)
       return
     }
 
@@ -269,6 +321,20 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
     return () => clearTimeout(timeoutId)
   }, [codigosTexto, transportadora])
 
+  // Verificar se transportadora já existe no mesmo dia
+  useEffect(() => {
+    const verificarDuplicata = async () => {
+      if (transportadora.trim()) {
+        const duplicada = await verificarTransportadoraDuplicada(transportadora, dataEntrada)
+        setTransportadoraDuplicada(duplicada)
+      } else {
+        setTransportadoraDuplicada(false)
+      }
+    }
+    
+    verificarDuplicata()
+  }, [transportadora, dataEntrada])
+
   const notasValidas = notasValidacao.filter((v) => v.status === "valida")
   const notasDuplicadas = notasValidacao.filter((v) => v.status === "duplicada")
   const notasInvalidas = notasValidacao.filter((v) => v.status === "invalida")
@@ -312,7 +378,7 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
                 <LogOut className="h-4 w-4 mr-2" />
                 Sair
               </Button>
-            </div>
+              </div>
           </div>
         </div>
       </header>
@@ -332,8 +398,14 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
                   placeholder="Nome da transportadora"
                   value={transportadora}
                   onChange={(e) => setTransportadora(e.target.value)}
-                  className="text-base h-12"
+                  className={`text-base h-12 ${transportadoraDuplicada ? 'border-red-500 bg-red-50' : ''}`}
                 />
+                {transportadoraDuplicada && (
+                  <p className="text-sm text-red-600 flex items-center">
+                    <AlertTriangle className="h-4 w-4 mr-1" />
+                    Esta transportadora já foi inserida hoje ({format(dataEntrada, 'dd/MM/yyyy')})
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -369,8 +441,8 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
 
               <Button
                 onClick={consolidar}
-                disabled={notasValidas.length === 0 || !transportadora.trim() || processando}
-                className="w-full h-12 text-base font-semibold bg-green-600 hover:bg-green-700"
+                disabled={notasValidas.length === 0 || !transportadora.trim() || processando || transportadoraDuplicada}
+                className="w-full h-12 text-base font-semibold bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
               >
                 {processando ? (
                   <>

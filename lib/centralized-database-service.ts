@@ -187,7 +187,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as User
   }
 
   async getUserById(id: string): Promise<User | null> {
@@ -202,7 +202,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) return null
-    return data
+    return data as unknown as User
   }
 
   async getUsersByArea(area: string): Promise<User[]> {
@@ -217,7 +217,7 @@ export class CentralizedDatabaseService {
       .eq('ativo', true)
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as User[]
   }
 
   // =====================================================
@@ -236,7 +236,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as Session
   }
 
   async getActiveSession(area: string, data: string, turno: string): Promise<Session | null> {
@@ -254,7 +254,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) return null
-    return sessionData
+    return sessionData as unknown as Session
   }
 
   async closeSession(sessionId: string): Promise<void> {
@@ -289,7 +289,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as NotaFiscal
   }
 
   async getNotasBySession(sessionId: string): Promise<NotaFiscal[]> {
@@ -304,7 +304,7 @@ export class CentralizedDatabaseService {
       .order('created_at', { ascending: true })
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as NotaFiscal[]
   }
 
   async getNotaByNumero(numeroNF: string): Promise<NotaFiscal | null> {
@@ -319,7 +319,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) return null
-    return data
+    return data as unknown as NotaFiscal
   }
 
   // =====================================================
@@ -338,7 +338,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as Divergencia
   }
 
   async getDivergenciasByNota(notaFiscalId: string): Promise<Divergencia[]> {
@@ -352,7 +352,7 @@ export class CentralizedDatabaseService {
       .eq('nota_fiscal_id', notaFiscalId)
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as Divergencia[]
   }
 
   // =====================================================
@@ -371,7 +371,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as CarroEmbalagem
   }
 
   async addItemToCarro(itemData: Omit<CarroItem, 'id' | 'created_at'>): Promise<CarroItem> {
@@ -386,7 +386,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as CarroItem
   }
 
   async getCarrosBySession(sessionId: string): Promise<CarroEmbalagem[]> {
@@ -402,7 +402,7 @@ export class CentralizedDatabaseService {
       .order('created_at', { ascending: true })
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as CarroEmbalagem[]
   }
 
   async getCarroItems(carroId: string): Promise<CarroItem[]> {
@@ -417,7 +417,7 @@ export class CentralizedDatabaseService {
       .order('created_at', { ascending: true })
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as CarroItem[]
   }
 
   // =====================================================
@@ -436,7 +436,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as InventarioItem
   }
 
   async getInventarioByRua(rua: string): Promise<InventarioItem[]> {
@@ -451,7 +451,7 @@ export class CentralizedDatabaseService {
       .order('created_at', { ascending: true })
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as InventarioItem[]
   }
 
   async getInventarioBySession(sessionId: string): Promise<InventarioItem[]> {
@@ -466,7 +466,7 @@ export class CentralizedDatabaseService {
       .order('created_at', { ascending: true })
 
     if (error) throw error
-    return data || []
+    return (data || []) as unknown as InventarioItem[]
   }
 
   // =====================================================
@@ -505,7 +505,7 @@ export class CentralizedDatabaseService {
       .single()
 
     if (error) throw error
-    return data
+    return data as unknown as Relatorio
   }
 
   async getRelatoriosByArea(area: string, data?: string, turno?: string): Promise<Relatorio[]> {
@@ -525,7 +525,7 @@ export class CentralizedDatabaseService {
       .order('created_at', { ascending: false })
 
     if (error) throw error
-    return relatorios || []
+    return (relatorios || []) as unknown as Relatorio[]
   }
 
   async updateRelatorioStatus(relatorioId: string, status: string, additionalData?: Partial<Relatorio>): Promise<void> {
@@ -587,10 +587,10 @@ export class CentralizedDatabaseService {
     if (error) throw error
 
     return {
-      totalNFs: Number(stats?.[0]?.total_nfs || 0),
-      totalVolumes: Number(stats?.[0]?.total_volumes || 0),
-      totalDivergencias: Number(stats?.[0]?.total_divergencias || 0),
-      totalRelatorios: Number(stats?.[0]?.total_relatorios || 0)
+      totalNFs: Number((stats as any)?.[0]?.total_nfs || 0),
+      totalVolumes: Number((stats as any)?.[0]?.total_volumes || 0),
+      totalDivergencias: Number((stats as any)?.[0]?.total_divergencias || 0),
+      totalRelatorios: Number((stats as any)?.[0]?.total_relatorios || 0)
     }
   }
 

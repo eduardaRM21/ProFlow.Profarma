@@ -35,6 +35,7 @@ import AjudaSection from "./components/ajuda-section";
 import { useSession, useConnectivity } from "@/hooks/use-database";
 import { useEmbalagemStats } from "@/hooks/use-embalagem-stats";
 import type { SessionData } from "@/lib/database-service";
+import { Loader } from "@/components/ui/loader";
 
 export default function PainelPage() {
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
@@ -215,11 +216,7 @@ export default function PainelPage() {
   };
 
   if (!sessionData) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">Carregando...</div>
-      </div>
-    );
+    return <Loader text="Carregando painel..." duration={0} />;
   }
 
   return (

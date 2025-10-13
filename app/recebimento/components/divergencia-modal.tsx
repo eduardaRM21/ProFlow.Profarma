@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -81,6 +81,9 @@ export default function DivergenciaModal({
               <AlertTriangle className="h-5 w-5 text-orange-600" />
               <span>Informar Divergência</span>
             </DialogTitle>
+            <DialogDescription>
+              Informe os detalhes da divergência encontrada na nota fiscal.
+            </DialogDescription>
           </DialogHeader>
 
           <div className={`space-y-${isColetor ? '4' : '6'} ${isColetor ? 'coletor-modal-content' : ''}`}>
@@ -200,6 +203,9 @@ export default function DivergenciaModal({
               <CheckCircle className="h-5 w-5 text-green-600" />
               <span>Confirmar Divergência</span>
             </DialogTitle>
+            <DialogDescription>
+              Confirme se os dados da divergência estão corretos antes de salvar.
+            </DialogDescription>
           </DialogHeader>
 
           <div className={`space-y-${isColetor ? '3' : '4'} ${isColetor ? 'coletor-modal-content' : ''}`}>

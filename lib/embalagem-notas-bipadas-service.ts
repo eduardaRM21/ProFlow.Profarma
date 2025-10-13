@@ -573,13 +573,42 @@ export class EmbalagemNotasBipadasService {
       console.log('🗑️ Removendo nota bipada:', notaId)
 
       // 1. Primeiro, buscar a nota para obter o carro_id antes de removê-la
+      console.log('🔍 [SERVIÇO] Buscando nota com ID:', notaId)
+      
+      // Tentar buscar a nota na tabela principal
       const { data: notaData, error: notaError } = await retryWithBackoff(async () => {
         return await getSupabase()
           .from('embalagem_notas_bipadas')
           .select('carro_id, colaboradores, data, turno, session_id')
           .eq('id', notaId)
-          .single()
+          .maybeSingle() // Usar maybeSingle() em vez de single() para evitar erro quando não há registro
       })
+
+      console.log('🔍 [SERVIÇO] Resultado da busca na tabela principal:', { notaData, notaError })
+
+      // Se não encontrou na tabela principal, tentar buscar em outras tabelas possíveis
+      if (!notaData && !notaError) {
+        console.log('🔍 [SERVIÇO] Nota não encontrada na tabela principal, tentando outras tabelas...')
+        
+        // Tentar buscar na tabela de notas fiscais
+        const { data: notaFiscalData, error: notaFiscalError } = await retryWithBackoff(async () => {
+          return await getSupabase()
+            .from('notas_fiscais')
+            .select('id, carro_id')
+            .eq('id', notaId)
+            .maybeSingle()
+        })
+
+        console.log('🔍 [SERVIÇO] Resultado da busca na tabela notas_fiscais:', { notaFiscalData, notaFiscalError })
+
+        if (notaFiscalData) {
+          console.log('⚠️ [SERVIÇO] Nota encontrada na tabela notas_fiscais, mas não pode ser excluída de lá')
+          return {
+            success: false,
+            error: 'Esta nota está em uma tabela diferente e não pode ser excluída através desta função'
+          }
+        }
+      }
 
       if (notaError) {
         console.error('❌ Erro ao buscar nota antes de remover:', notaError)
@@ -593,7 +622,16 @@ export class EmbalagemNotasBipadasService {
         console.error('❌ Nota não encontrada:', notaId)
         return {
           success: false,
-          error: 'Nota não encontrada'
+          error: `Nota com ID ${notaId} não foi encontrada na tabela embalagem_notas_bipadas. A nota pode ter sido excluída anteriormente ou estar em uma tabela diferente.`
+        }
+      }
+
+      // Verificar se notaData é um objeto válido
+      if (typeof notaData !== 'object' || notaData === null) {
+        console.error('❌ Dados da nota inválidos:', notaData)
+        return {
+          success: false,
+          error: 'Dados da nota inválidos'
         }
       }
 

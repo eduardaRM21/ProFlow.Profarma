@@ -48,6 +48,28 @@ export class NotasBipadasService {
     try {
       const supabase = getSupabase();
       
+      // Verificar se a nota já foi bipada na mesma sessão
+      const { data: notaExistente, error: erroVerificacao } = await supabase
+        .from('notas_bipadas')
+        .select('id, numero_nf, timestamp_bipagem')
+        .eq('numero_nf', nota.numero_nf)
+        .eq('session_id', nota.session_id)
+        .eq('area_origem', nota.area_origem)
+        .single();
+
+      if (erroVerificacao && erroVerificacao.code !== 'PGRST116') {
+        console.error('❌ Erro ao verificar duplicata:', erroVerificacao);
+        throw erroVerificacao;
+      }
+
+      if (notaExistente) {
+        const timestampFormatado = notaExistente.timestamp_bipagem 
+          ? new Date(notaExistente.timestamp_bipagem as string).toLocaleString('pt-BR')
+          : 'agora';
+        
+        throw new Error(`NF ${nota.numero_nf} já foi bipada nesta sessão (${timestampFormatado}). Duplicatas não são permitidas.`);
+      }
+      
       const { data, error } = await supabase
         .from('notas_bipadas')
         .insert(nota as any)

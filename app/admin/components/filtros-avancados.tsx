@@ -17,10 +17,6 @@ export interface FiltrosAvancados {
   dataInicio?: string
   dataFim?: string
   
-  // Filtros de setor
-  setores: string[]
-  incluirSetores: boolean
-  
   // Filtros de status
   statuses: string[]
   incluirStatus: boolean
@@ -46,7 +42,6 @@ interface FiltrosAvancadosProps {
   filtros: FiltrosAvancados
   onFiltrosChange: (filtros: FiltrosAvancados) => void
   opcoesDisponiveis: {
-    setores: string[]
     statuses: string[]
     colaboradores: string[]
     destinos: string[]
@@ -95,8 +90,6 @@ export default function FiltrosAvancados({
       filtroData: "hoje",
       dataInicio: new Date().toISOString().split('T')[0],
       dataFim: new Date().toISOString().split('T')[0],
-      setores: [],
-      incluirSetores: false,
       statuses: [],
       incluirStatus: false,
       colaboradores: [],
@@ -171,15 +164,15 @@ export default function FiltrosAvancados({
   }
 
   return (
-    <Card className="border-blue-200 mt-10 mb-10">
-      <CardHeader className="pb-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-3 sm:space-y-0">
-          <CardTitle className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2 text-sm sm:text-base">
-            <div className="flex items-center space-x-2">
-              <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-              <span>Filtros Inteligentes</span>
+    <Card className="border-blue-200 dark:bg-gray-950">
+      <CardHeader className="pb-2">
+        <div className="flex flex-col space-y-2">
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center space-x-2 min-w-0">
+              <Filter className="h-4 w-4 text-blue-600 flex-shrink-0" />
+              <span className="text-sm">Filtros Inteligentes</span>
             </div>
-            <Badge variant="outline" className="text-xs w-fit">
+            <Badge variant="outline" className="text-xs flex-shrink-0 dark:bg-gray-800 dark:text-gray-300">
               {filtrosLocais.filtroData === "hoje" ? "Hoje" : 
                filtrosLocais.filtroData === "ontem" ? "Ontem" :
                filtrosLocais.filtroData === "semana" ? "Última Semana" :
@@ -187,7 +180,7 @@ export default function FiltrosAvancados({
                filtrosLocais.filtroData === "personalizado" ? "Personalizado" : "Todos"}
             </Badge>
           </CardTitle>
-          <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-2">
+          <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Switch
                 checked={filtrosLocais.salvarPreferencias}
@@ -199,31 +192,31 @@ export default function FiltrosAvancados({
               variant="outline"
               size="sm"
               onClick={toggleFiltros}
-              className="text-xs w-full sm:w-auto"
+              className="text-xs h-7 px-2 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
             >
-              {filtrosLocais.mostrarFiltros ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              {filtrosLocais.mostrarFiltros ? "Ocultar" : "Mostrar"}
+              {filtrosLocais.mostrarFiltros ? <EyeOff className="h-3 w-3 " /> : <Eye className="h-3 w-3" />}
+              <span className="ml-1">{filtrosLocais.mostrarFiltros ? "Ocultar" : "Mostrar"}</span>
             </Button>
           </div>
         </div>
       </CardHeader>
 
       {filtrosLocais.mostrarFiltros && (
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3">
           {/* Filtros de Data */}
-          <div className="space-y-3">
+          <div className="space-y-2">
             <Label className="flex items-center space-x-2">
               <Calendar className="h-4 w-4" />
-              <span>Filtro de Data</span>
+              <span className="text-sm">Filtro de Data</span>
             </Label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            <div className="grid grid-cols-3 gap-1">
               {["hoje", "ontem", "semana", "mes", "personalizado", "todos"].map((opcao) => (
                 <Button
                   key={opcao}
                   variant={filtrosLocais.filtroData === opcao ? "default" : "outline"}
                   size="sm"
                   onClick={() => atualizarFiltroData(opcao as any)}
-                  className="text-xs h-8 sm:h-9"
+                  className="text-xs h-7 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
                 >
                   {opcao === "hoje" ? "Hoje" :
                    opcao === "ontem" ? "Ontem" :
@@ -235,14 +228,14 @@ export default function FiltrosAvancados({
             </div>
             
             {filtrosLocais.filtroData === "personalizado" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs">Data Início</Label>
                   <Input
                     type="date"
                     value={filtrosLocais.dataInicio || ""}
                     onChange={(e) => setFiltrosLocais(prev => ({ ...prev, dataInicio: e.target.value }))}
-                    className="text-xs h-9"
+                    className="text-xs h-8 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
                   />
                 </div>
                 <div>
@@ -251,62 +244,13 @@ export default function FiltrosAvancados({
                     type="date"
                     value={filtrosLocais.dataFim || ""}
                     onChange={(e) => setFiltrosLocais(prev => ({ ...prev, dataFim: e.target.value }))}
-                    className="text-xs h-9"
+                    className="text-xs h-8 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
                   />
                 </div>
               </div>
             )}
           </div>
 
-          {/* Filtros de Setor */}
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2">
-              <Switch
-                checked={filtrosLocais.incluirSetores}
-                onCheckedChange={(checked) => setFiltrosLocais(prev => ({ ...prev, incluirSetores: checked }))}
-              />
-              <Label className="text-xs">Filtrar por Setor</Label>
-            </div>
-            {filtrosLocais.incluirSetores && (
-              <Select
-                value=""
-                onValueChange={(value) => {
-                  if (value && !filtrosLocais.setores.includes(value)) {
-                    setFiltrosLocais(prev => ({
-                      ...prev,
-                      setores: [...prev.setores, value]
-                    }))
-                  }
-                }}
-              >
-                <SelectTrigger className="text-xs">
-                  <SelectValue placeholder="Selecionar setor..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {opcoesDisponiveis.setores.map((setor) => (
-                    <SelectItem key={setor} value={setor}>{setor}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            {filtrosLocais.setores.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {filtrosLocais.setores.map((setor) => (
-                  <Badge
-                    key={setor}
-                    variant="secondary"
-                    className="text-xs cursor-pointer hover:bg-red-100"
-                    onClick={() => setFiltrosLocais(prev => ({
-                      ...prev,
-                      setores: prev.setores.filter(s => s !== setor)
-                    }))}
-                  >
-                    {setor} ×
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
 
           {/* Filtros de Status */}
           <div className="space-y-2">
@@ -329,10 +273,10 @@ export default function FiltrosAvancados({
                   }
                 }}
               >
-                <SelectTrigger className="text-xs">
+                <SelectTrigger className="text-xs dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800">
                   <SelectValue placeholder="Selecionar status..." />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="dark:bg-gray-950">
                   {opcoesDisponiveis.statuses.map((status) => (
                     <SelectItem key={status} value={status}>{status}</SelectItem>
                   ))}
@@ -345,7 +289,7 @@ export default function FiltrosAvancados({
                   <Badge
                     key={status}
                     variant="secondary"
-                    className="text-xs cursor-pointer hover:bg-red-100"
+                    className="text-xs cursor-pointer hover:bg-red-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-red-700"
                     onClick={() => setFiltrosLocais(prev => ({
                       ...prev,
                       statuses: prev.statuses.filter(s => s !== status)
@@ -379,10 +323,10 @@ export default function FiltrosAvancados({
                   }
                 }}
               >
-                <SelectTrigger className="text-xs">
+                <SelectTrigger className="text-xs dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800">
                   <SelectValue placeholder="Selecionar colaborador..." />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="dark:bg-gray-950">
                   {opcoesDisponiveis.colaboradores.map((colaborador) => (
                     <SelectItem key={colaborador} value={colaborador}>{colaborador}</SelectItem>
                   ))}
@@ -395,7 +339,7 @@ export default function FiltrosAvancados({
                   <Badge
                     key={colaborador}
                     variant="secondary"
-                    className="text-xs cursor-pointer hover:bg-red-100"
+                    className="text-xs cursor-pointer hover:bg-red-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-red-700"
                     onClick={() => setFiltrosLocais(prev => ({
                       ...prev,
                       colaboradores: prev.colaboradores.filter(c => c !== colaborador)
@@ -429,10 +373,10 @@ export default function FiltrosAvancados({
                   }
                 }}
               >
-                <SelectTrigger className="text-xs">
+                <SelectTrigger className="text-xs dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800">
                   <SelectValue placeholder="Selecionar destino..." />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="dark:bg-gray-950">
                   {opcoesDisponiveis.destinos.map((destino) => (
                     <SelectItem key={destino} value={destino}>{destino}</SelectItem>
                   ))}
@@ -445,7 +389,7 @@ export default function FiltrosAvancados({
                   <Badge
                     key={destino}
                     variant="secondary"
-                    className="text-xs cursor-pointer hover:bg-red-100"
+                    className="text-xs cursor-pointer hover:bg-red-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-red-700"
                     onClick={() => setFiltrosLocais(prev => ({
                       ...prev,
                       destinos: prev.destinos.filter(d => d !== destino)
@@ -487,7 +431,7 @@ export default function FiltrosAvancados({
                         }))
                       }
                     }}
-                    className="text-xs"
+                    className="text-xs dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
                   >
                     {tipo === "ROD" ? "🚛 ROD" : "📦 CON"}
                   </Button>
@@ -497,24 +441,26 @@ export default function FiltrosAvancados({
           </div>
 
           {/* Botões de Ação */}
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-2">
-            <Button
-              onClick={aplicarFiltros}
-              size="sm"
-              className="w-full sm:flex-1 bg-blue-600 hover:bg-blue-700 h-9"
-            >
-              <Filter className="h-4 w-4 mr-2" />
-              Aplicar Filtros
-            </Button>
-            <Button
-              onClick={resetarFiltros}
-              variant="outline"
-              size="sm"
-              className="w-full sm:flex-1 h-9"
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Resetar
-            </Button>
+          <div className="flex flex-col gap-2 pt-2">
+            <div className="flex gap-2">
+              <Button
+                onClick={aplicarFiltros}
+                size="sm"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 h-8 dark:bg-blue-900 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <Filter className="h-3 w-3 mr-1" />
+                <span className="text-xs">Aplicar</span>
+              </Button>
+              <Button
+                onClick={resetarFiltros}
+                variant="outline"
+                size="sm"
+                className="flex-1 h-8 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                <span className="text-xs">Resetar</span>
+              </Button>
+            </div>
             {filtrosLocais.salvarPreferencias && (
               <Button
                 onClick={() => {
@@ -527,10 +473,10 @@ export default function FiltrosAvancados({
                 }}
                 variant="outline"
                 size="sm"
-                className="w-full sm:w-auto h-9"
+                className="w-full h-8 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800"
               >
-                <Save className="h-4 w-4 mr-2" />
-                Salvar
+                <Save className="h-3 w-3 mr-1" />
+                <span className="text-xs">Salvar Preferências</span>
               </Button>
             )}
           </div>

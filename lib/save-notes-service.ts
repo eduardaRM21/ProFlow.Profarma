@@ -142,13 +142,16 @@ export class SaveNotesService {
             continue
           }
 
+          // Converter data do formato DD/MM/YYYY para YYYY-MM-DD
+          const dataFormatada = this.convertDateToISO(nota.data)
+          
           // Salvar nota
           const { data: savedNota, error: saveError } = await supabase
             .from('notas_consolidado')
             .insert([{
               codigo_completo: nota.codigoCompleto || '',
               numero_nf: nota.nota,
-              data: nota.data,
+              data: dataFormatada,
               volumes: nota.volume,
               destino: nota.destino,
               fornecedor: nota.fornecedor,
@@ -157,7 +160,7 @@ export class SaveNotesService {
               transportadora: nota.transportadora,
               usuario: nota.usuario,
               data_entrada: nota.dataEntrada,
-              status: 'recebida',
+              status: 'deu entrada',
               session_id: session.id
             }])
             .select()
@@ -286,12 +289,35 @@ export class SaveNotesService {
   }
 
   /**
+   * Converter data do formato DD/MM/YYYY para YYYY-MM-DD
+   */
+  static convertDateToISO(dateString: string): string {
+    if (!dateString) return ''
+    
+    // Verificar se já está no formato ISO
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      return dateString
+    }
+    
+    // Converter de DD/MM/YYYY para YYYY-MM-DD
+    const parts = dateString.split('/')
+    if (parts.length === 3) {
+      const [day, month, year] = parts
+      return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+    }
+    
+    // Se não conseguir converter, retornar string vazia
+    console.warn(`⚠️ Não foi possível converter a data: ${dateString}`)
+    return ''
+  }
+
+  /**
    * Buscar ou criar sessão para a nota
    */
   static async getOrCreateSession(nota: NotaFiscal): Promise<any> {
     try {
       const supabase = getSupabase()
-      const data = nota.data
+      const data = this.convertDateToISO(nota.data)
       const turno = 'A' // Assumir turno padrão
 
       // Tentar buscar sessão existente

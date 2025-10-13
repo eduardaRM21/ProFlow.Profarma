@@ -83,7 +83,7 @@ export class AuthService {
       }
 
       // Verificar senha
-      if (!this.verifyPassword(senha, userData.senha_hash)) {
+      if (!this.verifyPassword(senha, userData.senha_hash as string)) {
         return {
           success: false,
           error: 'Senha incorreta.'
@@ -92,7 +92,7 @@ export class AuthService {
 
       return {
         success: true,
-        user: userData
+        user: userData as AuthUser
       }
     } catch (error) {
       console.error('❌ Erro ao autenticar usuário:', error)
@@ -173,7 +173,7 @@ export class AuthService {
 
       const { data, error } = await supabase
         .from('auth_users')
-        .select('id, usuario, area, ativo, created_at, updated_at')
+        .select('id, usuario, area, ativo, senha_hash, created_at, updated_at')
         .eq('area', area)
         .eq('ativo', true)
         .order('usuario')
@@ -183,7 +183,7 @@ export class AuthService {
         return []
       }
 
-      return data || []
+      return (data as AuthUser[]) || []
     } catch (error) {
       console.error('❌ Erro ao buscar usuários:', error)
       return []

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase-client'
 import { EmbalagemNotasBipadasService, EmbalagemNotaBipada } from '@/lib/embalagem-notas-bipadas-service'
 
@@ -32,6 +32,29 @@ export function useCarrosRealtime() {
   const [error, setError] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [isConnected, setIsConnected] = useState(false)
+  
+  // Referência para controlar IDs de carros já notificados
+  const carrosNotificadosRef = useRef<Set<string>>(new Set())
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Função para reproduzir áudio de notificação
+  const reproduzirNotificacao = useCallback(() => {
+    try {
+      // Criar elemento de áudio se não existir
+      if (!audioRef.current) {
+        audioRef.current = new Audio('/new-notification-embalagem.mp3')
+        audioRef.current.preload = 'auto'
+      }
+      
+      // Reproduzir o áudio
+      audioRef.current.play().catch(error => {
+        console.warn('⚠️ Erro ao reproduzir áudio de notificação:', error)
+      })
+      
+    } catch (error) {
+      console.warn('⚠️ Erro ao configurar áudio de notificação:', error)
+    }
+  }, [])
 
   // Converter notas bipadas para formato de carros
   const converterNotasParaCarros = useCallback((notas: EmbalagemNotaBipada[]): CarroStatus[] => {
@@ -95,6 +118,21 @@ export function useCarrosRealtime() {
       
       if (result.success && result.carros) {
         console.log('📋 Carros recebidos do banco:', result.carros.length)
+        
+        // Detectar novos carros comparando com os já notificados
+        const carrosAtuais = result.carros.map(carro => carro.id)
+        const carrosNovos = carrosAtuais.filter(carroId => !carrosNotificadosRef.current.has(carroId))
+        
+        // Se há novos carros, reproduzir notificação
+        if (carrosNovos.length > 0) {
+          console.log('🆕 Novos carros detectados:', carrosNovos)
+          reproduzirNotificacao()
+          
+          // Adicionar novos carros à lista de notificados
+          carrosNovos.forEach(carroId => {
+            carrosNotificadosRef.current.add(carroId)
+          })
+        }
         
                  // Converter para o formato esperado
          const carrosConvertidos = result.carros.map(carro => {
@@ -166,7 +204,7 @@ export function useCarrosRealtime() {
     } finally {
       setLoading(false)
     }
-  }, [converterNotasParaCarros])
+  }, [converterNotasParaCarros, reproduzirNotificacao])
 
   // Configurar subscription em tempo real
   useEffect(() => {
@@ -403,6 +441,7 @@ export function useCarrosRealtime() {
     return carros.find(carro => carro.carro_id === carroId)
   }
 
+
   // Estatísticas
   const estatisticas = {
     total: carros.length,
@@ -429,6 +468,7 @@ export function useCarrosRealtime() {
     carrosPorStatus,
     buscarCarroPorId,
     estatisticas,
-    recarregar: carregarCarros
+    recarregar: carregarCarros,
+    reproduzirNotificacao
   }
 }

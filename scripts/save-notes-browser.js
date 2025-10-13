@@ -113,7 +113,7 @@ async function saveNotesFromBrowser() {
             transportadora: nota.transportadora,
             usuario: nota.usuario,
             data_entrada: nota.dataEntrada,
-            status: 'recebida',
+            status: 'deu entrada',
             session_id: session.id
           }])
           .select()

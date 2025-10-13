@@ -30,6 +30,7 @@ import { useRealtimeMonitoring } from "@/hooks/use-realtime-monitoring";
 import { BarcodeScanner } from "./components/barcode-scanner";
 import { RelatorioModal } from "./components/relatorio-modal";
 import { InventarioNotasBipadasService } from "@/lib/inventario-notas-bipadas-service";
+import { Loader } from "@/components/ui/loader";
 
 interface NotaFiscalInventario {
   id: string;
@@ -491,14 +492,7 @@ export default function InventarioPage() {
   };
 
   if (!session) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600">Carregando...</p>
-        </div>
-      </div>
-    );
+    return <Loader text="Carregando inventário..." duration={0} />;
   }
 
   return (

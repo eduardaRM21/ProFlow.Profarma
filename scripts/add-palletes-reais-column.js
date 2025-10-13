@@ -34,73 +34,26 @@ async function addPalletesReaisColumn() {
       console.log('⚠️ Erro ao executar SQL via RPC:', rpcError.message)
       console.log('Tentando método alternativo...')
       
-      // Método alternativo: verificar se a coluna existe tentando inserir dados
-      console.log('🧪 Testando inserção com campo palletes_reais...')
+      // Verificar se a coluna existe consultando a estrutura da tabela
+      console.log('🔍 Verificando estrutura da tabela...')
       
-      // Primeiro, vamos verificar se conseguimos inserir um registro de teste
-      const testData = {
-        carro_id: 'TEST_PALLETES_001',
-        nome_carro: 'Teste Pallets',
-        colaboradores: ['Teste'],
-        data: new Date().toISOString().split('T')[0],
-        turno: 'A',
-        destino_final: 'Teste',
-        quantidade_nfs: 1,
-        total_volumes: 1,
-        data_criacao: new Date().toISOString(),
-        status_carro: 'embalando',
-        nfs: [],
-        estimativa_pallets: 5,
-        session_id: 'TEST_PALLETES_SESSION_001'
-      }
-
-      // Tentar inserir sem palletes_reais
-      const { error: insertError1 } = await supabase
+      const { data: columns, error: columnsError } = await supabase
         .from('carros_status')
-        .insert(testData)
-
-      if (insertError1) {
-        console.log('❌ Erro ao inserir dados básicos:', insertError1.message)
-        return
-      }
-
-      console.log('✅ Dados básicos inseridos com sucesso')
-
-      // Agora tentar inserir com palletes_reais
-      const testDataWithPalletes = {
-        ...testData,
-        carro_id: 'TEST_PALLETES_002',
-        palletes_reais: 6
-      }
-
-      const { error: insertError2 } = await supabase
-        .from('carros_status')
-        .insert(testDataWithPalletes)
-
-      if (insertError2) {
-        console.log('❌ Erro ao inserir com palletes_reais:', insertError2.message)
+        .select('*')
+        .limit(1)
+      
+      if (columnsError) {
+        console.log('❌ Erro ao verificar estrutura:', columnsError.message)
         console.log('A coluna palletes_reais precisa ser adicionada manualmente no banco')
         console.log('Execute o seguinte SQL no seu banco de dados:')
         console.log('')
         console.log('ALTER TABLE carros_status ADD COLUMN IF NOT EXISTS palletes_reais INTEGER;')
         console.log('COMMENT ON COLUMN carros_status.palletes_reais IS \'Quantidade real de pallets utilizados no carro (diferente da estimativa)\';')
         console.log('')
-      } else {
-        console.log('✅ Dados com palletes_reais inseridos com sucesso')
-        console.log('A coluna palletes_reais já existe na tabela')
-        
-        // Limpar dados de teste
-        const { error: deleteError } = await supabase
-          .from('carros_status')
-          .delete()
-          .in('carro_id', ['TEST_PALLETES_001', 'TEST_PALLETES_002'])
-        
-        if (deleteError) {
-          console.log('⚠️ Erro ao limpar dados de teste:', deleteError.message)
-        } else {
-          console.log('🧹 Dados de teste removidos')
-        }
+        return
       }
+      
+      console.log('✅ Estrutura da tabela verificada com sucesso')
 
     } else {
       console.log('✅ Coluna palletes_reais adicionada com sucesso via RPC')

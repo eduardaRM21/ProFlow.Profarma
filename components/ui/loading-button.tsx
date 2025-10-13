@@ -114,6 +114,26 @@ export function LoginButton({
     }
   }
 
+  // Determinar cor do botão baseado na área
+  const getButtonColor = () => {
+    switch (area) {
+      case "recebimento":
+        return "rgb(59, 130, 246)" // azul
+      case "custos":
+        return "rgb(249, 115, 22)" // laranja
+      case "embalagem":
+        return "rgb(34, 197, 94)" // verde
+      case "admin-embalagem":
+        return "rgb(59, 130, 246)" // azul
+      case "crdk":
+        return "rgb(234, 179, 8)" // amarelo
+      case "inventario":
+        return "rgb(168, 85, 247)" // roxo
+      default:
+        return "rgb(72, 193, 66)" // verde padrão
+    }
+  }
+
   return (
     <LoadingButton
       loading={loading}
@@ -122,10 +142,11 @@ export function LoginButton({
       disabled={disabled}
       loadingVariant={getLoadingVariant()}
       className={cn(
-        "w-full h-12 text-base font-semibold bg-green-600 hover:bg-green-700 text-white",
+        "w-full h-12 text-base font-semibold hover:bg-green-700 text-white",
         loading && getLoadingClass(),
         className
       )}
+      style={{ backgroundColor: getButtonColor() }}
     >
       Entrar no Sistema
     </LoadingButton>

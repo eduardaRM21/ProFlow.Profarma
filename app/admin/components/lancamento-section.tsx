@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import SidebarFixa from "./sidebar-fixa"
 import {
   Package,
   Truck,
@@ -23,6 +24,7 @@ import {
   Send,
   Hash,
   Copy,
+  Filter,
 } from "lucide-react"
 
 const copiarNFsParaSAP = (nfs: Array<{ numeroNF: string }>) => {
@@ -98,6 +100,7 @@ interface CarroLancamento {
 export default function LancamentoSection() {
   const [carros, setCarros] = useState<CarroLancamento[]>([])
   const [filtroStatus, setFiltroStatus] = useState<string>("todos")
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [carroSelecionado, setCarroSelecionado] = useState<CarroLancamento | null>(null)
   const [modalLancamento, setModalLancamento] = useState(false)
   const [observacoes, setObservacoes] = useState("")
@@ -245,69 +248,67 @@ export default function LancamentoSection() {
 
   const estatisticas = {
     total: carros.length,
-    aguardando: carros.filter((c) => c.status === "aguardando_lancamento").length,
-    emLancamento: carros.filter((c) => c.status === "em_lancamento").length,
+    embalando: 0, // Não aplicável para lançamento
+    aguardandoLancamento: carros.filter((c) => c.status === "aguardando_lancamento").length,
+    divergencia: 0, // Não aplicável para lançamento
     lancados: carros.filter((c) => c.status === "lancado").length,
+    finalizados: 0, // Não aplicável para lançamento
     totalNFs: carros.reduce((sum, c) => sum + c.quantidadeNFs, 0),
-    totalVolumes: carros.reduce((sum, c) => sum + c.totalVolumes, 0),
+    totalPallets: carros.reduce((sum, c) => sum + (c.posicoes || c.estimativaPallets || 0), 0),
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header com estatísticas */}
-      <Card className="border-purple-200">
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <FileText className="h-6 w-6 text-purple-600" />
-            <span>Lançamento de Notas Fiscais</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-4">
-            <div className="text-center p-3 bg-purple-50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-600">{estatisticas.total}</div>
-              <div className="text-sm text-gray-600">Total Carros</div>
-            </div>
-            <div className="text-center p-3 bg-orange-50 rounded-lg">
-              <div className="text-2xl font-bold text-orange-600">{estatisticas.aguardando}</div>
-              <div className="text-sm text-gray-600">Aguardando</div>
-            </div>
-            <div className="text-center p-3 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{estatisticas.emLancamento}</div>
-              <div className="text-sm text-gray-600">Em Lançamento</div>
-            </div>
-            <div className="text-center p-3 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{estatisticas.lancados}</div>
-              <div className="text-sm text-gray-600">Lançados</div>
-            </div>
-            <div className="text-center p-3 bg-teal-50 rounded-lg">
-              <div className="text-2xl font-bold text-teal-600">{estatisticas.totalNFs}</div>
-              <div className="text-sm text-gray-600">Total NFs</div>
-            </div>
-            <div className="text-center p-3 bg-indigo-50 rounded-lg">
-              <div className="text-2xl font-bold text-indigo-600">{estatisticas.totalVolumes}</div>
-              <div className="text-sm text-gray-600">Total Volumes</div>
-            </div>
-          </div>
+    <div className="flex min-h-screen">
+      {/* Sidebar Fixa */}
+      <SidebarFixa
+        estatisticas={estatisticas}
+        isConnected={true} // Assumindo conectado para lançamento
+        lastUpdate={new Date()}
+        filtroBusca=""
+        setFiltroBusca={() => {}} // Não usado na seção de lançamento
+        filtroStatus={filtroStatus}
+        setFiltroStatus={setFiltroStatus}
+        filtrosAvancados={{
+          filtroData: "hoje",
+          dataInicio: new Date().toISOString().split('T')[0],
+          dataFim: new Date().toISOString().split('T')[0],
+          statuses: [],
+          incluirStatus: false,
+          colaboradores: [],
+          incluirColaboradores: false,
+          destinos: [],
+          incluirDestinos: false,
+          tiposCarro: [],
+          incluirTiposCarro: false,
+          salvarPreferencias: true,
+          mostrarFiltros: false
+        }}
+        setFiltrosAvancados={() => {}} // Não usado na seção de lançamento
+        opcoesDisponiveis={{
+          statuses: ["aguardando_lancamento", "em_lancamento", "lancado", "erro_lancamento"],
+          colaboradores: [...new Set(carros.flatMap(c => c.colaboradores))],
+          destinos: [...new Set(carros.flatMap(c => c.destinoFinal.split(", ")))]
+        }}
+        loading={false}
+        error={null}
+        mobileOpen={mobileSidebarOpen}
+        onMobileToggle={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+      />
 
-          {/* Filtro */}
-          <div className="flex items-center space-x-4">
-            <Label className="text-sm font-medium">Filtrar por status:</Label>
-            <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-              <SelectTrigger className="w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os Status</SelectItem>
-                <SelectItem value="aguardando_lancamento">🟠 Aguardando Lançamento</SelectItem>
-                <SelectItem value="em_lancamento">🔵 Em Lançamento</SelectItem>
-                <SelectItem value="lancado">🟢 Lançado</SelectItem>
-                <SelectItem value="erro_lancamento">🔴 Erro no Lançamento</SelectItem>
-              </SelectContent>
-            </Select>
+      {/* Conteúdo Principal */}
+      <div className="flex-1 lg:ml-80 min-h-[calc(100vh-4rem)] mt-16">
+        <div className="p-6 pb-8 space-y-6">
+          {/* Botão de toggle móvel */}
+          <div className="lg:hidden mb-4">
+            <Button
+              onClick={() => setMobileSidebarOpen(true)}
+              variant="outline"
+              className="flex items-center space-x-2"
+            >
+              <Filter className="h-4 w-4" />
+              <span>Filtros e Estatísticas</span>
+            </Button>
           </div>
-        </CardContent>
-      </Card>
 
       {/* Lista de carros */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -590,6 +591,8 @@ export default function LancamentoSection() {
           )}
         </DialogContent>
       </Dialog>
+        </div>
+      </div>
     </div>
   )
 }

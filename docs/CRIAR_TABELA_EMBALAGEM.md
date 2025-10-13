@@ -22,7 +22,7 @@ Copie e cole o seguinte SQL no editor:
 
 ```sql
 -- =====================================================
--- TABELA DE NOTAS BIPADAS DO SETOR DE EMBALAGEM
+-- TABELA DE NOTAS S DO SETOR DE EMBALAGEM
 -- =====================================================
 CREATE TABLE IF NOT EXISTS embalagem_notas_bipadas (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

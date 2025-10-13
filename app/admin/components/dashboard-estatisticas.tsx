@@ -166,9 +166,9 @@ export default function DashboardEstatisticas() {
       // Buscar dados de carros finalizados do setor de embalagem
       const { data: carrosFinalizados, error: errorCarrosFinalizados } = await supabase
         .from('embalagem_carros_finalizados')
-        .select('carros, data')
-        .gte('data', dataInicio)
-        .lte('data', dataFim)
+        .select('carros, created_at')
+        .gte('created_at', dataInicio)
+        .lte('created_at', dataFim)
 
       if (errorCarrosFinalizados) {
         console.error('❌ Erro ao buscar carros finalizados:', errorCarrosFinalizados)
@@ -602,16 +602,17 @@ export default function DashboardEstatisticas() {
   return (
     <div className="space-y-6">
       {/* Header do Dashboard */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Dashboard de Estatísticas</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">Visão geral da produtividade e performance do sistema</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">Dashboard de Estatísticas</h1>
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">Visão geral da produtividade e performance do sistema</p>
         </div>
         <div className="flex space-x-2">
           <Button
             variant={periodoSelecionado === 'hoje' ? 'default' : 'outline'}
             onClick={() => setPeriodoSelecionado('hoje')}
             size="sm"
+            className="text-xs sm:text-sm"
           >
             Hoje
           </Button>
@@ -619,6 +620,7 @@ export default function DashboardEstatisticas() {
             variant={periodoSelecionado === 'semana' ? 'default' : 'outline'}
             onClick={() => setPeriodoSelecionado('semana')}
             size="sm"
+            className="text-xs sm:text-sm"
           >
             Semana
           </Button>
@@ -626,6 +628,7 @@ export default function DashboardEstatisticas() {
             variant={periodoSelecionado === 'mes' ? 'default' : 'outline'}
             onClick={() => setPeriodoSelecionado('mes')}
             size="sm"
+            className="text-xs sm:text-sm"
           >
             Mês
           </Button>
@@ -633,71 +636,71 @@ export default function DashboardEstatisticas() {
       </div>
 
       {/* Métricas Principais */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white select-none">
-          <CardContent className="p-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white select-none dark:bg-blue-900/30 dark:border-blue-500/50">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-100 text-sm font-medium">Carros Processados</p>
-                <p className="text-3xl font-bold">{dashboardData?.total_carros_hoje || 0}</p>
-                <p className="text-blue-200 text-xs mt-1">
+              <div className="min-w-0 flex-1">
+                <p className="text-blue-100 text-xs sm:text-sm font-medium truncate">Carros Processados</p>
+                <p className="text-xl sm:text-3xl font-bold">{dashboardData?.total_carros_hoje || 0}</p>
+                <p className="text-blue-200 text-xs mt-1 truncate">
                   {periodoSelecionado === 'hoje' ? 'Hoje' : 
                    periodoSelecionado === 'semana' ? 'Última Semana' : 
                    'Último Mês'}
                 </p>
               </div> 
-              <Truck className="h-12 w-12 text-blue-200" />
+              <Truck className="h-6 w-6 sm:h-12 sm:w-12 text-blue-200 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white select-none">
-          <CardContent className="p-6">
+        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white select-none dark:bg-green-900/30 dark:border-green-500/50">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-green-100 text-sm font-medium">Notas Bipadas</p>
-                <p className="text-3xl font-bold">{dashboardData?.total_notas_hoje || 0}</p>
-                <p className="text-green-200 text-xs mt-1">
+              <div className="min-w-0 flex-1">
+                <p className="text-green-100 text-xs sm:text-sm font-medium truncate">Notas Bipadas</p>
+                <p className="text-xl sm:text-3xl font-bold">{dashboardData?.total_notas_hoje || 0}</p>
+                <p className="text-green-200 text-xs mt-1 truncate">
                   {periodoSelecionado === 'hoje' ? 'Hoje' : 
                    periodoSelecionado === 'semana' ? 'Última Semana' : 
                    'Último Mês'}
                 </p>
               </div>
-              <Activity className="h-12 w-12 text-green-200" />
+              <Activity className="h-6 w-6 sm:h-12 sm:w-12 text-green-200 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white select-none">
-          <CardContent className="p-6">
+        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white select-none dark:bg-purple-900/30 dark:border-purple-500/50">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-purple-100 text-sm font-medium">Volumes Processados</p>
-                <p className="text-3xl font-bold">{dashboardData?.total_volumes_hoje || 0}</p>
-                <p className="text-purple-200 text-xs mt-1">
+              <div className="min-w-0 flex-1">
+                <p className="text-purple-100 text-xs sm:text-sm font-medium truncate">Volumes Processados</p>
+                <p className="text-xl sm:text-3xl font-bold">{dashboardData?.total_volumes_hoje || 0}</p>
+                <p className="text-purple-200 text-xs mt-1 truncate">
                   {periodoSelecionado === 'hoje' ? 'Hoje' : 
                    periodoSelecionado === 'semana' ? 'Última Semana' : 
                    'Último Mês'}
                 </p>
               </div>
-              <Package className="h-12 w-12 text-purple-200" />
+              <Package className="h-6 w-6 sm:h-12 sm:w-12 text-purple-200 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white select-none">
-          <CardContent className="p-6">
+        <Card className="bg-gradient-to-br from-orange-500 to-orange-600 text-white select-none dark:bg-orange-900/30 dark:border-orange-500/50">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-orange-100 text-sm font-medium">Produtividade Média</p>
-                <p className="text-3xl font-bold">{dashboardData?.produtividade_media_hoje || 0}</p>
-                <p className="text-orange-200 text-xs mt-1">
+              <div className="min-w-0 flex-1">
+                <p className="text-orange-100 text-xs sm:text-sm font-medium truncate">Produtividade Média</p>
+                <p className="text-xl sm:text-3xl font-bold">{dashboardData?.produtividade_media_hoje || 0}</p>
+                <p className="text-orange-200 text-xs mt-1 truncate">
                   {periodoSelecionado === 'hoje' ? 'Notas/Hora' : 
                    periodoSelecionado === 'semana' ? 'Notas/Dia' : 
                    'Notas/Dia'}
                 </p>
               </div>
-              <Target className="h-12 w-12 text-orange-200" />
+              <Target className="h-6 w-6 sm:h-12 sm:w-12 text-orange-200 flex-shrink-0" />
             </div>
           </CardContent>
         </Card>
@@ -707,16 +710,16 @@ export default function DashboardEstatisticas() {
       <Card className="select-none">
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <Clock className="h-6 w-6 text-blue-600" />
-            <span>Produtividade por Turno</span>
+            <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
+            <span className="text-lg sm:text-xl">Produtividade por Turno</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {Object.entries(dashboardData?.carros_por_turno || {}).map(([turno, quantidade]) => (
-              <div key={turno} className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg border dark:border-gray-700">
+              <div key={turno} className="bg-gray-50 dark:bg-gray-800 p-3 sm:p-4 rounded-lg border dark:border-gray-700">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-gray-800 dark:text-gray-200">{formatarTurno(turno)}</h4>
+                  <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm sm:text-base">{formatarTurno(turno)}</h4>
                   <Badge variant="outline" className="text-xs">
                     {quantidade} carros
                   </Badge>
@@ -749,15 +752,18 @@ export default function DashboardEstatisticas() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
-            <TrendingUp className="h-6 w-6 text-green-600" />
-            <span>Evolução da Produtividade ({periodoSelecionado === 'hoje' ? 'Hoje' : periodoSelecionado === 'semana' ? 'Última Semana' : 'Último Mês'})</span>
+            <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
+            <span className="text-lg sm:text-xl">
+              <span className="hidden sm:inline">Evolução da Produtividade ({periodoSelecionado === 'hoje' ? 'Hoje' : periodoSelecionado === 'semana' ? 'Última Semana' : 'Último Mês'})</span>
+              <span className="sm:hidden">Evolução ({periodoSelecionado === 'hoje' ? 'Hoje' : periodoSelecionado === 'semana' ? 'Semana' : 'Mês'})</span>
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {/* Gráfico de linha simples */}
-            <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg">
-              <div className="h-64 relative">
+            <div className="bg-gray-50 dark:bg-gray-800 p-3 sm:p-6 rounded-lg">
+              <div className="h-48 sm:h-64 relative">
                 <svg className="w-full h-full" viewBox="0 0 800 200" preserveAspectRatio="xMidYMid meet">
                   {/* Grid lines */}
                   <defs>
@@ -769,6 +775,7 @@ export default function DashboardEstatisticas() {
                   
                   {/* Chart area */}
                   <rect x="80" y="20" width="640" height="160" fill="white" stroke="#e5e7eb" strokeWidth="1" rx="4"/>
+
                   
                   {/* Data points and lines */}
                   {dashboardData?.evolucao_semanal.map((dia, index) => {
@@ -784,14 +791,14 @@ export default function DashboardEstatisticas() {
                           cy={y}
                           r="4"
                           fill="#3b82f6"
-                          stroke="white"
+                          stroke="white dark:stroke-gray-400"
                           strokeWidth="2"
                         />
                         {/* Value label */}
                         <text
                           x={x}
                           y={y - 10}
-                          className="text-xs fill-gray-600"
+                          className="text-xs fill-gray-600 dark:fill-gray-400"
                           textAnchor="middle"
                         >
                           {dia.carros}
@@ -800,7 +807,7 @@ export default function DashboardEstatisticas() {
                         <text
                           x={x}
                           y="195"
-                          className="text-xs fill-gray-500"
+                          className="text-xs fill-gray-500 dark:fill-gray-400"
                           textAnchor="middle"
                         >
                           {formatarData(dia.data)}
@@ -828,7 +835,7 @@ export default function DashboardEstatisticas() {
                         key={index}
                         x="75"
                         y={180 - (ratio * 140)}
-                        className="text-xs fill-gray-600"
+                        className="text-xs fill-gray-600 dark:fill-gray-400"
                         textAnchor="end"
                       >
                         {value}
@@ -840,7 +847,7 @@ export default function DashboardEstatisticas() {
                   <text
                     x="400"
                     y="15"
-                    className="text-sm fill-gray-800 font-semibold"
+                    className="text-sm fill-gray-800 font-semibold dark:fill-gray-300"
                     textAnchor="middle"
                   >
                     Carros Processados por Dia
@@ -849,29 +856,29 @@ export default function DashboardEstatisticas() {
               </div>
             </div>
 
-            {/* Tabela de dados */}
-            <div className="overflow-x-auto">
+            {/* Tabela de dados - Desktop */}
+            <div className="hidden sm:block overflow-x-auto dark:bg-gray-800">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 dark:bg-gray-800">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Carros</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notas</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volumes</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Produtividade</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Data</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Carros</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Notas</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Volumes</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Produtividade</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
+                <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
                   {dashboardData?.evolucao_semanal.map((dia, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-300">
                         {formatarData(dia.data)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{dia.carros}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{dia.notas}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{dia.volumes}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">{dia.carros}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">{dia.notas}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">{dia.volumes}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200">
                           {dia.carros > 0 ? Math.round((dia.notas / dia.carros) * 100) / 100 : 0}
                         </span>
                       </td>
@@ -880,6 +887,34 @@ export default function DashboardEstatisticas() {
                 </tbody>
               </table>
             </div>
+
+            {/* Cards de dados - Mobile */}
+            <div className="sm:hidden space-y-3">
+              {dashboardData?.evolucao_semanal.map((dia, index) => (
+                <div key={index} className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-300">{formatarData(dia.data)}</h4>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200">
+                      {dia.carros > 0 ? Math.round((dia.notas / dia.carros) * 100) / 100 : 0}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div>
+                      <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{dia.carros}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Carros</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">{dia.notas}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Notas</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{dia.volumes}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Volumes</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -887,43 +922,79 @@ export default function DashboardEstatisticas() {
       {/* Colaboradores que se Destacaram */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Award className="h-6 w-6 text-yellow-600" />
-            <span>Colaboradores que se Destacaram</span>
+          <CardTitle className="flex items-center space-x-2 dark:text-gray-300">
+            <Award className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-600 dark:text-yellow-400" />
+            <span className="text-lg sm:text-xl">Colaboradores que se Destacaram</span>
           </CardTitle>
-          <p className="text-sm text-gray-600">Top 5 colaboradores com maior produtividade {periodoSelecionado === 'hoje' ? 'hoje' : periodoSelecionado === 'semana' ? 'na última semana' : 'no último mês'}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Top 5 colaboradores com maior produtividade {periodoSelecionado === 'hoje' ? 'hoje' : periodoSelecionado === 'semana' ? 'na última semana' : 'no último mês'}</p>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {dashboardData?.colaboradores_destaque.map((colaborador, index) => (
-              <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 text-white font-bold">
-                    {index === 0 ? <Trophy className="h-5 w-5" /> : 
-                     index === 1 ? <Award className="h-5 w-5" /> :
-                     index === 2 ? <Star className="h-5 w-5" /> : index + 1}
+              <div key={index} className="p-3 sm:p-4 bg-gray-50 rounded-lg border dark:bg-gray-800 dark:border-gray-700">
+                {/* Layout Desktop */}
+                <div className="hidden sm:flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 text-white font-bold">
+                      {index === 0 ? <Trophy className="h-5 w-5" /> : 
+                       index === 1 ? <Award className="h-5 w-5" /> :
+                       index === 2 ? <Star className="h-5 w-5" /> : index + 1}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900 dark:text-gray-300">{colaborador.nome}</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Turno {formatarTurno(colaborador.turno)}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">{colaborador.nome}</h4>
-                    <p className="text-sm text-gray-600">Turno {formatarTurno(colaborador.turno)}</p>
+                  <div className="flex items-center space-x-6">
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{colaborador.carros_processados}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Carros</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-green-600 dark:text-green-400">{colaborador.notas_processadas}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Notas</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-purple-600 dark:text-purple-400">{colaborador.volumes_processados}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Volumes</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{Math.round(colaborador.produtividade_media * 100) / 100}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Volumes/Hora</p>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center space-x-6">
-                  <div className="text-center">
-                    <p className="text-lg font-bold text-blue-600">{colaborador.carros_processados}</p>
-                    <p className="text-xs text-gray-600">Carros</p>
+
+                {/* Layout Mobile */}
+                <div className="sm:hidden space-y-3">
+                  <div className="flex items-center space-x-3">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 text-white font-bold text-sm">
+                      {index === 0 ? <Trophy className="h-4 w-4" /> : 
+                       index === 1 ? <Award className="h-4 w-4" /> :
+                       index === 2 ? <Star className="h-4 w-4" /> : index + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-gray-900 dark:text-gray-300 text-sm truncate">{colaborador.nome}</h4>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Turno {formatarTurno(colaborador.turno)}</p>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-lg font-bold text-green-600">{colaborador.notas_processadas}</p>
-                    <p className="text-xs text-gray-600">Notas</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-lg font-bold text-purple-600">{colaborador.volumes_processados}</p>
-                    <p className="text-xs text-gray-600">Volumes</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-lg font-bold text-orange-600">{Math.round(colaborador.produtividade_media * 100) / 100}</p>
-                    <p className="text-xs text-gray-600">Volumes/Hora</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="text-center p-2 bg-white dark:bg-gray-700 rounded">
+                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{colaborador.carros_processados}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Carros</p>
+                    </div>
+                    <div className="text-center p-2 bg-white dark:bg-gray-700 rounded">
+                      <p className="text-lg font-bold text-green-600 dark:text-green-400">{colaborador.notas_processadas}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Notas</p>
+                    </div>
+                    <div className="text-center p-2 bg-white dark:bg-gray-700 rounded">
+                      <p className="text-lg font-bold text-purple-600 dark:text-purple-400">{colaborador.volumes_processados}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Volumes</p>
+                    </div>
+                    <div className="text-center p-2 bg-white dark:bg-gray-700 rounded">
+                      <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{Math.round(colaborador.produtividade_media * 100) / 100}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Produtividade</p>
+                    </div>
                   </div>
                 </div>
               </div>

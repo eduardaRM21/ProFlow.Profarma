@@ -46,6 +46,7 @@ import { ptBR } from "date-fns/locale";
 import { useSession } from "@/hooks/use-database";
 import { LocalAuthService } from "@/lib/local-auth-service";
 import { LoginButton } from "@/components/ui/loading-button";
+import { Loader } from "@/components/ui/loader";
 
 export default function LoginPage() {
   const [colaboradores, setColaboradores] = useState([""]);
@@ -71,27 +72,34 @@ export default function LoginPage() {
 
   const validarUsuarioCustos = async () => {
     try {
-      const { AuthService } = await import('@/lib/auth-service')
-      
       // Verificar se a senha foi informada
       if (!senhaCustos.trim()) {
         alert("Por favor, informe a senha.");
         return false;
       }
 
+      // Importar AuthService dinamicamente
+      const authModule = await import('@/lib/auth-service')
+      const AuthService = authModule.AuthService
+      
+      if (!AuthService) {
+        throw new Error('AuthService não foi encontrado no módulo')
+      }
+
       // Autenticar usuário com senha
       const result = await AuthService.authenticateUser(usuarioCustos.trim(), senhaCustos.trim(), area)
       
       if (!result.success) {
+        console.error("❌ Falha na autenticação:", result.error);
         alert(result.error || "Erro na autenticação.");
         return false;
       }
 
       console.log("✅ Usuário administrativo autenticado para área:", area, "ID:", result.user?.id);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro ao validar usuário administrativo:", error);
-      alert("Erro ao validar usuário. Tente novamente.");
+      alert(`Erro ao validar usuário: ${error.message || 'Tente novamente.'}`);
       return false;
     }
   };
@@ -99,7 +107,14 @@ export default function LoginPage() {
   // NOVA FUNÇÃO: Validar usuário para áreas operacionais (recebimento e embalagem)
   const validarUsuarioOperacional = async (nomeUsuario: string, areaSelecionada: string) => {
     try {
-      const { getSupabase } = await import('@/lib/supabase-client')
+      // Importar getSupabase dinamicamente
+      const supabaseModule = await import('@/lib/supabase-client')
+      const getSupabase = supabaseModule.getSupabase
+      
+      if (!getSupabase) {
+        throw new Error('getSupabase não foi encontrado no módulo')
+      }
+
       const supabase = getSupabase()
 
       // Buscar usuário na tabela users para setores operacionais
@@ -110,7 +125,13 @@ export default function LoginPage() {
         .eq('ativo', true)
         .single()
 
-      if (userError || !userData) {
+      if (userError) {
+        console.error("❌ Erro ao buscar usuário:", userError);
+        alert(`Erro ao buscar usuário: ${userError.message}`);
+        return false;
+      }
+
+      if (!userData) {
         alert("Usuário não encontrado ou inativo.");
         return false;
       }
@@ -123,9 +144,9 @@ export default function LoginPage() {
 
       console.log("✅ Usuário operacional validado:", nomeUsuario, "ID:", userData.id, "para área:", areaSelecionada);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Erro ao validar usuário operacional:", error);
-      alert("Erro ao validar usuário. Tente novamente.");
+      alert(`Erro ao validar usuário: ${error.message || 'Tente novamente.'}`);
       return false;
     }
   };
@@ -272,7 +293,10 @@ export default function LoginPage() {
       localStorage.setItem(sessionKey, JSON.stringify(sessionData))
       console.log("✅ Sessão também salva no localStorage com ID específico:", sessionId)
 
-      // Redirecionar para a área correspondente
+      // Desativar loading de processamento
+      setIsLoading(false);
+
+      // Redirecionar para a área correspondente imediatamente
       if (area === "recebimento") {
         router.push("/recebimento");
       } else if (area === "embalagem") {
@@ -287,12 +311,11 @@ export default function LoginPage() {
         router.push("/inventario");
       } else {
         router.push("/painel");
-
       }
-    } catch (error) {
+
+    } catch (error: any) {
       console.error("❌ Erro ao salvar sessão:", error);
-      alert("Erro ao fazer login. Tente novamente.");
-    } finally {
+      alert(`Erro ao fazer login: ${error.message || 'Tente novamente.'}`);
       setIsLoading(false);
     }
   };
@@ -350,27 +373,30 @@ export default function LoginPage() {
   };
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br ${getAreaColor(area)} flex items-center justify-center p-4`}>
-      <Card className="w-full max-w-md bg-white border-gray-200 shadow-lg">
+    <>
+      {isLoading && <Loader text="Processando login..." duration={0} />}
+      <div className={`min-h-screen bg-gradient-to-br ${getAreaColor(area)} flex items-center justify-center p-4`}>
+        <Card className="w-full max-w-md bg-white border-gray-200 shadow-lg">
         <CardHeader className="text-center bg-white">
           <div className="flex justify-center mb-4">
             {!area ? (
               // Logo ProFlow quando nenhum setor estiver selecionado
               <div className="flex items-center space-x-3">
-                {/* Círculo verde com linhas brancas */}
-                <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
-                  <div className="flex space-x-1">
-                    <div className="w-0.5 h-8 bg-white"></div>
-                    <div className="w-0.5 h-8 bg-white"></div>
-                    <div className="w-0.5 h-8 bg-white"></div>
-                    <div className="w-0.5 h-8 bg-white"></div>
-                  </div>
+                {/* Logo SVG */}
+                <div className="w-14 h-15">
+                  <svg width="60" height="60" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img">
+                    <circle cx="256" cy="256" r="216" fill="#48C142"/>
+                    <rect x="196" y="140" width="20" height="232" rx="8" fill="#FFFFFF"/>
+                    <rect x="236" y="120" width="24" height="272" rx="8" fill="#FFFFFF"/>
+                    <rect x="280" y="140" width="20" height="232" rx="8" fill="#FFFFFF"/>
+                    <rect x="316" y="160" width="16" height="192" rx="8" fill="#FFFFFF"/>
+                  </svg>
                 </div>
 
-                {/* Texto ProFlow */}
+                {/* Texto ProFlow */}   
                 <div className="text-left">
                   <div className="text-3xl font-bold text-gray-900">ProFlow</div>
-                  <div className="text-sm text-green-500 font-medium">Fluxo profissional entre setores</div>
+                  <div className="text-sm font-medium" style={{ color: "rgb(72, 193, 66)" }}>Fluxo Profissional entre setores</div>
                 </div>
               </div>
             ) : (
@@ -589,7 +615,8 @@ export default function LoginPage() {
           />
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }
 

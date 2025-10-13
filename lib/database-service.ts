@@ -1,4 +1,4 @@
-import { getSupabase, retryWithBackoff, testSupabaseConnection } from './supabase-client'
+import { getSupabase, retryWithBackoff, retryWithBackoffAndTimeout, testSupabaseConnection } from './supabase-client'
 import { convertDateToISO } from './utils'
 
 // Tipos de dados
@@ -49,6 +49,7 @@ export interface Relatorio {
   area: string
   quantidadeNotas: number
   somaVolumes: number
+  totalDivergencias: number
   notas: NotaFiscal[]
   dataFinalizacao: string
   status: string
@@ -107,8 +108,8 @@ export const SessionService = {
         throw new Error('Dados obrigatórios da sessão estão faltando')
       }
       
-      // Gerar ID único para a sessão baseado na área, data, turno e timestamp
-      const sessionId = `session_${sessionData.area}_${sessionData.data.replace(/\//g, '-')}_${sessionData.turno}_${Date.now()}`
+      // Gerar UUID para a sessão
+      const sessionId = crypto.randomUUID()
       
       // Converter data para formato ISO se estiver no formato brasileiro
       let dataFormatada = sessionData.data
@@ -117,14 +118,16 @@ export const SessionService = {
         console.log('📅 Data da sessão convertida de', sessionData.data, 'para', dataFormatada)
       }
       
-      // Preparar dados para o banco
+      // Preparar dados para o banco (usando estrutura real da tabela sessions)
       const sessionPayload = {
         id: sessionId,
+        area: sessionData.area,
         colaboradores: sessionData.colaboradores,
         data: dataFormatada,
         turno: sessionData.turno,
-        area: sessionData.area,
         login_time: sessionData.loginTime,
+        usuario_custos: sessionData.usuarioCustos || null,
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
       
@@ -554,11 +557,88 @@ export const RelatoriosService = {
     }
   },
 
+  // Calcular total de divergências
+  async calcularTotalDivergencias(relatorio: Relatorio): Promise<number> {
+    try {
+      console.log('🔍 Calculando total de divergências para relatório:', relatorio.nome)
+      
+      // Se o relatório já tem totalDivergencias definido, usar esse valor
+      if (relatorio.totalDivergencias !== undefined && relatorio.totalDivergencias !== null) {
+        console.log('🔍 Usando totalDivergencias já definido:', relatorio.totalDivergencias)
+        return relatorio.totalDivergencias
+      }
+
+      // Se há notas carregadas, calcular baseado no status das notas
+      if (relatorio.notas && relatorio.notas.length > 0) {
+        console.log('🔍 Calculando baseado nas notas carregadas:', relatorio.notas.length)
+        const totalDivergencias = relatorio.notas.filter(nota => 
+          nota.status === 'divergencia' || 
+          (nota.divergencia && nota.divergencia.observacoes)
+        ).length
+        
+        console.log('🔍 Total de divergências calculado das notas:', totalDivergencias)
+        return totalDivergencias
+      }
+
+      // Se não há notas carregadas, buscar no banco de dados
+      console.log('🔍 Buscando divergências no banco de dados...')
+      const supabase = getSupabase()
+      
+      // Buscar notas do relatório na tabela relatorio_notas
+      if (!relatorio.id) {
+        console.log('🔍 Relatório sem ID, não é possível buscar divergências no banco')
+        return 0
+      }
+      
+      const { data: relatorioNotas, error: relatorioNotasError } = await supabase
+        .from('relatorio_notas')
+        .select('nota_fiscal_id')
+        .eq('relatorio_id', relatorio.id)
+
+      if (relatorioNotasError) {
+        console.warn('⚠️ Erro ao buscar notas do relatório:', relatorioNotasError)
+        return 0
+      }
+
+      if (!relatorioNotas || relatorioNotas.length === 0) {
+        console.log('🔍 Nenhuma nota encontrada para o relatório')
+        return 0
+      }
+
+      const notaIds = relatorioNotas.map(rn => rn.nota_fiscal_id)
+      console.log('🔍 IDs das notas do relatório:', notaIds)
+      
+      const { data: divergencias, error } = await supabase
+        .from('divergencias')
+        .select('id')
+        .in('nota_fiscal_id', notaIds)
+
+      if (error) {
+        console.warn('⚠️ Erro ao buscar divergências:', error)
+        return 0
+      }
+
+      const total = divergencias?.length || 0
+      console.log('🔍 Total de divergências encontradas no banco:', total)
+      return total
+    } catch (error) {
+      console.warn('⚠️ Erro ao calcular divergências:', error)
+      return 0
+    }
+  },
+
   // Salvar relatório
   async saveRelatorio(relatorio: Relatorio): Promise<void> {
     try {
       console.log('💾 Tentando salvar relatório no banco...')
       console.log('🔍 Dados do relatório recebido:', relatorio)
+      
+      // Calcular total de divergências se não foi fornecido
+      if (relatorio.totalDivergencias === undefined || relatorio.totalDivergencias === null) {
+        console.log('🔍 Calculando total de divergências...')
+        relatorio.totalDivergencias = await RelatoriosService.calcularTotalDivergencias(relatorio)
+        console.log('🔍 Total de divergências calculado:', relatorio.totalDivergencias)
+      }
       
       // Converter data para formato ISO se estiver no formato brasileiro
       let dataFormatada = relatorio.data
@@ -593,6 +673,7 @@ export const RelatoriosService = {
           area: relatorio.area,
           quantidade_notas: relatorio.quantidadeNotas,
           soma_volumes: relatorio.somaVolumes,
+          total_divergencias: relatorio.totalDivergencias || 0,
           data_finalizacao: relatorio.dataFinalizacao,
           status: relatorio.status,
           created_at: new Date().toISOString()
@@ -605,7 +686,7 @@ export const RelatoriosService = {
           console.log('🔍 Atualizando relatório existente...')
           return await supabase
             .from('relatorios')
-            .upsert({ ...payload, id: relatorio.id })
+            .upsert({ ...payload, id: relatorio.id! })
             .select()
         } else {
           // Novo relatório - não incluir ID, usar insert
@@ -626,6 +707,10 @@ export const RelatoriosService = {
       
       // Obter o ID do relatório salvo
       const relatorioId = relatorio.id || relatorioData?.[0]?.id
+      console.log('🔍 ID do relatório obtido:', relatorioId)
+      console.log('🔍 Relatório original ID:', relatorio.id)
+      console.log('🔍 Relatório salvo ID:', relatorioData?.[0]?.id)
+      
       if (!relatorioId) {
         throw new Error('Não foi possível obter o ID do relatório salvo')
       }
@@ -726,37 +811,59 @@ export const RelatoriosService = {
           
           console.log('🔍 Relacionamentos a serem salvos:', colaboradoresRelacionamentos)
           
-          // CORREÇÃO: Usar upsert para evitar duplicatas e garantir que todos sejam salvos
-          const { error: colaboradoresError } = await supabase
-            .from('relatorio_colaboradores')
-            .upsert(colaboradoresRelacionamentos, {
-              onConflict: 'relatorio_id,user_id',
-              ignoreDuplicates: false
-            })
+          // CORREÇÃO: Inserir colaboradores individualmente com verificação de duplicatas
+          console.log('🔄 Inserindo colaboradores individualmente...')
+          let colaboradoresSalvos = 0
+          let colaboradoresDuplicados = 0
           
-          if (colaboradoresError) {
-            console.error('❌ Erro ao salvar colaboradores:', colaboradoresError)
-            
-            // CORREÇÃO: Tentar inserir individualmente se o upsert falhar
-            console.log('🔄 Tentando inserir colaboradores individualmente...')
-            for (const relacionamento of colaboradoresRelacionamentos) {
-              try {
-                const { error: individualError } = await supabase
-                  .from('relatorio_colaboradores')
-                  .insert(relacionamento)
-                
-                if (individualError) {
-                  console.error(`❌ Erro ao salvar colaborador individual ${relacionamento.user_id}:`, individualError)
-                } else {
-                  console.log(`✅ Colaborador individual salvo: ${relacionamento.user_id}`)
-                }
-              } catch (error) {
-                console.error(`❌ Erro geral ao salvar colaborador individual ${relacionamento.user_id}:`, error)
+          for (const relacionamento of colaboradoresRelacionamentos) {
+            try {
+              // Verificar se user_id e relatorio_id são válidos
+              if (!relacionamento.user_id) {
+                console.error(`❌ user_id inválido para relacionamento:`, relacionamento)
+                continue
               }
+              
+              if (!relacionamento.relatorio_id) {
+                console.error(`❌ relatorio_id inválido para relacionamento:`, relacionamento)
+                continue
+              }
+              
+              // Verificar se já existe antes de inserir
+              const { data: existing, error: checkError } = await supabase
+                .from('relatorio_colaboradores')
+                .select('id')
+                .eq('relatorio_id', relacionamento.relatorio_id)
+                .eq('user_id', relacionamento.user_id)
+                .maybeSingle()
+              
+              if (existing) {
+                console.log(`⚠️ Colaborador ${relacionamento.user_id} já existe para este relatório`)
+                colaboradoresDuplicados++
+                continue
+              }
+              
+              // Inserir se não existir
+              const { error: individualError } = await supabase
+                .from('relatorio_colaboradores')
+                .insert({
+                  id: crypto.randomUUID(),
+                  relatorio_id: relacionamento.relatorio_id,
+                  user_id: relacionamento.user_id
+                })
+              
+              if (individualError) {
+                console.error(`❌ Erro ao salvar colaborador individual ${relacionamento.user_id}:`, individualError)
+              } else {
+                console.log(`✅ Colaborador individual salvo: ${relacionamento.user_id}`)
+                colaboradoresSalvos++
+              }
+            } catch (error) {
+              console.error(`❌ Erro geral ao salvar colaborador individual ${relacionamento.user_id}:`, error)
             }
-          } else {
-            console.log('✅ Colaboradores salvos via upsert:', colaboradoresRelacionamentos.length)
           }
+          
+          console.log(`✅ Colaboradores processados: ${colaboradoresSalvos} salvos, ${colaboradoresDuplicados} duplicados`)
         } else {
           console.log('⚠️ Nenhum ID válido de colaborador encontrado')
           console.log('🔍 Colaboradores recebidos:', relatorio.colaboradores)
@@ -801,17 +908,6 @@ export const RelatoriosService = {
             })
             
             try {
-              // Verificar se a nota já existe na tabela notas_fiscais
-              // Usar apenas numero_nf para busca (mais confiável)
-              const { data: notaExistente, error: buscaError } = await supabase
-                .from('notas_fiscais')
-                .select('id')
-                .eq('numero_nf', nota.numeroNF)
-                .single()
-              
-              let notaId: string
-              
-              // Sempre processar a nota, independente se já existe ou não
               // Preparar dados da nota com tratamento de campos
               const notaData = {
                 codigo_completo: nota.codigoCompleto || '',
@@ -827,15 +923,40 @@ export const RelatoriosService = {
               
               console.log(`🔍 Dados da nota a serem processados:`, notaData)
               
-              // Agora que temos constraint única, podemos usar upsert com segurança
-              const { data: notaSalva, error: notaError } = await supabase
+              // Verificar se a nota já existe primeiro
+              const { data: notaExistente, error: buscaError } = await supabase
                 .from('notas_fiscais')
-                .upsert(notaData, { 
-                  onConflict: 'numero_nf',
-                  ignoreDuplicates: false 
-                })
-                .select()
-                .single()
+                .select('id')
+                .eq('numero_nf', nota.numeroNF)
+                .limit(1)
+              
+              let notaId: string
+              
+              let notaSalva: any
+              let notaError: any
+              
+              if (notaExistente && notaExistente.length > 0) {
+                // Atualizar nota existente
+                const { data: updatedNota, error: updateError } = await supabase
+                  .from('notas_fiscais')
+                  .update(notaData)
+                  .eq('id', notaExistente[0].id as string)
+                  .select()
+                  .single()
+                
+                notaSalva = updatedNota
+                notaError = updateError
+              } else {
+                // Inserir nova nota
+                const { data: insertedNota, error: insertError } = await supabase
+                  .from('notas_fiscais')
+                  .insert(notaData)
+                  .select()
+                  .single()
+                
+                notaSalva = insertedNota
+                notaError = insertError
+              }
               
               if (notaError) {
                 console.error(`❌ Erro ao salvar nota fiscal ${index + 1}:`, notaError)
@@ -890,19 +1011,55 @@ export const RelatoriosService = {
           
           console.log('🔍 Relacionamentos de TODAS as notas a serem salvos:', todasNotasRelacionamentos.length)
           
-          // Usar upsert para evitar duplicações mas garantir que todas as notas sejam associadas
-          const { error: notasError } = await supabase
-            .from('relatorio_notas')
-            .upsert(todasNotasRelacionamentos, { 
-              onConflict: 'relatorio_id,nota_fiscal_id',
-              ignoreDuplicates: false 
-            })
+          // CORREÇÃO: Inserir notas individualmente com verificação de duplicatas
+          console.log('🔄 Inserindo relacionamentos de notas individualmente...')
+          let notasSalvas = 0
+          let notasDuplicadas = 0
           
-          if (notasError) {
-            console.error('❌ Erro ao salvar relacionamentos de notas:', notasError)
-          } else {
-            console.log('✅ Relacionamentos de TODAS as notas salvos:', todasNotasRelacionamentos.length)
+          for (const relacionamento of todasNotasRelacionamentos) {
+            try {
+              // Verificar se nota_fiscal_id e relatorio_id são válidos
+              if (!relacionamento.nota_fiscal_id) {
+                console.error(`❌ nota_fiscal_id inválido para relacionamento:`, relacionamento)
+                continue
+              }
+              
+              if (!relacionamento.relatorio_id) {
+                console.error(`❌ relatorio_id inválido para relacionamento:`, relacionamento)
+                continue
+              }
+              
+              // Verificar se já existe antes de inserir
+              const { data: existing, error: checkError } = await supabase
+                .from('relatorio_notas')
+                .select('id')
+                .eq('relatorio_id', relacionamento.relatorio_id)
+                .eq('nota_fiscal_id', relacionamento.nota_fiscal_id)
+                .maybeSingle()
+              
+              if (existing) {
+                console.log(`⚠️ Nota ${relacionamento.nota_fiscal_id} já existe para este relatório`)
+                notasDuplicadas++
+                continue
+              }
+              
+              // Inserir se não existir
+              const { error: individualError } = await supabase
+                .from('relatorio_notas')
+                .insert(relacionamento)
+              
+              if (individualError) {
+                console.error(`❌ Erro ao salvar nota individual ${relacionamento.nota_fiscal_id}:`, individualError)
+              } else {
+                console.log(`✅ Nota individual salva: ${relacionamento.nota_fiscal_id}`)
+                notasSalvas++
+              }
+            } catch (error) {
+              console.error(`❌ Erro geral ao salvar nota individual ${relacionamento.nota_fiscal_id}:`, error)
+            }
           }
+          
+          console.log(`✅ Notas processadas: ${notasSalvas} salvas, ${notasDuplicadas} duplicadas`)
           
           // Salvar divergências se houver (para todas as notas com divergência)
           const divergencias = notasValidas
@@ -971,12 +1128,12 @@ export const RelatoriosService = {
   async getRelatorios(): Promise<Relatorio[]> {
     try {
       console.log('📋 Tentando carregar relatórios do banco...')
-      const { data, error } = await retryWithBackoff(async () => {
+      const { data, error } = await retryWithBackoffAndTimeout(async () => {
         return await getSupabase()
           .from('relatorios')
           .select('*')
           .order('created_at', { ascending: false })
-      })
+      }, 60000) // Timeout de 60 segundos
 
       if (error) {
         console.error('❌ Erro ao buscar relatórios:', error)
@@ -1014,6 +1171,7 @@ export const RelatoriosService = {
           area: item.area ?? 'custos',
           quantidadeNotas: item.quantidade_notas ?? 0,
           somaVolumes: item.soma_volumes ?? 0,
+          totalDivergencias: item.total_divergencias ?? 0,
           notas: item.notas ?? [],
           dataFinalizacao: item.data_finalizacao ?? new Date().toISOString(),
           status: item.status ?? 'liberado',
@@ -1186,7 +1344,7 @@ export const ChatService = {
         console.log('🔍 NF não encontrada nas sessões ativas, buscando nos relatórios finalizados...')
         
         try {
-          const { data: relatoriosData, error: relatoriosError } = await retryWithBackoff(async () => {
+          const { data: relatoriosData, error: relatoriosError } = await retryWithBackoffAndTimeout(async () => {
             return await getSupabase()
               .from('relatorios')
               .select('*')
@@ -1194,7 +1352,7 @@ export const ChatService = {
               .eq('data', data)
               .eq('turno', turno)
               .eq('status', 'liberado')
-          })
+          }, 60000) // Timeout de 60 segundos
           
           if (!relatoriosError && relatoriosData && relatoriosData.length > 0) {
             console.log(`📋 Encontrados ${relatoriosData.length} relatórios finalizados de recebimento`)
@@ -1239,7 +1397,7 @@ export const ChatService = {
           const data7DiasAtras = new Date(dataAtual.getTime() - (7 * 24 * 60 * 60 * 1000))
           const dataFormatada = data7DiasAtras.toLocaleDateString('pt-BR')
           
-          const { data: relatoriosAntigosData, error: relatoriosAntigosError } = await retryWithBackoff(async () => {
+          const { data: relatoriosAntigosData, error: relatoriosAntigosError } = await retryWithBackoffAndTimeout(async () => {
             return await getSupabase()
               .from('relatorios')
               .select('*')
@@ -1248,7 +1406,7 @@ export const ChatService = {
               .gte('data', dataFormatada)
               .order('data', { ascending: false })
               .limit(50) // Limitar a 50 relatórios para performance
-          })
+          }, 60000) // Timeout de 60 segundos
           
           if (!relatoriosAntigosError && relatoriosAntigosData && relatoriosAntigosData.length > 0) {
             console.log(`📋 Verificando ${relatoriosAntigosData.length} relatórios dos últimos 7 dias`)

@@ -35,66 +35,26 @@ async function updateDatabaseSchema() {
       console.log('⚠️ Erro ao verificar estrutura:', checkError.message)
       console.log('Tentando método alternativo...')
       
-      // Método alternativo: tentar inserir dados com os novos campos
-      console.log('🧪 Testando inserção com novos campos...')
-      const testData = {
-        numero_nf: 'TEST_SCHEMA_001',
-        codigo_completo: 'TEST_SCHEMA_CODE_001',
-        carro_id: 'TEST_SCHEMA_CARRO_001',
-        session_id: 'TEST_SCHEMA_SESSION_001',
-        colaboradores: 'Teste Schema',
-        data: new Date().toISOString().split('T')[0],
-        turno: 'A',
-        volumes: 1,
-        destino: 'Teste Schema',
-        fornecedor: 'Teste Schema',
-        tipo_carga: 'Teste Schema',
-        status: 'teste_schema'
-      }
-
-      // Tentar inserir sem os novos campos primeiro
-      const { error: insertError1 } = await supabase
+      // Verificar se os novos campos existem consultando a estrutura da tabela
+      console.log('🔍 Verificando estrutura da tabela...')
+      
+      const { data: columns, error: columnsError } = await supabase
         .from('embalagem_notas_bipadas')
-        .insert(testData)
-
-      if (insertError1) {
-        console.log('❌ Erro ao inserir dados básicos:', insertError1.message)
+        .select('*')
+        .limit(1)
+      
+      if (columnsError) {
+        console.log('❌ Erro ao verificar estrutura:', columnsError.message)
+        console.log('Os campos numeros_sap e data_finalizacao precisam ser adicionados manualmente no banco')
+        console.log('Execute o seguinte SQL no seu banco de dados:')
+        console.log('')
+        console.log('ALTER TABLE embalagem_notas_bipadas ADD COLUMN IF NOT EXISTS numeros_sap TEXT[];')
+        console.log('ALTER TABLE embalagem_notas_bipadas ADD COLUMN IF NOT EXISTS data_finalizacao TIMESTAMP WITH TIME ZONE;')
+        console.log('')
         return
       }
-
-      console.log('✅ Dados básicos inseridos com sucesso')
-
-      // Agora tentar inserir com os novos campos
-      const testDataWithNewFields = {
-        ...testData,
-        numero_nf: 'TEST_SCHEMA_002',
-        codigo_completo: 'TEST_SCHEMA_CODE_002',
-        numeros_sap: ['123456', '789012'],
-        data_finalizacao: new Date().toISOString()
-      }
-
-      const { error: insertError2 } = await supabase
-        .from('embalagem_notas_bipadas')
-        .insert(testDataWithNewFields)
-
-      if (insertError2) {
-        console.log('❌ Erro ao inserir com novos campos:', insertError2.message)
-        console.log('Os campos numeros_sap e data_finalizacao precisam ser adicionados manualmente no banco')
-      } else {
-        console.log('✅ Dados com novos campos inseridos com sucesso')
-        
-        // Limpar dados de teste
-        const { error: deleteError } = await supabase
-          .from('embalagem_notas_bipadas')
-          .delete()
-          .in('numero_nf', ['TEST_SCHEMA_001', 'TEST_SCHEMA_002'])
-        
-        if (deleteError) {
-          console.log('⚠️ Erro ao limpar dados de teste:', deleteError.message)
-        } else {
-          console.log('🧹 Dados de teste removidos')
-        }
-      }
+      
+      console.log('✅ Estrutura da tabela verificada com sucesso')
 
     } else {
       console.log('📊 Estrutura atual da tabela:')

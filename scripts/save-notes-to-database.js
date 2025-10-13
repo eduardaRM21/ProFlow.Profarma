@@ -16,8 +16,8 @@ const fs = require('fs')
 const path = require('path')
 
 // Configurações do Supabase
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://vzqibndtoitnppvgkekc.supabase.co'
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ6cWlibmR0b2l0bnBwdmdrZWtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ3NzE1NjEsImV4cCI6MjA3MDM0NzU2MX0.-AJddOkbqLzOYY4x5CJjYb9N4TQFk2_67Z8ARVu9AbI'
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ehqxboqxtubeumaupjeq.supabase.co'
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVocXhib3F4dHViZXVtYXVwamVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg3MzcyODQsImV4cCI6MjA3NDMxMzI4NH0.Er0IuDQeEtJ6AzFua_BAPFkcG_rmgg35QgdF0gpfwWw'
 
 // Criar cliente Supabase
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -58,23 +58,8 @@ async function saveNotesToDatabase() {
     // 2. Verificar se há dados no localStorage (simulação)
     console.log('🔍 Verificando dados de notas...')
     
-    // Simular dados do localStorage para teste
-    const mockNotes = [
-      {
-        id: '1',
-        data: '14/09/2025',
-        nota: '000123456',
-        volume: 5,
-        destino: 'São Paulo',
-        fornecedor: 'Fornecedor Teste',
-        clienteDestino: 'Cliente Teste',
-        tipo: 'Normal',
-        transportadora: 'Transportadora Teste',
-        usuario: 'Usuario Teste',
-        dataEntrada: new Date().toISOString(),
-        codigoCompleto: 'CODIGO123456'
-      }
-    ]
+    // Dados serão carregados do localStorage ou passados como parâmetro
+    const mockNotes = []
 
     // 3. Validar dados antes de salvar
     console.log('🔍 Validando dados das notas...')
@@ -133,7 +118,7 @@ async function saveNotesToDatabase() {
             transportadora: nota.transportadora,
             usuario: nota.usuario,
             data_entrada: nota.dataEntrada,
-            status: 'recebida',
+            status: 'deu entrada',
             session_id: session.id
           }])
           .select()

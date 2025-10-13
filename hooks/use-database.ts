@@ -512,6 +512,7 @@ export const useRelatorios = () => {
           area: item.area ?? 'custos',
           quantidadeNotas: item.quantidade_notas ?? 0,
           somaVolumes: item.soma_volumes ?? 0,
+          totalDivergencias: item.total_divergencias ?? 0,
           notas: [], // Campo não existe mais na tabela
           dataFinalizacao: item.data_finalizacao ?? new Date().toISOString(),
           status: item.status ?? 'finalizado',
@@ -560,6 +561,7 @@ export const useRelatorios = () => {
           area: item.area ?? 'recebimento',
           quantidadeNotas: item.quantidade_notas ?? 0,
           somaVolumes: item.soma_volumes ?? 0,
+          totalDivergencias: item.total_divergencias ?? 0,
           notas: [], // Campo não existe mais na tabela
           dataFinalizacao: item.data_finalizacao ?? new Date().toISOString(),
           status: item.status ?? 'finalizado',

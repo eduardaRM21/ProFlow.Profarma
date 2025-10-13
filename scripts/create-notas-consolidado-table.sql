@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS notas_consolidado (
   transportadora TEXT NOT NULL,
   usuario TEXT NOT NULL,
   data_entrada TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  status TEXT DEFAULT 'recebida' CHECK (status IN ('recebida', 'processada', 'finalizada', 'cancelada')),
+  status TEXT DEFAULT 'deu entrada' CHECK (status IN ('deu entrada', 'recebida', 'processada', 'finalizada', 'cancelada')),
   session_id TEXT, -- Será adicionada foreign key constraint após verificar tipo da tabela sessions
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -91,31 +91,8 @@ COMMENT ON COLUMN notas_consolidado.created_at IS 'Data de criação do registro
 COMMENT ON COLUMN notas_consolidado.updated_at IS 'Data da última atualização do registro';
 
 -- Inserir dados de exemplo (opcional)
-INSERT INTO notas_consolidado (
-  codigo_completo,
-  numero_nf,
-  data,
-  volumes,
-  destino,
-  fornecedor,
-  cliente_destino,
-  tipo_carga,
-  transportadora,
-  usuario,
-  status
-) VALUES (
-  'CODIGO123456',
-  '000123456',
-  '2025-09-14',
-  5,
-  'São Paulo',
-  'Fornecedor Teste',
-  'Cliente Teste',
-  'Normal',
-  'Transportadora Teste',
-  'Usuario Teste',
-  'recebida'
-) ON CONFLICT DO NOTHING;
+-- Tabela criada com sucesso
+-- Dados serão inseridos através da aplicação
 
 -- Verificar tipo da tabela sessions existente
 SELECT 

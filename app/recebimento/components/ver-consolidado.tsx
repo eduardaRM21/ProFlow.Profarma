@@ -32,6 +32,7 @@ interface NotaFiscal {
   usuario: string
   dataEntrada: string
   codigoCompleto: string
+  status?: string
 }
 
 interface VerConsolidadoProps {
@@ -43,6 +44,7 @@ interface VerConsolidadoProps {
 export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConsolidadoProps) {
   const [notas, setNotas] = useState<NotaFiscal[]>([])
   const [notasFiltradas, setNotasFiltradas] = useState<NotaFiscal[]>([])
+  const [notasBipadas, setNotasBipadas] = useState<Set<string>>(new Set())
 
   // Filtros
   const [dataInicio, setDataInicio] = useState<Date | undefined>()
@@ -51,13 +53,14 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
   const [filtroDestino, setFiltroDestino] = useState("all")
   const [filtroFornecedor, setFiltroFornecedor] = useState("all")
   const [filtroTipo, setFiltroTipo] = useState("all")
-  const [filtroUsuario, setFiltroUsuario] = useState("all")
+  const [filtroStatus, setFiltroStatus] = useState("all")
   const [busca, setBusca] = useState("")
   const [carregando, setCarregando] = useState(false)
   const [fonteDados, setFonteDados] = useState<'local' | 'banco'>('local')
 
   useEffect(() => {
     carregarNotas()
+    carregarNotasBipadas()
   }, [])
 
   useEffect(() => {
@@ -70,7 +73,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
     filtroDestino,
     filtroFornecedor,
     filtroTipo,
-    filtroUsuario,
+    filtroStatus,
     busca,
   ])
 
@@ -104,7 +107,8 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
           transportadora: nota.transportadora,
           usuario: nota.usuario,
           dataEntrada: nota.data_entrada,
-          codigoCompleto: nota.codigo_completo
+          codigoCompleto: nota.codigo_completo,
+          status: nota.status
         }))
 
         setNotas(notasConvertidas)
@@ -135,6 +139,29 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
     setNotas(notasCarregadas)
     console.log(`📦 ${notasCarregadas.length} notas carregadas do localStorage`)
+  }
+
+  const carregarNotasBipadas = async () => {
+    try {
+      const supabase = getSupabase()
+      const { data: notasBipadasData, error } = await supabase
+        .from('notas_bipadas')
+        .select('numero_nf')
+        .eq('area_origem', 'recebimento')
+
+      if (error) {
+        console.warn('⚠️ Erro ao carregar notas bipadas:', error.message)
+        return
+      }
+
+      if (notasBipadasData) {
+        const numerosBipadas = new Set(notasBipadasData.map((nota: any) => nota.numero_nf as string))
+        setNotasBipadas(numerosBipadas)
+        console.log(`✅ ${numerosBipadas.size} notas bipadas carregadas`)
+      }
+    } catch (error) {
+      console.error('❌ Erro ao carregar notas bipadas:', error)
+    }
   }
 
   const aplicarFiltros = () => {
@@ -174,10 +201,11 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
       notasProcessadas = notasProcessadas.filter((nota) => nota.tipo.toLowerCase().includes(filtroTipo.toLowerCase()))
     }
 
-    if (filtroUsuario !== "all") {
-      notasProcessadas = notasProcessadas.filter((nota) =>
-        nota.usuario.toLowerCase().includes(filtroUsuario.toLowerCase()),
-      )
+    if (filtroStatus !== "all") {
+      notasProcessadas = notasProcessadas.filter((nota) => {
+        const statusNota = nota.status || 'deu entrada'
+        return statusNota.toLowerCase().includes(filtroStatus.toLowerCase())
+      })
     }
 
     // Busca geral
@@ -203,7 +231,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
     setFiltroDestino("all")
     setFiltroFornecedor("all")
     setFiltroTipo("all")
-    setFiltroUsuario("all")
+    setFiltroStatus("all")
     setBusca("")
   }
 
@@ -245,6 +273,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
     setCarregando(true)
     try {
       await carregarNotas()
+      await carregarNotasBipadas()
       console.log('✅ Dados atualizados do banco de dados')
     } catch (error) {
       console.error('❌ Erro ao atualizar do banco:', error)
@@ -271,6 +300,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
       "Fornecedor",
       "Cliente Destino",
       "Tipo",
+      "Status",
       "Usuário",
     ]
 
@@ -287,6 +317,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
           `"${nota.fornecedor}"`,
           nota.clienteDestino,
           nota.tipo,
+          nota.status || 'deu entrada',
           `"${nota.usuario}"`,
         ].join(","),
       ),
@@ -308,17 +339,18 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
   const destinosUnicos = [...new Set(notas.map((n) => n.destino))].sort()
   const fornecedoresUnicos = [...new Set(notas.map((n) => n.fornecedor))].sort()
   const tiposUnicos = [...new Set(notas.map((n) => n.tipo))].sort()
-  const usuariosUnicos = [...new Set(notas.map((n) => n.usuario))].sort()
+  const statusUnicos = [...new Set(notas.map((n) => n.status || 'deu entrada'))].sort()
 
   // Estatísticas
   const totalNotas = notasFiltradas.length
   const totalVolumes = notasFiltradas.reduce((sum, nota) => sum + nota.volume, 0)
+  const notasBipadasFiltradas = notasFiltradas.filter(nota => notasBipadas.has(nota.nota)).length
 
   return (
     <div className="min-h-screen bg-blue-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-blue-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <BarChart3 className="h-8 w-8 text-blue-600" />
@@ -349,9 +381,9 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Estatísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
           <Card className="border-blue-200">
             <CardContent className="text-center p-4">
               <div className="text-2xl font-bold text-blue-600">{totalNotas}</div>
@@ -360,7 +392,13 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
           </Card>
           <Card className="border-green-200">
             <CardContent className="text-center p-4">
-              <div className="text-2xl font-bold text-green-600">{totalVolumes}</div>
+              <div className="text-2xl font-bold text-green-600">{notasBipadasFiltradas}</div>
+              <div className="text-sm text-gray-600">Notas Bipadas</div>
+            </CardContent>
+          </Card>
+          <Card className="border-emerald-200">
+            <CardContent className="text-center p-4">
+              <div className="text-2xl font-bold text-emerald-600">{totalVolumes}</div>
               <div className="text-sm text-gray-600">Total de Volumes</div>
             </CardContent>
           </Card>
@@ -372,8 +410,8 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
           </Card>
           <Card className="border-orange-200">
             <CardContent className="text-center p-4">
-              <div className="text-2xl font-bold text-orange-600">{usuariosUnicos.length}</div>
-              <div className="text-sm text-gray-600">Usuários</div>
+              <div className="text-2xl font-bold text-orange-600">{statusUnicos.length}</div>
+              <div className="text-sm text-gray-600">Status</div>
             </CardContent>
           </Card>
         </div>
@@ -491,18 +529,18 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                 </Select>
               </div>
 
-              {/* Usuário */}
+              {/* Status */}
               <div className="space-y-2">
-                <Label className="text-sm">Usuário</Label>
-                <Select value={filtroUsuario} onValueChange={setFiltroUsuario}>
+                <Label className="text-sm">Status</Label>
+                <Select value={filtroStatus} onValueChange={setFiltroStatus}>
                   <SelectTrigger className="bg-transparent">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos</SelectItem>
-                    {usuariosUnicos.map((usuario) => (
-                      <SelectItem key={usuario} value={usuario}>
-                        {usuario}
+                    {statusUnicos.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {status}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -576,7 +614,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
             ) : (
               <ScrollArea className="h-[600px]">
                 <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 px-4 py-2 grid grid-cols-11 gap-4 text-sm font-medium text-gray-700">
+                  <div className="bg-gray-50 px-4 py-2 grid grid-cols-12 gap-4 text-sm font-medium text-gray-700">
                     <div>Data Entrada</div>
                     <div>Data NF</div>
                     <div>Transportadora</div>
@@ -586,44 +624,66 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                     <div>Fornecedor</div>
                     <div>Cliente Destino</div>
                     <div>Tipo</div>
+                    <div>Status</div>
                     <div>Usuário</div>
                     <div className="text-center">Ações</div>
                   </div>
-                  {notasFiltradas.map((nota, index) => (
-                    <div
-                      key={nota.id}
-                      className={`px-4 py-2 grid grid-cols-11 gap-4 text-sm ${
-                        index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                      }`}
-                    >
-                      <div className="text-xs">{new Date(nota.dataEntrada).toLocaleString("pt-BR")}</div>
-                      <div className="font-medium">{nota.data}</div>
-                      <div className="font-medium">{nota.transportadora}</div>
-                      <div className="font-mono">{nota.nota}</div>
-                      <div className="text-center font-medium">{nota.volume}</div>
-                      <div className="font-medium">{nota.destino}</div>
-                      <div className="truncate" title={nota.fornecedor}>
-                        {nota.fornecedor}
+                  {notasFiltradas.map((nota, index) => {
+                    const foiBipada = notasBipadas.has(nota.nota)
+                    return (
+                      <div
+                        key={nota.id}
+                        className={`px-4 py-2 grid grid-cols-12 gap-4 text-sm ${
+                          foiBipada 
+                            ? "bg-green-100 border-l-4 border-green-500" 
+                            : index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                        }`}
+                      >
+                        <div className="text-xs">{new Date(nota.dataEntrada).toLocaleString("pt-BR")}</div>
+                        <div className="font-medium">{nota.data}</div>
+                        <div className="font-medium">{nota.transportadora}</div>
+                        <div className="font-mono flex items-center">
+                          {nota.nota}
+                          {foiBipada && (
+                            <span className="ml-2 text-green-600 text-xs font-bold">BIPADA</span>
+                          )}
+                        </div>
+                        <div className="text-center font-medium">{nota.volume}</div>
+                        <div className="font-medium">{nota.destino}</div>
+                        <div className="truncate" title={nota.fornecedor}>
+                          {nota.fornecedor}
+                        </div>
+                        <div>{nota.clienteDestino}</div>
+                        <div>{nota.tipo}</div>
+                        <div className="text-xs">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            nota.status === 'recebida' 
+                              ? 'bg-green-200 text-green-800' 
+                              : nota.status === 'deu entrada'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-gray-100 text-gray-800'
+                          }`}>
+                            {nota.status || 'deu entrada'}
+                          </span>
+                        </div>
+                        <div className="text-xs">{nota.usuario}</div>
+                        <div className="flex justify-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => excluirNota(nota.id)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
-                      <div>{nota.clienteDestino}</div>
-                      <div>{nota.tipo}</div>
-                      <div className="text-xs">{nota.usuario}</div>
-                      <div className="flex justify-center">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => excluirNota(nota.id)}
-                          className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                  <div className="bg-blue-50 px-4 py-2 grid grid-cols-11 gap-4 text-sm font-bold text-blue-800">
+                    )
+                  })}
+                  <div className="bg-blue-50 px-4 py-2 grid grid-cols-12 gap-4 text-sm font-bold text-blue-800">
                     <div className="col-span-4">Total:</div>
                     <div className="text-center">{totalVolumes}</div>
-                    <div className="col-span-6"></div>
+                    <div className="col-span-7"></div>
                   </div>
                 </div>
               </ScrollArea>

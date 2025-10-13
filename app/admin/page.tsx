@@ -27,6 +27,7 @@ import {
   LogOut,
   Search,
   KeyRound,
+  ArrowLeft,
 } from "lucide-react"
 import ChangePasswordModal from "@/components/admin/change-password-modal"
 import AdminNavbar from "@/components/admin/admin-navbar"
@@ -291,6 +292,7 @@ export default function AdminPage() {
     console.log("✅ Logout realizado com sucesso - Cache e cookies limpos");
   }
 
+
   const handleSectionChange = (section: string | null) => {
     setActiveSection(section)
     if (section) {
@@ -305,13 +307,13 @@ export default function AdminPage() {
 
   const carregarConversas = useCallback(async () => {
     try {
-      console.log('🔍 Carregando conversas do Supabase...')
+      console.log('🔍 Carregando conversas coletivas do Supabase...')
 
       // **Padrão seguro**: use client local
       const client = supabase ?? getSupabase()
       if (!supabase) setSupabase(client)
 
-      // Buscar todas as mensagens únicas para criar conversas
+      // Buscar todas as mensagens para criar conversas coletivas
       const { data: allMessages, error } = await client
         .from('messages')
         .select('*')
@@ -331,37 +333,48 @@ export default function AdminPage() {
 
       console.log('📊 Mensagens encontradas:', allMessages.length)
 
-      // Agrupar mensagens por conversa
+      // Agrupar mensagens por conversa coletiva (data + turno)
       const conversasMap = new Map()
 
       allMessages.forEach((msg: any) => {
-        const conversaId = msg.remetente_id === 'admin' ? msg.destinatario_id : msg.remetente_id
+        // Usar a mesma lógica do setor embalagem: chat_coletivo_${data}_${turno}
+        let conversaId = msg.remetente_id
 
-        if (!conversasMap.has(conversaId)) {
-          // Para conversas de colaboradores, usar o nome do colaborador (não do admin)
-          const nomeColaborador = msg.remetente_tipo === 'colaborador' 
-            ? msg.remetente_nome 
-            : (msg.destinatario_id === 'admin' ? 'Colaborador' : msg.destinatario_id)
-          
-          console.log('🔍 Criando conversa:', {
-            conversaId,
+        // Se for mensagem do admin, usar o destinatario_id
+        if (msg.remetente_tipo === 'admin') {
+          conversaId = msg.destinatario_id
+        }
+
+        // Extrair data e turno do ID da conversa (formato: chat_coletivo_YYYY-MM-DD_turno)
+        const match = conversaId.match(/chat_coletivo_(\d{4}-\d{2}-\d{2})_(.+)/)
+        if (!match) {
+          console.log('⚠️ ID de conversa não reconhecido:', conversaId)
+          return
+        }
+
+        const [, data, turno] = match
+        const idConversaColetiva = `chat_coletivo_${data}_${turno}`
+
+        if (!conversasMap.has(idConversaColetiva)) {
+          console.log('🔍 Criando conversa coletiva:', {
+            idConversaColetiva,
+            data,
+            turno,
             remetente_tipo: msg.remetente_tipo,
-            remetente_nome: msg.remetente_nome,
-            destinatario_id: msg.destinatario_id,
-            nomeColaborador
+            remetente_nome: msg.remetente_nome
           })
-          
-          conversasMap.set(conversaId, {
-            id: conversaId,
-            colaboradores: [nomeColaborador || 'Colaborador'],
-            data: new Date(msg.timestamp).toISOString().split('T')[0],
-            turno: 'manhã', // Default
+
+          conversasMap.set(idConversaColetiva, {
+            id: idConversaColetiva,
+            colaboradores: msg.remetente_tipo === 'colaborador' ? [msg.remetente_nome] : ['Colaboradores'],
+            data: data,
+            turno: turno,
             ultimaMensagem: msg.mensagem,
             ultimoTimestamp: msg.timestamp,
             mensagensNaoLidas: msg.remetente_tipo === 'colaborador' && !msg.lida ? 1 : 0
           })
         } else {
-          const conversa = conversasMap.get(conversaId)
+          const conversa = conversasMap.get(idConversaColetiva)
           if (msg.timestamp > conversa.ultimoTimestamp) {
             conversa.ultimaMensagem = msg.mensagem
             conversa.ultimoTimestamp = msg.timestamp
@@ -369,17 +382,22 @@ export default function AdminPage() {
           if (msg.remetente_tipo === 'colaborador' && !msg.lida) {
             conversa.mensagensNaoLidas++
           }
+
+          // Atualizar lista de colaboradores se necessário
+          if (msg.remetente_tipo === 'colaborador' && !conversa.colaboradores.includes(msg.remetente_nome)) {
+            conversa.colaboradores.push(msg.remetente_nome)
+          }
         }
       })
 
       const conversasArray = Array.from(conversasMap.values())
-      console.log('📊 Conversas criadas:', conversasArray.length)
+      console.log('📊 Conversas coletivas criadas:', conversasArray.length)
       console.log('📋 Conversas:', conversasArray)
 
       // Salvar no localStorage
       const chaveListaGeral = "profarma_conversas_admin"
       localStorage.setItem(chaveListaGeral, JSON.stringify(conversasArray))
-      
+
       // Preservar a conversa selecionada se ela ainda existir
       if (conversaSelecionada) {
         const conversaAtualizada = conversasArray.find((c: Conversa) => c.id === conversaSelecionada.id)
@@ -392,18 +410,18 @@ export default function AdminPage() {
           } else {
             console.log('ℹ️ Conversa selecionada sem mudanças, mantendo estado atual')
           }
-                        } else {
+        } else {
           console.log('⚠️ Conversa selecionada não encontrada nas conversas do Supabase')
           setConversaSelecionada(null)
         }
       }
+
       const ultimoTs = conversasArray.length ? conversasArray[conversasArray.length - 1].ultimoTimestamp : ""
       const hasChanges = ultimoTs !== lastTsRef.current
 
       if (hasChanges) {
-        // ... (seu fluxo de atualização)
         lastTsRef.current = ultimoTs
-        setUltimaAtualizacaoMensagens(ultimoTs) // opcional manter
+        setUltimaAtualizacaoMensagens(ultimoTs)
       } else {
         console.log('ℹ️ Nenhuma mudança nas conversas, mantendo estado atual')
       }
@@ -411,7 +429,7 @@ export default function AdminPage() {
 
     } catch (error) {
       console.error('❌ Erro ao carregar conversas do Supabase:', error)
-        setConversas([])
+      setConversas([])
     }
   }, [supabase, conversaSelecionada])
 
@@ -440,43 +458,30 @@ export default function AdminPage() {
 
   const carregarMensagens = useCallback(async (conversaId: string) => {
     try {
-
       // **Padrão seguro**: use client local
       const client = supabase ?? getSupabase()
       if (!supabase) setSupabase(client)
 
-      // Primeiro, tentar carregar do Supabase
-      console.log('🔍 Executando consulta para conversa:', conversaId)
+      console.log('🔍 Carregando mensagens da conversa coletiva:', conversaId)
+      console.log('🔍 Query SQL que será executada:', `remetente_id.eq.${conversaId},destinatario_id.eq.${conversaId}`)
 
+      // Buscar mensagens da conversa coletiva usando a mesma lógica do setor embalagem
       const { data: supabaseMessages, error } = await client
         .from('messages')
         .select('*')
         .or(`remetente_id.eq.${conversaId},destinatario_id.eq.${conversaId}`)
         .order('timestamp', { ascending: true })
 
-      console.log('🔍 Buscando mensagens para conversa:', conversaId)
       console.log('📊 Mensagens encontradas no Supabase:', supabaseMessages?.length || 0)
-      if (supabaseMessages && supabaseMessages.length > 0) {
-        console.log('📋 Primeira mensagem:', supabaseMessages[0])
-        console.log('📋 Última mensagem:', supabaseMessages[supabaseMessages.length - 1])
-      }
+      console.log('📊 Dados brutos do Supabase:', supabaseMessages)
 
       if (error) {
-        console.error('Erro ao carregar mensagens do Supabase:', error)
+        console.error('❌ Erro ao carregar mensagens do Supabase:', error)
+        setMensagens([])
+        return
       }
 
       let mensagensArray: ChatMessage[] = []
-
-      const ultimoTs = mensagensArray.length ? mensagensArray[mensagensArray.length - 1].timestamp : ""
-      const hasChanges = ultimoTs !== lastTsRef.current
-
-      if (hasChanges) {
-        // ... (seu fluxo de atualização)
-        lastTsRef.current = ultimoTs
-        setUltimaAtualizacaoMensagens(ultimoTs) // opcional manter
-      } else {
-        console.log('ℹ️ Nenhuma mudança nas mensagens, mantendo estado atual')
-      }
 
       if (supabaseMessages && supabaseMessages.length > 0) {
         // Converter formato do Supabase para o formato local
@@ -491,71 +496,24 @@ export default function AdminPage() {
           lida: msg.lida,
         }))
 
-        if (hasChanges) {
-          // ... (seu fluxo de atualização)
-          lastTsRef.current = ultimoTs
-          setUltimaAtualizacaoMensagens(ultimoTs) // opcional manter
-        } else {
-          console.log('ℹ️ Nenhuma mudança nas mensagens, mantendo estado atual')
-        }
-      }
+        console.log('📊 Mensagens processadas:', mensagensArray.length)
+        console.log('📊 Primeira mensagem processada:', mensagensArray[0])
+        console.log('📊 Última mensagem processada:', mensagensArray[mensagensArray.length - 1])
 
-      console.log('📊 Mensagens processadas:', mensagensArray.length)
+        // Sempre atualizar as mensagens quando carregar uma nova conversa
+        console.log('🔄 Atualizando estado das mensagens...')
+        setMensagens(mensagensArray)
+        setUltimaAtualizacaoMensagens(mensagensArray.length > 0 ? mensagensArray[mensagensArray.length - 1].timestamp : "")
 
-      if (mensagensArray.length > 0) {
-        console.log('📋 Primeira mensagem:', mensagensArray[0])
-        console.log('📋 Última mensagem:', mensagensArray[mensagensArray.length - 1])
+        // Marcar mensagens dos colaboradores como lida
+        const idsParaMarcar = mensagensArray
+          .filter((m) => m.remetenteTipo === "colaborador" && !m.lida)
+          .map((m) => m.id)
 
-        // Verificar se há mudanças usando timestamp da última mensagem
-        const ultimaMensagemTimestamp = mensagensArray.length > 0 ? mensagensArray[mensagensArray.length - 1].timestamp : ""
-        const hasChanges = ultimaMensagemTimestamp !== ultimaAtualizacaoMensagens
+        if (idsParaMarcar.length > 0) {
+          console.log('📝 Marcando mensagens como lidas:', idsParaMarcar.length)
 
-        // Verificar se o usuário está digitando ativamente
-        const inputFocado = document.activeElement === inputRef.current
-        const usuarioDigitandoAtivo = inputFocado && novaMensagem.length > 0
-
-        console.log('🔍 Verificando mudanças:', {
-          ultimaMensagemTimestamp,
-          ultimaAtualizacaoMensagens,
-          hasChanges,
-          totalMensagens: mensagensArray.length,
-          inputFocado,
-          usuarioDigitandoAtivo
-        })
-
-        if (hasChanges) {
-          console.log('🔄 Mensagens alteradas, atualizando estado...')
-
-          // Verificar se o input está focado e salvar posição do cursor
-          const inputFocado = document.activeElement === inputRef.current
-          const cursorPosition = inputRef.current?.selectionStart || 0
-
-          setMensagens(mensagensArray)
-          setUltimaAtualizacaoMensagens(ultimaMensagemTimestamp)
-
-          // Restaurar o foco e posição do cursor se estava focado antes
-          if (inputFocado && inputRef.current) {
-            // Usar requestAnimationFrame para garantir que o DOM foi atualizado
-            requestAnimationFrame(() => {
-              if (inputRef.current) {
-                inputRef.current.focus()
-                // Restaurar posição do cursor
-                inputRef.current.setSelectionRange(cursorPosition, cursorPosition)
-              }
-            })
-          }
-        } else {
-          console.log('ℹ️ Nenhuma mudança nas mensagens, mantendo estado atual')
-        }
-
-        // Marcar mensagens dos colaboradores como lida (apenas se houve mudanças)
-        if (hasChanges) {
-          // ids que ainda não estão lidos no banco
-          const idsParaMarcar = mensagensArray
-            .filter((m) => m.remetenteTipo === "colaborador" && !m.lida)
-            .map((m) => m.id)
-
-          // atualize o estado local (sinalizando lidas)
+          // Atualizar estado local (sinalizando lidas)
           const mensagensAtualizadas = mensagensArray.map((msg) =>
             msg.remetenteTipo === "colaborador" ? { ...msg, lida: true } : msg
           )
@@ -563,36 +521,41 @@ export default function AdminPage() {
           setMensagens(mensagensAtualizadas)
           atualizarContadorConversa(conversaId)
 
-          // marque como lida no Supabase (em lote)
-          if (idsParaMarcar.length > 0) {
-            const { error: updateError } = await client
-              .from('messages')
-              .update({ lida: true })
-              .in('id', idsParaMarcar)
+          // Marcar como lida no Supabase (em lote)
+          const { error: updateError } = await client
+            .from('messages')
+            .update({ lida: true })
+            .in('id', idsParaMarcar)
 
-            if (updateError) {
-              console.error('❌ Erro ao marcar mensagens como lidas:', updateError)
-            }
+          if (updateError) {
+            console.error('❌ Erro ao marcar mensagens como lidas:', updateError)
           }
         }
       } else {
         console.log('⚠️ Nenhuma mensagem encontrada para exibir')
+        setMensagens([])
       }
     } catch (error) {
-      console.error('Erro ao carregar mensagens:', error)
+      console.error('❌ Erro ao carregar mensagens:', error)
       setMensagens([])
     }
-    // deps atualizados para refletir usos reais
-  }, [supabase, atualizarContadorConversa, /* setSupabase/setMensagens são estáveis */])
+  }, [supabase, atualizarContadorConversa])
 
-  // useEffect para carregar mensagens da conversa selecionada (apenas uma vez)
+  // useEffect para carregar mensagens da conversa selecionada
   useEffect(() => {
     if (isAuthenticated && conversaSelecionada) {
       const conversaId = conversaSelecionada.id
-      console.log('🔄 Carregando mensagens iniciais para conversa:', conversaId)
+      console.log('🔄 useEffect: Carregando mensagens iniciais para conversa:', conversaId)
+      console.log('🔄 useEffect: Estado atual das mensagens antes do carregamento:', mensagens.length)
       carregarMensagens(conversaId)
+    } else {
+      console.log('🔄 useEffect: Condições não atendidas para carregar mensagens:', {
+        isAuthenticated,
+        conversaSelecionada: !!conversaSelecionada,
+        conversaId: conversaSelecionada?.id
+      })
     }
-  }, [isAuthenticated, conversaSelecionada?.id, carregarMensagens])
+  }, [isAuthenticated, conversaSelecionada?.id])
 
   // useEffect separado para gerenciar polling baseado no estado de digitação
   useEffect(() => {
@@ -609,7 +572,7 @@ export default function AdminPage() {
   const enviarMensagem = async () => {
     if (!novaMensagem.trim() || !conversaSelecionada || enviando) return
 
-    console.log('📤 Iniciando envio de mensagem, setEnviando(true)')
+    console.log('📤 Iniciando envio de mensagem coletiva, setEnviando(true)')
     setEnviando(true)
 
     try {
@@ -622,7 +585,7 @@ export default function AdminPage() {
         remetenteId: "admin",
         remetenteNome: "Administrador",
         remetenteTipo: "admin",
-        destinatarioId: conversaSelecionada.id,
+        destinatarioId: conversaSelecionada.id, // ID da conversa coletiva (chat_coletivo_YYYY-MM-DD_turno)
         mensagem: novaMensagem.trim(),
         timestamp: new Date().toISOString(),
         lida: false,
@@ -640,7 +603,7 @@ export default function AdminPage() {
         lida: mensagem.lida,
       }
 
-      console.log('📤 Enviando mensagem para o Supabase:', mensagemParaSupabase)
+      console.log('📤 Enviando mensagem coletiva para o Supabase:', mensagemParaSupabase)
 
       const { error } = await client
         .from('messages')
@@ -654,7 +617,7 @@ export default function AdminPage() {
         return
       }
 
-      console.log('✅ Mensagem enviada com sucesso para o Supabase')
+      console.log('✅ Mensagem coletiva enviada com sucesso para o Supabase')
 
       // Adicionar à lista local
       const novasMensagens = [...mensagens, mensagem]
@@ -676,7 +639,7 @@ export default function AdminPage() {
 
       setNovaMensagem("")
       setUsuarioDigitando(false) // Resetar estado de digitação
-      console.log('✅ Mensagem processada com sucesso')
+      console.log('✅ Mensagem coletiva processada com sucesso')
 
       // Restaurar foco no input após enviar mensagem
       setTimeout(() => {
@@ -737,6 +700,8 @@ export default function AdminPage() {
   console.log('📊 Mensagens agrupadas:', Object.keys(mensagensAgrupadas).length)
   console.log('📊 Conversa selecionada:', conversaSelecionada?.id)
   console.log('📊 Conversas disponíveis:', conversas.length)
+  console.log('📊 Array de mensagens:', mensagens)
+  console.log('📊 Objeto mensagensAgrupadas:', mensagensAgrupadas)
 
   function ChatSection() {
     return (
@@ -746,7 +711,7 @@ export default function AdminPage() {
           <CardHeader className="border-b">
             <CardTitle className="flex items-center space-x-2">
               <MessageSquare className="h-5 w-5 text-blue-600" />
-              <span>Conversas</span>
+              <span>Chats Coletivos</span>
               {totalMensagensNaoLidas > 0 && (
                 <Badge variant="destructive" className="ml-2">
                   {totalMensagensNaoLidas}
@@ -830,10 +795,20 @@ export default function AdminPage() {
               <CardContent className="p-0 flex flex-col h-[500px]">
                 {/* Mensagens */}
                 <ScrollArea className="flex-1 p-4">
+                  {(() => {
+                    console.log('🔍 Renderizando mensagens - Debug:', {
+                      mensagensLength: mensagens.length,
+                      mensagensAgrupadasKeys: Object.keys(mensagensAgrupadas).length,
+                      mensagensAgrupadas: mensagensAgrupadas,
+                      conversaSelecionada: conversaSelecionada?.id
+                    })
+                    return null
+                  })()}
                   {Object.keys(mensagensAgrupadas).length === 0 ? (
                     <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                       <MessageCircle className="h-12 w-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                       <p>Nenhuma mensagem ainda.</p>
+                      <p className="text-xs mt-2">Debug: {mensagens.length} mensagens carregadas</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
@@ -889,18 +864,17 @@ export default function AdminPage() {
                   <div className="flex space-x-2">
                     <Input
                       ref={inputRef}
-                      placeholder="Digite sua resposta..."
+                      placeholder="Digite sua mensagem..."
                       value={novaMensagem}
-                      onChange={handleInputChange}
-                      onKeyDown={handleChatKeyPress}
-                      onFocus={() => { setInputFocado(true); console.log('🎯 Input focado, enviando:', enviando) }}
-                      onBlur={() => { setInputFocado(false); console.log('👋 Input perdeu foco, enviando:', enviando) }}
-                      // ❌ readOnly={enviando}
+                      onChange={(e) => setNovaMensagem(e.target.value)}
+                      onKeyPress={handleChatKeyPress}
+                      disabled={enviando}
                       className="flex-1"
                     />
                     <Button
-                      onClick={enviarMensagem}
-                      disabled={!novaMensagem.trim() || enviando} // desabilite só o botão
+                       onClick={enviarMensagem}
+                       disabled={!novaMensagem.trim() || enviando}
+                      // disabled={!novaMensagem.trim() || enviando} // desabilite só o botão
                       className="bg-blue-600 hover:bg-blue-700"
                     >
                       {enviando ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="h-4 w-4" />}
@@ -948,6 +922,8 @@ export default function AdminPage() {
         sessionData={sessionData}
         onLogout={handleLogout}
         onPasswordChange={() => setShowChangePassword(true)}
+        onBackToMain={() => setActiveSection(null)}
+        showBackButton={activeSection !== null}
       />
 
       {/* Botão flutuante para chat interno */}
@@ -968,14 +944,14 @@ export default function AdminPage() {
         </Button>
       </div>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {!activeSection ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {!activeSection ? (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pt-24">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {/* Gerenciar Carros */}
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-blue-300">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-blue-300 dark:bg-gray-900 dark:border-blue-500/50 dark:hover:border-blue-300">
               <CardHeader className="text-center pb-4">
                 <div className="flex justify-center mb-4">
-                  <div className="p-4 bg-blue-100 rounded-full">
+                  <div className="p-4 bg-blue-100 rounded-full dark:bg-blue-900/30 dark:border-blue-500/50">
                     <Truck className="h-12 w-12 text-blue-600" />
                   </div>
                 </div>
@@ -992,16 +968,15 @@ export default function AdminPage() {
               </CardContent>
             </Card>
 
-
             {/* Chat Interno */}
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-indigo-300">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-indigo-300 dark:bg-gray-900 dark:border-indigo-500/50 dark:hover:border-indigo-300">
               <CardHeader className="text-center pb-4">
                 <div className="flex justify-center mb-4">
-                  <div className="p-4 bg-indigo-100 rounded-full">
+                  <div className="p-4 bg-indigo-100 rounded-full dark:bg-indigo-900/30 dark:border-indigo-500/50">
                     <MessageSquare className="h-12 w-12 text-indigo-600" />
                   </div>
                 </div>
-                <CardTitle className="text-xl font-bold text-gray-900 dark:text-gray-100">Chat Interno</CardTitle>
+                <CardTitle className="text-xl font-bold text-gray-900 dark:text-gray-100">Chat Coletivo</CardTitle>
               </CardHeader>
               <CardContent className="text-center">
                 <p className="text-gray-600 dark:text-gray-400 mb-6">Comunicação e suporte em tempo real</p>
@@ -1009,16 +984,16 @@ export default function AdminPage() {
                   className="w-full h-12 text-base font-semibold bg-indigo-600 hover:bg-indigo-700"
                   onClick={() => handleSectionChange("chat")}
                 >
-                  Abrir Chat Interno
+                  Abrir Chat Coletivo
                 </Button>
               </CardContent>
             </Card>
 
             {/* Relatórios */}
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-green-300">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow duration-200 border-2 hover:border-green-300 dark:bg-gray-900 dark:border-green-500/50 dark:hover:border-green-300">
               <CardHeader className="text-center pb-4">
                 <div className="flex justify-center mb-4">
-                  <div className="p-4 bg-green-100 rounded-full">
+                  <div className="p-4 bg-green-100 rounded-full dark:bg-green-900/30 dark:border-green-500/50">
                     <BarChart3 className="h-12 w-12 text-green-600" />
                   </div>
                 </div>
@@ -1035,23 +1010,38 @@ export default function AdminPage() {
               </CardContent>
             </Card>
           </div>
-        ) : (
-          <div>
-            <Button variant="outline" onClick={() => handleSectionChange(null)} className="mb-6">
-              ← Voltar ao Menu Principal
+        </main>
+      ) : (
+        <div>
+          {/* Botão Voltar ao Menu Principal */}
+          {/* <div className="pt-20 pb-4 px-4 sm:px-6 lg:px-8">
+            <Button
+              variant="outline"
+              onClick={() => setActiveSection(null)}
+              className="flex items-center space-x-2 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 border- gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Voltar ao Menu Principal</span>
             </Button>
+          </div> */}
 
-            {activeSection === "chat" && <ChatSection />}
-            {activeSection === "gerenciar-carros" && (
-              <div className="space-y-6">
-                <GerenciarCarrosSection />
-                <PesquisaNotasSection />
-              </div>
-            )}
-            {activeSection === "relatorios" && <DashboardEstatisticas />}
-          </div>
-        )}
-      </main>
+          {activeSection === "chat" && (
+            <div className="max-w-[80%] mx-auto pt-24">
+              <ChatSection />
+            </div>
+          )}
+          {activeSection === "gerenciar-carros" && (
+            <div className="pt-24">
+              <GerenciarCarrosSection />
+            </div>
+          )}
+          {activeSection === "relatorios" && (
+            <div className="max-w-[80%] mx-auto pt-24">
+              <DashboardEstatisticas />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal de Alterar Senha */}
       <ChangePasswordModal

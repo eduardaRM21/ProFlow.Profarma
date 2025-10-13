@@ -21,21 +21,29 @@ import {
   Sun,
   Moon,
   Monitor,
+  ArrowLeft,
 } from "lucide-react";
 import { useTheme } from "@/contexts/theme-context";
+
 
 interface AdminNavbarProps {
   sessionData: any;
   onLogout: () => void;
   onPasswordChange: () => void;
+  onBackToMain?: () => void;
+  showBackButton?: boolean;
 }
 
+  
 export default function AdminNavbar({
   sessionData,
   onLogout,
-  onPasswordChange
+  onPasswordChange,
+  onBackToMain,
+  showBackButton = false
 }: AdminNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
+
   
   // Fallback seguro para o tema durante build estático
   let theme: 'light' | 'dark' | 'system' = 'system';
@@ -97,24 +105,23 @@ export default function AdminNavbar({
     }
   };
 
+
   return (
-    <nav className="bg-white dark:bg-gray-900 shadow-lg border-b border-gray-200 dark:border-gray-700">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 shadow-lg border-b border-gray-200 dark:border-gray-700">
+      <div className="max-w-9xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo e Título */}
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg">
-                <Shield className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">
-                  Painel Administrativo
-                </h1>
-                <p className="hidden md:block text-sm text-gray-500 dark:text-gray-400">
-                  Sistema de Bipagem Embalagem
-                </p>
-              </div>
+          <div className="flex items-center space-x-3">
+            <div className="p-2 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg">
+              <Shield className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white">
+                Painel Administrativo
+              </h1>
+              <p className="hidden md:block text-sm text-gray-500 dark:text-gray-400">
+                Sistema de Bipagem Embalagem
+              </p>
             </div>
           </div>
 
@@ -125,6 +132,18 @@ export default function AdminNavbar({
               <div className="text-right">
               </div>
             </div>
+            
+            {showBackButton && (
+              <Button
+                variant="outline"
+                onClick={onBackToMain}
+                className="flex items-center space-x-2 bg-transparent hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300"
+                size="sm"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Voltar</span>
+              </Button>
+            )}
 
              {/* Menu Dropdown do Usuário */}
              <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>

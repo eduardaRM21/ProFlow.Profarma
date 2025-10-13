@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Package, CheckCircle, Edit } from "lucide-react";
@@ -59,6 +60,9 @@ export default function ConfirmacaoModal({
             <Package className="h-5 w-5 text-blue-600" />
             <span>Confirmar Recebimento</span>
           </DialogTitle>
+          <DialogDescription>
+            Verifique os dados da nota fiscal antes de confirmar ou reportar divergência.
+          </DialogDescription>
         </DialogHeader>
 
         <div className={`space-y-${isColetor ? '4' : '6'} ${isColetor ? 'coletor-modal-content' : ''}`}>

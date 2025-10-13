@@ -539,12 +539,33 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
       }
     }
 
-    // Verificar coerência do destino final no carro ativo
+    // Verificar coerência do destino no carro ativo
     const nfsDoLote = carroAtivo.nfs.filter((nf) => nf.status === "valida")
     let statusValidacao: NFBipada["status"] = "valida"
     let erro: string | undefined
 
-    if (nfsDoLote.length > 0) {
+    // Validação específica para destinos RJ05, RJ08, SP08, SP15
+    const destinosEspeciais = ['RJ05', 'RJ08', 'SP08', 'SP15']
+    if (destinosEspeciais.includes(codigoDestino) && nfsDoLote.length > 0) {
+      // Para destinos especiais, verificar coerência do DESTINO
+      const destinosExistentes = [...new Set(nfsDoLote.map((nf) => nf.codigoDestino))]
+      if (!destinosExistentes.includes(codigoDestino)) {
+        statusValidacao = "destino_divergente"
+        erro = `Destino "${codigoDestino}" diverge dos destinos do carro: ${destinosExistentes.join(", ")}`
+      }
+      
+      // Para destinos especiais, também verificar coerência do DESTINO_FINAL
+      if (statusValidacao === "valida") {
+        const destinosFinaisExistentes = [...new Set(nfsDoLote.map((nf) => nf.destinoFinal))]
+        if (!destinosFinaisExistentes.includes(destinoFinal)) {
+          statusValidacao = "destino_divergente"
+          erro = `Destino final "${destinoFinal}" diverge dos destinos finais do carro: ${destinosFinaisExistentes.join(", ")}`
+        }
+      }
+    }
+
+    // Verificar coerência do destino final no carro ativo (apenas se não houve erro na validação especial)
+    if (statusValidacao === "valida" && nfsDoLote.length > 0) {
       const destinosExistentes = [...new Set(nfsDoLote.map((nf) => nf.destinoFinal))]
       if (!destinosExistentes.includes(destinoFinal)) {
         statusValidacao = "destino_divergente"

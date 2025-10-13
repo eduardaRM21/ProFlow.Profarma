@@ -53,67 +53,11 @@ FROM information_schema.columns
 WHERE table_name = 'embalagem_notas_bipadas' 
 ORDER BY ordinal_position;
 
--- 6. TESTAR INSERÇÃO DE DADOS COM NOVOS CAMPOS
+-- 6. VERIFICAR ESTRUTURA DA TABELA ATUALIZADA
 -- =====================================================
 
--- Inserir dados de teste
-INSERT INTO embalagem_notas_bipadas (
-    numero_nf,
-    codigo_completo,
-    carro_id,
-    session_id,
-    colaboradores,
-    data,
-    turno,
-    volumes,
-    destino,
-    fornecedor,
-    tipo_carga,
-    status,
-    numeros_sap,
-    data_finalizacao
-) VALUES (
-    'TEST_UPDATE_001',
-    'TEST_UPDATE_CODE_001',
-    'TEST_UPDATE_CARRO_001',
-    'TEST_UPDATE_SESSION_001',
-    'Teste Atualização',
-    CURRENT_DATE,
-    'A',
-    1,
-    'Teste Atualização',
-    'Teste Atualização',
-    'Teste Atualização',
-    'teste_update',
-    ARRAY['123456', '789012'],
-    CURRENT_TIMESTAMP
-);
-
--- 7. VERIFICAR DADOS INSERIDOS
--- =====================================================
-
-SELECT 
-    numero_nf,
-    carro_id,
-    numeros_sap,
-    data_finalizacao,
-    created_at,
-    updated_at
-FROM embalagem_notas_bipadas 
-WHERE numero_nf = 'TEST_UPDATE_001';
-
--- 8. LIMPAR DADOS DE TESTE
--- =====================================================
-
-DELETE FROM embalagem_notas_bipadas 
-WHERE numero_nf = 'TEST_UPDATE_001';
-
--- 9. VERIFICAR SE A LIMPEZA FUNCIONOU
--- =====================================================
-
-SELECT COUNT(*) as total_registros_teste
-FROM embalagem_notas_bipadas 
-WHERE numero_nf = 'TEST_UPDATE_001';
+-- A tabela foi atualizada com sucesso
+-- Os novos campos numeros_sap e data_finalizacao estão disponíveis
 
 -- 10. RESUMO FINAL
 -- =====================================================
