@@ -1,7 +1,7 @@
 {
-  "name": "Profarma Distribuição - Sistema de Bipagem",
-  "short_name": "Profarma Bipagem",
-  "description": "Sistema de controle de bipagem de notas fiscais",
+  "name": "ProFlow - Sistema de Bipagem",
+  "short_name": "Proflow Bipagem",
+  "description": "Fluxo profissional entre setores",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
