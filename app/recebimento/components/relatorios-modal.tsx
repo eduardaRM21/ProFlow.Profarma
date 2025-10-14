@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { FileText, Search, CalendarIcon, Eye, Package, CheckCircle, AlertTriangle, Filter, Loader2, Plus, RefreshCw } from "lucide-react"
 import { useRelatorios } from "@/hooks/use-database"
 import type { NotaFiscal, Relatorio } from "@/lib/database-service"
+import { useTheme } from "@/contexts/theme-context"
 
 interface RelatoriosModalProps {
   isOpen: boolean
@@ -32,6 +33,9 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
 
   // Hook do banco de dados
   const { getRelatoriosRecebimento } = useRelatorios()
+  
+  // Hook do tema
+  const { theme } = useTheme()
 
   // Função para carregar apenas dados básicos dos relatórios
   const carregarRelatorios = useCallback(async (forcarRecarregamento = false) => {
@@ -450,15 +454,15 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto" aria-describedby="relatorios-description">
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto dark:bg-gray-900 dark:border-gray-700" aria-describedby="relatorios-description">
           <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2">
+            <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-gray-200">
               <FileText className="h-5 w-5 text-blue-600" />
               <span>Relatórios de Recebimento</span>
               {carregando && relatoriosFiltrados.length > 0 && (
                 <span className="ml-2 inline-flex items-center text-xs text-gray-500">
-                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                  Atualizando...
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin dark:text-blue-300" />
+                    Atualizando...
                 </span>
               )}
             </DialogTitle>
@@ -493,31 +497,31 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
             </div>
 
             {/* Filtros */}
-            <div className="bg-blue-50 p-4 rounded-lg space-y-4">
+            <div className="bg-blue-50 p-4 rounded-lg space-y-4 dark:bg-blue-900/20">
               <div className="flex items-center space-x-2 mb-3">
                 <Filter className="h-4 w-4 text-blue-600" />
-                <span className="font-medium text-gray-700">Filtros de Busca</span>
+                <span className="font-medium text-gray-700 dark:text-gray-200">Filtros de Busca</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label className="mb-2 text-sm">Buscar por transportadora, colaboradores ou NF</Label>
+                  <Label className="mb-2 text-sm text-gray-900 dark:text-gray-200">Buscar por transportadora, colaboradores ou NF</Label>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
                     <Input
                       placeholder="Nome da transportadora, colaboradores ou número da NF..."
                       value={filtroTexto}
                       onChange={(e) => setFiltroTexto(e.target.value)}
-                      className="pl-8 text-sm"
+                      className="pl-8 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <Label className="mb-2 text-sm">Data Início</Label>
+                  <Label className="mb-2 text-sm text-gray-900 dark:text-gray-200">Data Início</Label>
                   <div className="space-y-2">
                     <div className="relative">
-                      <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
                       <Input
                         type="date"
                         value={dataInicio}
@@ -528,7 +532,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                             setDataFim("")
                           }
                         }}
-                        className="pl-8 text-sm"
+                        className="pl-8 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                         max={new Date().toISOString().split('T')[0]}
                       />
                     </div>
@@ -536,15 +540,15 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                 </div>
 
                 <div>
-                  <Label className="mb-2 text-sm">Data Fim</Label> 
+                  <Label className="mb-2 text-sm text-gray-900 dark:text-gray-200">Data Fim</Label> 
                   <div className="space-y-2">
                     <div className="relative">
-                      <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
                       <Input
                         type="date"
                         value={dataFim}
                         onChange={(e) => setDataFim(e.target.value)}
-                        className="pl-8 text-sm"
+                        className="pl-8 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                         max={new Date().toISOString().split('T')[0]}
                         min={dataInicio || undefined}
                       />
@@ -562,6 +566,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                   }}
                   variant="outline"
                   size="sm"
+                  className="dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                 >
                   Limpar Filtros
                 </Button>
@@ -569,13 +574,13 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                   onClick={() => carregarRelatorios()}
                   variant="outline"
                   size="sm"
-                  className="inline-flex items-center"
+                  className="inline-flex items-center dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                   disabled={carregando}
                 >
                   <Loader2 className={`mr-2 h-4 w-4 ${carregando ? 'animate-spin' : ''}`} />
                   Recarregar
                 </Button>
-                <div className="text-sm text-gray-600">
+                <div className="text-sm text-gray-600 dark:text-gray-300">
                   Mostrando {relatoriosFiltrados.length} de {relatorios.length} relatórios
                 </div>
               </div>
@@ -583,45 +588,45 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
 
             {/* Estatísticas */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 mb-4">
-              <Card className="border-blue-200">
-                <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
-                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">{relatoriosFiltrados.length}</div>
-                  <div className="text-xs text-gray-600 leading-tight">Relatórios</div>
+              <Card className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50">
+                <CardContent className="text-center p-2 sm:p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400">{relatoriosFiltrados.length}</div>
+                  <div className="text-xs text-gray-600 dark:text-gray-300 leading-tight">Relatórios</div>
                 </CardContent>
               </Card>
-              <Card className="border-green-200">
-                <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
-                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
+              <Card className="border-green-200 dark:bg-gray-900 dark:border-green-500/50">
+                <CardContent className="text-center p-2 sm:p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400">
                     {relatoriosFiltrados.reduce((sum, rel) => sum + rel.quantidadeNotas, 0)}
                   </div>
-                  <div className="text-xs text-gray-500 leading-tight">Total Notas</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-300 leading-tight">Total Notas</div>
                 </CardContent>
               </Card>
-              <Card className="border-purple-200">
-                <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
-                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600">
+              <Card className="border-purple-200 dark:bg-gray-900 dark:border-purple-500/50">
+                <CardContent className="text-center p-2 sm:p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600 dark:text-purple-400">
                     {relatoriosFiltrados.reduce((sum, rel) => sum + (rel.somaVolumes || 0), 0)}
                   </div>
-                  <div className="text-xs text-gray-500 leading-tight">Total Volumes</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-300 leading-tight">Total Volumes</div>
                 </CardContent>
               </Card>
-              <Card className="border-orange-200">
-                <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
-                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
+              <Card className="border-orange-200 dark:bg-gray-900 dark:border-orange-500/50">
+                <CardContent className="text-center p-2 sm:p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400">
                     {relatoriosFiltrados.reduce(
                       (sum, rel) => sum + (rel.totalDivergencias || 0),
                       0,
                     )}
                   </div>
-                  <div className="text-xs text-gray-500 leading-tight">Divergências</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-300 leading-tight">Divergências</div>
                 </CardContent>
               </Card>
-              <Card className="border-red-200">
-                <CardContent className="text-center p-2 sm:p-3 bg-green-50 rounded-lg">
-                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">
+              <Card className="border-red-200 dark:bg-gray-900 dark:border-red-500/50">
+                <CardContent className="text-center p-2 sm:p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600 dark:text-red-400">
                     {relatoriosFiltrados.reduce((sum, rel) => sum + (rel.notas ? rel.notas.filter((n) => n.status === "devolvida").length : 0), 0)}
                   </div>
-                  <div className="text-xs text-gray-500 leading-tight">Devolvidas</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-300 leading-tight">Devolvidas</div>
                 </CardContent>
               </Card>
              
@@ -631,35 +636,35 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
             <div className="overflow-y-auto max-h-[60vh] min-h-0">
               {carregando && relatoriosFiltrados.length === 0 ? (
                 <div className="text-center py-8">
-                  <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
-                  <p className="text-gray-500 mt-2">Carregando relatórios...</p>
+                  <Loader2 className="h-12 w-12 text-blue-600 dark:text-blue-400 animate-spin" />
+                  <p className="text-gray-500 dark:text-gray-400 mt-2">Carregando relatórios...</p>
                 </div>
               ) : erro ? (
-                <div className="text-center py-8 text-red-500">
-                  <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-red-300" />
+                <div className="text-center py-8 text-red-500 dark:text-red-400">
+                  <AlertTriangle className="h-16 w-16 mx-auto mb-4 text-red-300 dark:text-red-500" />
                   <h3 className="text-lg font-medium mb-2">Erro ao carregar relatórios</h3>
                   <p>{erro}</p>
                 </div>
               ) : relatoriosFiltrados.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                   <h3 className="text-lg font-medium mb-2">Nenhum relatório encontrado</h3>
                   <p>Tente ajustar os filtros de busca.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-3 sm:gap-4 pb-4">
                   {relatoriosFiltrados.map((relatorio) => (
-                    <Card key={relatorio.id} className="border-blue-200 hover:shadow-md transition-shadow">
+                    <Card key={relatorio.id} className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50 hover:shadow-md transition-shadow">
                       <CardHeader className="pb-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
                             <FileText className="h-4 w-4 text-blue-600" />
                             <div className="flex items-center space-x-2">
-                              <span className="font-semibold text-gray-900 text-sm">{formatarNomeRelatorio(relatorio)}</span>
+                              <span className="font-semibold text-gray-900 dark:text-gray-200 text-sm">{formatarNomeRelatorio(relatorio)}</span>
                               {isRelatorioLiberadoParcialmente(relatorio) && (
-                                <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
+                                <Badge variant="outline" className="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-600/50 font-medium">
                                   <AlertTriangle className="h-3 w-3 mr-1" />
-                                  Parcial
+                                  Parcialmente
                                 </Badge>
                               )}
                             </div>
@@ -673,16 +678,16 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                       <CardContent className="space-y-3">
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
-                            <div className="text-gray-600 text-xs">Colaboradores</div>
-                            <div className="font-medium">
+                            <div className="text-gray-600 dark:text-gray-400 text-xs">Colaboradores</div>
+                            <div className="font-medium text-gray-900 dark:text-gray-200">
                               {Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
                                 ? relatorio.colaboradores.join(', ')
                                 : 'Não informado'}
                             </div>
                           </div>
                           <div>
-                            <div className="text-gray-600 text-xs">Data/Turno</div>
-                            <div className="font-medium">
+                            <div className="text-gray-600 dark:text-gray-400 text-xs">Data/Turno</div>
+                            <div className="font-medium text-gray-900 dark:text-gray-200">
                               {relatorio.data} - {relatorio.turno}
                             </div>
                           </div>
@@ -690,24 +695,24 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
 
                         <div className="grid grid-cols-3 gap-4 py-2">
                           <div className="text-center">
-                            <div className="text-lg font-bold text-blue-600">{relatorio.quantidadeNotas}</div>
-                            <div className="text-xs text-gray-500">Notas</div>
+                            <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{relatorio.quantidadeNotas}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Notas</div>
                           </div>
                           <div className="text-center">
-                            <div className="text-lg font-bold text-green-600">
+                            <div className="text-lg font-bold text-green-600 dark:text-green-400">
                               {relatorio.somaVolumes || 0}
                             </div>
-                            <div className="text-xs text-gray-500">Volumes</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Volumes</div>
                           </div>
                           <div className="text-center">
-                            <div className="text-lg font-bold text-red-600">
+                            <div className="text-lg font-bold text-red-600 dark:text-red-400">
                               {relatorio.totalDivergencias || 0}
                             </div>
-                            <div className="text-xs text-gray-500">Divergências</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Divergências</div>
                           </div>
                         </div>
 
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
                           Liberado em: {new Date(relatorio.dataFinalizacao).toLocaleString("pt-BR")}
                         </div>
 
@@ -720,7 +725,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                             }
                           }}
                           variant="outline"
-                          className="w-full bg-transparent"
+                          className="w-full bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                           size="sm"
                           disabled={carregandoNotas}
                         >
@@ -744,14 +749,14 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
       {/* Modal de Detalhes do Relatório */}
       {relatorioSelecionado && (
         <Dialog open={!!relatorioSelecionado} onOpenChange={() => setRelatorioSelecionado(null)}>
-          <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto" aria-describedby="relatorio-detalhes-description">
+          <DialogContent className="max-w-6xl max-h-[80vh] overflow-y-auto dark:bg-gray-900 dark:border-gray-700" aria-describedby="relatorio-detalhes-description">
             <DialogHeader>
-              <DialogTitle className="flex items-center space-x-2">
+              <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-gray-200">
                 <Package className="h-5 w-5 text-blue-600" />
                 <div className="flex items-center space-x-2">
                   <span>{formatarNomeRelatorio(relatorioSelecionado)} - Detalhes</span>
                   {isRelatorioLiberadoParcialmente(relatorioSelecionado) && (
-                    <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700 border-orange-200">
+                    <Badge variant="outline" className="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-600/50 font-medium">
                       <AlertTriangle className="h-3 w-3 mr-1" />
                       Liberado Parcialmente
                     </Badge>
@@ -767,12 +772,12 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
             <div className="space-y-4">
               {/* Alerta de Liberação Parcial */}
               {isRelatorioLiberadoParcialmente(relatorioSelecionado) && (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <div className="bg-orange-100 dark:bg-orange-900/30 border border-orange-300 dark:border-orange-600/50 rounded-lg p-4">
                   <div className="flex items-start space-x-3">
-                    <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5" />
+                    <AlertTriangle className="h-5 w-5 text-orange-700 dark:text-orange-300 mt-0.5" />
                     <div>
-                      <h4 className="text-sm font-medium text-orange-800">Liberação Parcial</h4>
-                      <p className="text-sm text-orange-700 mt-1">
+                      <h4 className="text-sm font-semibold text-orange-900 dark:text-orange-200">⚠️ Liberação Parcial</h4>
+                      <p className="text-sm text-orange-800 dark:text-orange-300 mt-1">
                         Este relatório foi liberado parcialmente. Algumas notas podem ter divergências ou não foram completamente processadas.
                       </p>
                     </div>
@@ -781,27 +786,27 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
               )}
 
               {/* Resumo do Relatório */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div>
-                  <div className="text-sm text-gray-600">Transportadora</div>
-                  <div className="font-medium">{formatarNomeRelatorio(relatorioSelecionado)}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Transportadora</div>
+                  <div className="font-medium text-gray-900 dark:text-gray-200">{formatarNomeRelatorio(relatorioSelecionado)}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-gray-600">Colaboradores</div>
-                  <div className="font-medium">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Colaboradores</div>
+                  <div className="font-medium text-gray-900 dark:text-gray-200">
                     {Array.isArray(relatorioSelecionado.colaboradores) && relatorioSelecionado.colaboradores.length > 0
                       ? relatorioSelecionado.colaboradores.join(', ')
                       : 'Não informado'}
                   </div>
                 </div>
                 <div>
-                  <div className="text-sm text-gray-600">Data/Turno</div>
-                  <div className="font-medium">
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Data/Turno</div>
+                  <div className="font-medium text-gray-900 dark:text-gray-200">
                     {relatorioSelecionado.data} - {relatorioSelecionado.turno}
                   </div>
                 </div>
                 <div>
-                  <div className="text-sm text-gray-600">Status</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Status</div>
                   <Badge className={getStatusColor(relatorioSelecionado.status)}>
                     {getStatusLabel(relatorioSelecionado.status)}
                   </Badge>
@@ -812,15 +817,15 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
               {carregandoNotas ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="flex items-center space-x-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm text-gray-600">Carregando notas...</span>
+                    <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm text-gray-600 dark:text-gray-400">Carregando notas...</span>
                   </div>
                 </div>
               ) : relatorioSelecionado.notas && relatorioSelecionado.notas.length > 0 ? (
                 <ScrollArea className="h-[50vh] min-h-0">
-                  <div className="border rounded-lg overflow-x-auto">
+                  <div className="border dark:border-gray-600 rounded-lg overflow-x-auto">
                     <div className="min-w-max">
-                      <div className="bg-gray-50 px-2 sm:px-4 py-2 grid grid-cols-6 sm:grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700">
+                      <div className="bg-gray-50 dark:bg-gray-800 px-2 sm:px-4 py-2 grid grid-cols-6 sm:grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-200">
                         <div>NF</div>
                         <div>Volumes</div>
                         <div className="hidden sm:block">Destino</div>
@@ -833,54 +838,54 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                         <div
                           key={nota.id}
                           className={`px-2 sm:px-4 py-2 grid grid-cols-6 sm:grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm ${
-                            index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                            index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"
                           }`}
                         >
-                          <div className="font-medium truncate" title={nota.numeroNF}>{nota.numeroNF}</div>
-                          <div className="font-mono">
+                          <div className="font-medium truncate text-gray-900 dark:text-gray-200" title={nota.numeroNF}>{nota.numeroNF}</div>
+                          <div className="font-mono text-gray-900 dark:text-gray-200">
                             {nota.divergencia?.volumesInformados || nota.volumes}
                             {nota.divergencia?.volumesInformados !== nota.volumes && (
-                              <span className="text-orange-600 text-xs ml-1">(era {nota.volumes})</span>
+                              <span className="text-orange-600 dark:text-orange-400 text-xs ml-1">(era {nota.volumes})</span>
                             )}
                           </div>
-                          <div className="hidden sm:block text-xs truncate" title={nota.destino}>{nota.destino}</div>
-                          <div className="hidden lg:block text-xs truncate" title={nota.fornecedor}>{nota.fornecedor}</div>
-                          <div className="hidden lg:block text-xs truncate" title={nota.clienteDestino}>{nota.clienteDestino}</div>
+                          <div className="hidden sm:block text-xs truncate text-gray-900 dark:text-gray-200" title={nota.destino}>{nota.destino}</div>
+                          <div className="hidden lg:block text-xs truncate text-gray-900 dark:text-gray-200" title={nota.fornecedor}>{nota.fornecedor}</div>
+                          <div className="hidden lg:block text-xs truncate text-gray-900 dark:text-gray-200" title={nota.clienteDestino}>{nota.clienteDestino}</div>
                           <div className="flex items-center">
                             {nota.status === "ok" ? (
-                              <div className="flex items-center text-green-600">
+                              <div className="flex items-center text-green-600 dark:text-green-400">
                                 <CheckCircle className="h-3 w-3 mr-1" />
                                 <span className="text-xs">OK</span>
                               </div>
                             ) : nota.status === "devolvida" ? (
-                              <div className="flex items-center text-red-600">
+                              <div className="flex items-center text-red-600 dark:text-red-400">
                                 <RefreshCw className="h-3 w-3 mr-1" />
                                 <span className="text-xs">Devolvida</span>
                               </div>
                             ) : (
-                              <div className="flex items-center text-orange-600">
+                              <div className="flex items-center text-orange-600 dark:text-orange-400">
                                 <AlertTriangle className="h-3 w-3 mr-1" />
                                 <span className="text-xs">Div.</span>
                               </div>
                             )}
                           </div>
-                          <div className="text-xs truncate" title={nota.divergencia ? `${nota.divergencia.volumesInformados} vol. - ${nota.divergencia.observacoes}` : ''}>
+                          <div className="text-xs truncate text-gray-900 dark:text-gray-200" title={nota.divergencia ? `${nota.divergencia.volumesInformados} vol. - ${nota.divergencia.observacoes}` : ''}>
                             {nota.divergencia ? (
-                              <div className="text-orange-600">
+                              <div className="text-orange-600 dark:text-orange-400">
                                 <div className="font-medium">{nota.divergencia.volumesInformados} vol.</div>
                                 {nota.divergencia.observacoes && (
-                                  <div className="text-xs text-gray-500 mt-1">
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                     {nota.divergencia.observacoes}
                                   </div>
                                 )}
                               </div>
                             ) : (
-                              <span className="text-gray-400 text-xs">-</span>
+                              <span className="text-gray-400 dark:text-gray-500 text-xs">-</span>
                             )}
                           </div>
                         </div>
                       ))}
-                      <div className="bg-blue-50 px-2 sm:px-4 py-2 grid grid-cols-6 sm:grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-bold text-blue-800">
+                      <div className="bg-blue-50 dark:bg-blue-900/20 px-2 sm:px-4 py-2 grid grid-cols-6 sm:grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-bold text-blue-800 dark:text-blue-300">
                         <div className="col-span-3 sm:col-span-4">Total:</div>
                         <div className="text-center">
                           {relatorioSelecionado.notas.reduce(
@@ -894,15 +899,15 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                   </div>
                 </ScrollArea>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <Package className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <Package className="h-16 w-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                   <h3 className="text-lg font-medium mb-2">Nenhuma nota disponível</h3>
                   <p>Este relatório não possui notas detalhadas.</p>
                 </div>
               )}
 
               <div className="flex justify-end">
-                <Button onClick={() => setRelatorioSelecionado(null)} variant="outline">
+                <Button onClick={() => setRelatorioSelecionado(null)} variant="outline" className="dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                   Fechar
                 </Button>
               </div>

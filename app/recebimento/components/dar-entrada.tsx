@@ -10,6 +10,14 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   CalendarIcon,
   Package,
   ArrowLeft,
@@ -19,11 +27,17 @@ import {
   XCircle,
   Save,
   BarChart3,
+  User,
+  Sun,
+  Moon,
+  Monitor,
+  ChevronDown,
 } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { SaveNotesService } from "@/lib/save-notes-service"
 import { getSupabase } from "@/lib/supabase-client"
+import { useTheme } from "@/contexts/theme-context"
 
 interface Usuario {
   nome: string
@@ -69,6 +83,9 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
   const [notasValidacao, setNotasValidacao] = useState<NotaValidacao[]>([])
   const [processando, setProcessando] = useState(false)
   const [transportadoraDuplicada, setTransportadoraDuplicada] = useState(false)
+  
+  // Hook do tema
+  const { theme, setTheme } = useTheme()
 
   const validarCodigos = () => {
     if (!codigosTexto.trim()) {
@@ -340,44 +357,116 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
   const notasInvalidas = notasValidacao.filter((v) => v.status === "invalida")
 
   return (
-    <div className="min-h-screen bg-green-50">
+    <div className="min-h-screen bg-green-50 dark:bg-gray-950">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-green-100">
+      <header className="bg-white dark:bg-gray-900 shadow-sm border-b border-green-100 dark:border-green-900/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <Package className="h-8 w-8 text-green-600" />
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Consolidado - Entrada</h1>
-                <p className="text-sm text-gray-500">Inserir códigos de notas fiscais</p>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-200">Consolidado - Entrada</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Inserir códigos de notas fiscais</p>
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <div className="text-sm font-medium text-gray-900">{usuario.nome}</div>
-                <div className="text-xs text-gray-500">{new Date(usuario.loginTime).toLocaleString("pt-BR")}</div>
-              </div>
-    
               <Button 
                 onClick={onVerConsolidado}
                 variant="outline"
                 size="sm"
-                className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700"
+                className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 dark:border-blue-600 dark:text-blue-300"
               >
                 <BarChart3 className="h-4 w-4 mr-2" />
                 Ver Consolidado
               </Button>
 
-              <Button variant="outline" size="sm" onClick={onVoltar} className="bg-transparent hover:bg-green-50 border-green-200">
+              <Button variant="outline" size="sm" onClick={onVoltar} className="bg-transparent hover:bg-green-50 border-green-200 dark:hover:bg-green-900/20 dark:border-green-600 dark:text-green-300">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Voltar
               </Button>
+              
+              {/* Dropdown do usuário com seletor de tema */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="flex items-center space-x-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-600"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <User className="h-4 w-4 text-green-600" />
+                      <div className="text-left">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          {usuario.nome}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Consolidado
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronDown className="h-4 w-4 text-gray-400 dark:text-gray-300" />
+                  </Button>
+                </DropdownMenuTrigger>
 
-              <Button variant="outline" size="sm" onClick={onLogout} className="bg-transparent hover:bg-green-50 border-green-200">
-                <LogOut className="h-4 w-4 mr-2" />
-                Sair
-              </Button>
+                <DropdownMenuContent align="end" className="w-64 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none text-gray-900 dark:text-white">
+                        {usuario.nome}
+                      </p>
+                      <p className="text-xs leading-none text-gray-500 dark:text-gray-400">
+                        Setor: Consolidado
+                      </p>
+                      <p className="text-xs leading-none text-gray-500 dark:text-gray-400">
+                        Login: {new Date(usuario.loginTime).toLocaleString("pt-BR")}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
+
+                  {/* Opções de Tema */}
+                  <DropdownMenuLabel className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Aparência
+                  </DropdownMenuLabel>
+
+                  <DropdownMenuItem
+                    onClick={() => setTheme('light')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Sun className="h-4 w-4" />
+                    <span>Modo Claro</span>
+                    {theme === 'light' && <span className="ml-auto text-green-600">✓</span>}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => setTheme('dark')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Moon className="h-4 w-4" />
+                    <span>Modo Escuro</span>
+                    {theme === 'dark' && <span className="ml-auto text-green-600">✓</span>}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => setTheme('system')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Monitor className="h-4 w-4" />
+                    <span>Sistema</span>
+                    {theme === 'system' && <span className="ml-auto text-green-600">✓</span>}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
+
+                  <DropdownMenuItem
+                    onClick={onLogout}
+                    className="flex items-center space-x-2 cursor-pointer text-red-600 focus:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Sair</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               </div>
           </div>
         </div>
@@ -387,21 +476,21 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Formulário */}
-          <Card className="border-green-200">
+          <Card className="border-green-200 dark:bg-gray-900 dark:border-green-500/50">
             <CardHeader>
-              <CardTitle className="text-lg">Dados da Remessa</CardTitle>
+              <CardTitle className="text-lg text-gray-900 dark:text-gray-200">Dados da Remessa</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label className="text-base font-medium">Transportadora *</Label>
+                <Label className="text-base font-medium text-gray-900 dark:text-gray-200">Transportadora *</Label>
                 <Input
                   placeholder="Nome da transportadora"
                   value={transportadora}
                   onChange={(e) => setTransportadora(e.target.value)}
-                  className={`text-base h-12 ${transportadoraDuplicada ? 'border-red-500 bg-red-50' : ''}`}
+                  className={`text-base h-12 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 ${transportadoraDuplicada ? 'border-red-500 bg-red-50 dark:bg-red-900/20 dark:border-red-400' : ''}`}
                 />
                 {transportadoraDuplicada && (
-                  <p className="text-sm text-red-600 flex items-center">
+                  <p className="text-sm text-red-600 dark:text-red-400 flex items-center">
                     <AlertTriangle className="h-4 w-4 mr-1" />
                     Esta transportadora já foi inserida hoje ({format(dataEntrada, 'dd/MM/yyyy')})
                   </p>
@@ -409,32 +498,32 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-medium">Data de Entrada *</Label>
+                <Label className="text-base font-medium text-gray-900 dark:text-gray-200">Data de Entrada *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
-                      className="w-full justify-start text-left font-normal h-12 text-base bg-transparent"
+                      className="w-full justify-start text-left font-normal h-12 text-base bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {format(dataEntrada, "dd/MM/yyyy", { locale: ptBR })}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
+                  <PopoverContent className="w-auto p-0 dark:bg-gray-800 dark:border-gray-600">
                     <Calendar mode="single" selected={dataEntrada} onSelect={(date) => date && setDataEntrada(date)} />
                   </PopoverContent>
                 </Popover>
               </div>
 
               <div className="space-y-2">
-                <Label className="text-base font-medium">Códigos das Notas (um por linha) *</Label>
+                <Label className="text-base font-medium text-gray-900 dark:text-gray-200">Códigos das Notas (um por linha) *</Label>
                 <Textarea
                   placeholder={`Cole os códigos aqui, um por linha:\n\n01/12/2024|000068310|0014|RJ08|EMS S/A|SAO JO|ROD\n02/12/2024|000068311|0025|SP01|CORREIOS|RIO DE|CON`}
                   value={codigosTexto}
                   onChange={(e) => setCodigosTexto(e.target.value)}
-                  className="min-h-[200px] font-mono text-sm"
+                  className="min-h-[200px] font-mono text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                 />
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
                   Formato: DD/MM/AAAA|nota|volume|destino|fornecedor|cliente_destino|tipo
                 </p>
               </div>
@@ -442,7 +531,7 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
               <Button
                 onClick={consolidar}
                 disabled={notasValidas.length === 0 || !transportadora.trim() || processando || transportadoraDuplicada}
-                className="w-full h-12 text-base font-semibold bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
+                className="w-full h-12 text-base font-semibold bg-green-600 hover:bg-green-700 disabled:bg-gray-400 dark:disabled:bg-gray-600"
               >
                 {processando ? (
                   <>
@@ -460,31 +549,31 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
           </Card>
 
           {/* Prévia */}
-          <Card className="border-green-200">
+          <Card className="border-green-200 dark:bg-gray-900 dark:border-green-500/50">
             <CardHeader>
-              <CardTitle className="text-lg">Prévia da Validação</CardTitle>
+              <CardTitle className="text-lg text-gray-900 dark:text-gray-200">Prévia da Validação</CardTitle>
             </CardHeader>
             <CardContent>
               {notasValidacao.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Package className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <Package className="h-16 w-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                   <p>Cole os códigos no campo ao lado para ver a prévia</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {/* Estatísticas */}
                   <div className="grid grid-cols-3 gap-4">
-                    <div className="text-center p-3 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">{notasValidas.length}</div>
-                      <div className="text-sm text-gray-600">Válidas</div>
+                    <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">{notasValidas.length}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-300">Válidas</div>
                     </div>
-                    <div className="text-center p-3 bg-yellow-50 rounded-lg">
-                      <div className="text-2xl font-bold text-yellow-600">{notasDuplicadas.length}</div>
-                      <div className="text-sm text-gray-600">Duplicadas</div>
+                    <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                      <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{notasDuplicadas.length}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-300">Duplicadas</div>
                     </div>
-                    <div className="text-center p-3 bg-red-50 rounded-lg">
-                      <div className="text-2xl font-bold text-red-600">{notasInvalidas.length}</div>
-                      <div className="text-sm text-gray-600">Inválidas</div>
+                    <div className="text-center p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                      <div className="text-2xl font-bold text-red-600 dark:text-red-400">{notasInvalidas.length}</div>
+                      <div className="text-sm text-gray-600 dark:text-gray-300">Inválidas</div>
                     </div>
                   </div>
 
@@ -495,39 +584,39 @@ export default function DarEntrada({ usuario, onVoltar, onVerConsolidado, onLogo
                         <div
                           key={index}
                           className={`p-3 rounded-lg border-l-4 ${validacao.status === "valida"
-                              ? "border-l-green-500 bg-green-50"
+                              ? "border-l-green-500 bg-green-50 dark:bg-green-900/20 dark:border-l-green-400"
                               : validacao.status === "duplicada"
-                                ? "border-l-yellow-500 bg-yellow-50"
-                                : "border-l-red-500 bg-red-50"
+                                ? "border-l-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 dark:border-l-yellow-400"
+                                : "border-l-red-500 bg-red-50 dark:bg-red-900/20 dark:border-l-red-400"
                             }`}
                         >
                           <div className="flex items-start space-x-2">
                             {validacao.status === "valida" ? (
-                              <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />
+                              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5" />
                             ) : validacao.status === "duplicada" ? (
-                              <AlertTriangle className="h-4 w-4 text-yellow-600 mt-0.5" />
+                              <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400 mt-0.5" />
                             ) : (
-                              <XCircle className="h-4 w-4 text-red-600 mt-0.5" />
+                              <XCircle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5" />
                             )}
                             <div className="flex-1 min-w-0">
                               {validacao.status === "valida" && validacao.nota ? (
                                 <div>
-                                  <div className="font-medium text-sm">
+                                  <div className="font-medium text-sm text-gray-900 dark:text-gray-200">
                                     NF: {validacao.nota.nota} | Vol: {validacao.nota.volume} | {validacao.nota.destino}
                                   </div>
-                                  <div className="text-xs text-gray-600">
+                                  <div className="text-xs text-gray-600 dark:text-gray-300">
                                     {validacao.nota.fornecedor} → {validacao.nota.clienteDestino} ({validacao.nota.tipo}
                                     )
                                   </div>
                                 </div>
                               ) : (
                                 <div>
-                                  <div className="font-mono text-xs text-gray-600 break-all">
+                                  <div className="font-mono text-xs text-gray-600 dark:text-gray-300 break-all">
                                     {validacao.codigo.length > 50
                                       ? `${validacao.codigo.substring(0, 50)}...`
                                       : validacao.codigo}
                                   </div>
-                                  <div className="text-xs text-red-600 mt-1">{validacao.erro}</div>
+                                  <div className="text-xs text-red-600 dark:text-red-400 mt-1">{validacao.erro}</div>
                                 </div>
                               )}
                             </div>

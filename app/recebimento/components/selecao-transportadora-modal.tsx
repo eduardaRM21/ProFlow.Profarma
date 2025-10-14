@@ -167,7 +167,7 @@ export default function SelecaoTransportadoraModal({
         onClose()
       }
     }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto dark:bg-gray-950">
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Truck className="h-5 w-5 text-blue-600" />
@@ -193,7 +193,7 @@ export default function SelecaoTransportadoraModal({
                       <div className="flex flex-col">
                         <span className="font-medium">{transportadora.nomeOriginal}</span>
                         {transportadora.data && (
-                          <span className="text-xs text-gray-500">Data: {transportadora.data}</span>
+                          <span className="text-xs text-gray-500 ">Data: {transportadora.data}</span>
                         )}
                       </div>
                       <div className="flex items-center space-x-2 ml-4">

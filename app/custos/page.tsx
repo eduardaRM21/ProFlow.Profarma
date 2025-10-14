@@ -121,7 +121,7 @@ export default function CustosPage() {
     invalidateCache: invalidateRelatoriosCache,
     reproduzirNotificacaoCustos
   } = useRelatorios('custos', {
-    refreshInterval: 60000, // Refresh a cada minuto
+    refreshInterval: 60000, // Refresh a cada 1 minuto
     revalidateOnFocus: false, // Desabilitar revalidação ao focar
     revalidateOnReconnect: true // Manter revalidação ao reconectar
   });
@@ -137,20 +137,12 @@ export default function CustosPage() {
     error: divergenciasError
   } = useDivergenciasCache();
 
-  // Debug dos relatórios carregados
+  // Debug dos relatórios carregados (reduzido para evitar logs excessivos)
   useEffect(() => {
-    console.log('🔍 Relatórios carregados:', {
-      quantidade: relatorios?.length || 0,
-      relatorios: relatorios,
-      isLoading: relatoriosLoading
-    });
-    
     if (relatorios && relatorios.length > 0) {
-      console.log('🔍 Primeiro relatório:', relatorios[0]);
-      console.log('🔍 Notas do primeiro relatório:', relatorios[0].notas);
-      console.log('🔍 Quantidade de notas do primeiro relatório:', relatorios[0].notas?.length || 0);
+      console.log('🔍 Relatórios carregados:', relatorios.length);
     }
-  }, [relatorios, relatoriosLoading]);
+  }, [relatorios?.length]); // Apenas quando a quantidade muda
 
   // Detectar mudanças no número de relatórios para notificação visual
   useEffect(() => {
@@ -166,39 +158,8 @@ export default function CustosPage() {
     }
   }, [relatorios?.length]);
 
-  // Carregar todas as divergências no cache quando a página abrir
-  useEffect(() => {
-    const carregarDivergencias = async () => {
-      if (isFullyConnected && relatorios && relatorios.length > 0) {
-        console.log('🔄 Carregando divergências no cache para todos os relatórios...');
-        
-        try {
-          // Carregar divergências para todos os relatórios em paralelo
-          const promises = relatorios.map(async (relatorio) => {
-            try {
-              const divergencias = await getDivergenciasByRelatorio(relatorio.id);
-              console.log(`✅ Divergências carregadas para relatório ${relatorio.id}: ${divergencias.length} itens`);
-              return divergencias;
-            } catch (error) {
-              console.warn(`⚠️ Erro ao carregar divergências para relatório ${relatorio.id}:`, error);
-              return [];
-            }
-          });
-          
-          await Promise.all(promises);
-          
-          // Mostrar estatísticas do cache
-          const stats = getDivergenciasCacheStats();
-          console.log('📊 Estatísticas do cache de divergências:', stats);
-          
-        } catch (error) {
-          console.error('❌ Erro ao carregar divergências no cache:', error);
-        }
-      }
-    };
-
-    carregarDivergencias();
-  }, [isFullyConnected, relatorios, getDivergenciasByRelatorio, getDivergenciasCacheStats]);
+  // Carregar divergências apenas quando necessário (sob demanda)
+  // Removido carregamento automático em lote para evitar buscas desnecessárias
 
   // Estados para filtros e ordenação
   const [modalRelatorios, setModalRelatorios] = useState(false)
@@ -452,7 +413,7 @@ export default function CustosPage() {
 
   // Calcular estatísticas usando cache de divergências - ATUALIZADO PARA USAR RELATÓRIOS FILTRADOS
   useEffect(() => {
-    // Debounce para evitar recálculos excessivos
+    // Debounce para evitar recálculos excessivos (aumentado para 2 segundos)
     const timeoutId = setTimeout(async () => {
       const calcularEstatisticas = async () => {
         if (relatorios && relatorios.length > 0) {
@@ -480,14 +441,9 @@ export default function CustosPage() {
               totalDivergencias += relatorio.totalDivergencias;
               console.log(`📊 Relatório ${relatorio.id}: ${relatorio.totalDivergencias} divergências (do relatório)`);
             } else {
-              // Buscar divergências do cache apenas se não estiver no relatório
-              try {
-                const divergenciasCache = await getDivergenciasByRelatorio(relatorio.id);
-                totalDivergencias += divergenciasCache.length;
-                console.log(`📊 Relatório ${relatorio.id}: ${divergenciasCache.length} divergências (do cache)`);
-              } catch (error) {
-                console.warn(`⚠️ Erro ao buscar divergências para relatório ${relatorio.id}:`, error);
-              }
+              // Usar dados já disponíveis no relatório (evitar busca adicional)
+              totalDivergencias += 0; // Não buscar divergências adicionais
+              console.log(`📊 Relatório ${relatorio.id}: usando dados já carregados`);
             }
           }
 
@@ -503,22 +459,9 @@ export default function CustosPage() {
               }, 0);
               console.log(`📊 Total de notas devolvidas calculado dos relatórios filtrados: ${totalDevolvidas}`);
             } else {
-              // Fallback: buscar todas as notas devolvidas do banco
-              const { getSupabase } = await import('@/lib/supabase-client')
-              const supabase = getSupabase()
-              
-              const { data: todasNotasData, error: todasNotasError } = await supabase
-                .from('notas_fiscais')
-                .select('id, status')
-                .eq('status', 'devolvida')
-              
-              if (!todasNotasError && todasNotasData) {
-                totalDevolvidas = todasNotasData.length;
-                console.log(`📊 Total de notas devolvidas encontradas no banco: ${totalDevolvidas}`);
-              } else {
-                console.warn('⚠️ Erro ao buscar notas devolvidas:', todasNotasError);
-                totalDevolvidas = 0;
-              }
+              // Usar dados já disponíveis (evitar busca adicional)
+              totalDevolvidas = 0;
+              console.log(`📊 Usando dados já carregados para notas devolvidas`);
             }
           } catch (error) {
             console.warn('⚠️ Erro ao calcular notas devolvidas:', error);
@@ -550,7 +493,7 @@ export default function CustosPage() {
     };
 
     calcularEstatisticas();
-    }, 500); // Debounce de 500ms
+    }, 2000); // Debounce de 2 segundos para evitar recálculos excessivos
 
     return () => clearTimeout(timeoutId);
   }, [relatoriosFiltrados.length]); // Apenas quando o número de relatórios filtrados muda
@@ -1487,7 +1430,7 @@ NOTAS FISCAIS:`
   // Função para formatar o nome do relatório
   const formatarNomeRelatorio = (relatorio: Relatorio): string => {
     if (relatorio.status === 'liberado_parcialmente') {
-      return `${relatorio.nome} (Liberado Parcialmente)`
+      return `${relatorio.nome}`
     }
     
     return relatorio.nome
@@ -1499,10 +1442,40 @@ NOTAS FISCAIS:`
       return null
     }
 
-    // Filtrar apenas notas com timestamp válido
-    const notasComTimestamp = relatorio.notas.filter(nota => nota.timestamp && nota.timestamp.trim() !== '')
+    // Função auxiliar para validar e converter timestamp
+    const validarTimestamp = (timestamp: string): Date | null => {
+      if (!timestamp || typeof timestamp !== 'string' || timestamp.trim() === '') {
+        return null
+      }
+
+      try {
+        const data = new Date(timestamp)
+        // Verificar se a data é válida
+        if (isNaN(data.getTime())) {
+          return null
+        }
+        return data
+      } catch (error) {
+        console.warn('Erro ao converter timestamp:', timestamp, error)
+        return null
+      }
+    }
+
+    // Filtrar apenas notas com timestamp válido e converter para Date
+    const notasComTimestamp = relatorio.notas
+      .map(nota => ({
+        ...nota,
+        dataTimestamp: validarTimestamp(nota.timestamp)
+      }))
+      .filter(nota => nota.dataTimestamp !== null)
     
     if (notasComTimestamp.length === 0) {
+      console.log('⚠️ Nenhuma nota com timestamp válido encontrada para relatório:', relatorio.nome)
+      console.log('🔍 Timestamps das notas:', relatorio.notas.map(n => ({ 
+        id: n.id, 
+        timestamp: n.timestamp, 
+        tipo: typeof n.timestamp 
+      })))
       return null
     }
 
@@ -1513,31 +1486,41 @@ NOTAS FISCAIS:`
 
     // Ordenar notas por timestamp para encontrar primeira e última
     const notasOrdenadas = [...notasComTimestamp].sort((a, b) => 
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      a.dataTimestamp!.getTime() - b.dataTimestamp!.getTime()
     )
 
     const primeiraNota = notasOrdenadas[0]
     const ultimaNota = notasOrdenadas[notasOrdenadas.length - 1]
 
     try {
-      const inicioBipagem = new Date(primeiraNota.timestamp)
-      const fimBipagem = new Date(ultimaNota.timestamp)
+      const inicioBipagem = primeiraNota.dataTimestamp!
+      const fimBipagem = ultimaNota.dataTimestamp!
       
       // Calcular diferença em minutos
       const diferencaMs = fimBipagem.getTime() - inicioBipagem.getTime()
       const diferencaMinutos = Math.round(diferencaMs / (1000 * 60))
       
+      // Se a diferença for negativa ou muito pequena, pode ser um erro
+      if (diferencaMinutos < 0) {
+        console.warn('⚠️ Tempo de bipagem negativo detectado para relatório:', relatorio.nome)
+        return null
+      }
+      
+      let resultado: string
       if (diferencaMinutos < 1) {
-        return "< 1 min"
+        resultado = "< 1 min"
       } else if (diferencaMinutos < 60) {
-        return `${diferencaMinutos} min`
+        resultado = `${diferencaMinutos} min`
       } else {
         const horas = Math.floor(diferencaMinutos / 60)
         const minutos = diferencaMinutos % 60
-        return minutos > 0 ? `${horas}h ${minutos}min` : `${horas}h`
+        resultado = minutos > 0 ? `${horas}h ${minutos}min` : `${horas}h`
       }
+      
+      console.log(`✅ Tempo de bipagem calculado para ${relatorio.nome}: ${resultado} (${diferencaMinutos} min)`)
+      return resultado
     } catch (error) {
-      console.warn('Erro ao calcular tempo de bipagem:', error)
+      console.warn('Erro ao calcular tempo de bipagem para relatório:', relatorio.nome, error)
       return null
     }
   }
@@ -1956,6 +1939,7 @@ NOTAS FISCAIS:`
                        <br />
                        {calcularTempoBipagem(relatorio) && (
                          <> 
+                         <Clock className="h-3 w-3 inline mr-1" />
                          Tempo de bipagem: {calcularTempoBipagem(relatorio)}
                          </>
                       )}

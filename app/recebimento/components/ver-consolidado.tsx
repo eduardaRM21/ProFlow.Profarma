@@ -9,10 +9,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { CalendarIcon, BarChart3, ArrowLeft, LogOut, Download, Filter, Search, Package, Trash2, RefreshCw } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { CalendarIcon, BarChart3, ArrowLeft, LogOut, Download, Filter, Search, Package, Trash2, RefreshCw, User, Sun, Moon, Monitor, ChevronDown } from "lucide-react"
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { getSupabase } from "@/lib/supabase-client"
+import { useTheme } from "@/contexts/theme-context"
 
 interface Usuario {
   nome: string
@@ -45,6 +54,9 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
   const [notas, setNotas] = useState<NotaFiscal[]>([])
   const [notasFiltradas, setNotasFiltradas] = useState<NotaFiscal[]>([])
   const [notasBipadas, setNotasBipadas] = useState<Set<string>>(new Set())
+  
+  // Hook do tema
+  const { theme, setTheme } = useTheme()
 
   // Filtros
   const [dataInicio, setDataInicio] = useState<Date | undefined>()
@@ -347,79 +359,151 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
   const notasBipadasFiltradas = notasFiltradas.filter(nota => notasBipadas.has(nota.nota)).length
 
   return (
-    <div className="min-h-screen bg-blue-50">
+    <div className="min-h-screen bg-blue-50 dark:bg-gray-950">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-blue-100">
+      <div role="banner" className="bg-white dark:bg-gray-900 shadow-sm border-b border-blue-100 dark:border-blue-900/20">
         <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <BarChart3 className="h-8 w-8 text-blue-600" />
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Consolidado - Ver Dados</h1>
-                <p className="text-sm text-gray-500">Visualizar e exportar dados consolidados</p>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-200">Consolidado - Ver Dados</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Visualizar e exportar dados consolidados</p>
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <div className="text-sm font-medium text-gray-900">{usuario.nome}</div>
-                <div className="text-xs text-gray-500">{new Date(usuario.loginTime).toLocaleString("pt-BR")}</div>
-              </div>
-
-              <Button variant="outline" size="sm" onClick={onVoltar} className="bg-transparent hover:bg-blue-50 border-blue-200">
+              <Button variant="outline" size="sm" onClick={onVoltar} className="bg-transparent hover:bg-blue-50 border-blue-200 dark:hover:bg-blue-900/20 dark:border-blue-600 dark:text-blue-300">
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Voltar
               </Button>
+              
+              {/* Dropdown do usuário com seletor de tema */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="flex items-center space-x-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-600"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <User className="h-4 w-4 text-blue-600" />
+                      <div className="text-left">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          {usuario.nome}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Consolidado
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronDown className="h-4 w-4 text-gray-400 dark:text-gray-300" />
+                  </Button>
+                </DropdownMenuTrigger>
 
-              <Button variant="outline" size="sm" onClick={onLogout} className="bg-transparent hover:bg-blue-50 border-blue-200">
-                <LogOut className="h-4 w-4 mr-2" />
-                Sair
-              </Button>
+                <DropdownMenuContent align="end" className="w-64 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none text-gray-900 dark:text-white">
+                        {usuario.nome}
+                      </p>
+                      <p className="text-xs leading-none text-gray-500 dark:text-gray-400">
+                        Setor: Consolidado
+                      </p>
+                      <p className="text-xs leading-none text-gray-500 dark:text-gray-400">
+                        Login: {new Date(usuario.loginTime).toLocaleString("pt-BR")}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
+
+                  {/* Opções de Tema */}
+                  <DropdownMenuLabel className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Aparência
+                  </DropdownMenuLabel>
+
+                  <DropdownMenuItem
+                    onClick={() => setTheme('light')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Sun className="h-4 w-4" />
+                    <span>Modo Claro</span>
+                    {theme === 'light' && <span className="ml-auto text-blue-600">✓</span>}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => setTheme('dark')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Moon className="h-4 w-4" />
+                    <span>Modo Escuro</span>
+                    {theme === 'dark' && <span className="ml-auto text-blue-600">✓</span>}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => setTheme('system')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Monitor className="h-4 w-4" />
+                    <span>Sistema</span>
+                    {theme === 'system' && <span className="ml-auto text-blue-600">✓</span>}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
+
+                  <DropdownMenuItem
+                    onClick={onLogout}
+                    className="flex items-center space-x-2 cursor-pointer text-red-600 focus:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Sair</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
       <main className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Estatísticas */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-          <Card className="border-blue-200">
+          <Card className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50">
             <CardContent className="text-center p-4">
-              <div className="text-2xl font-bold text-blue-600">{totalNotas}</div>
-              <div className="text-sm text-gray-600">Total de Notas</div>
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalNotas}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-300">Total de Notas</div>
             </CardContent>
           </Card>
-          <Card className="border-green-200">
+          <Card className="border-green-200 dark:bg-gray-900 dark:border-green-500/50">
             <CardContent className="text-center p-4">
-              <div className="text-2xl font-bold text-green-600">{notasBipadasFiltradas}</div>
-              <div className="text-sm text-gray-600">Notas Bipadas</div>
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">{notasBipadasFiltradas}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-300">Notas Bipadas</div>
             </CardContent>
           </Card>
-          <Card className="border-emerald-200">
+          <Card className="border-emerald-200 dark:bg-gray-900 dark:border-emerald-500/50">
             <CardContent className="text-center p-4">
-              <div className="text-2xl font-bold text-emerald-600">{totalVolumes}</div>
-              <div className="text-sm text-gray-600">Total de Volumes</div>
+              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{totalVolumes}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-300">Total de Volumes</div>
             </CardContent>
           </Card>
-          <Card className="border-purple-200">
+          <Card className="border-purple-200 dark:bg-gray-900 dark:border-purple-500/50">
             <CardContent className="text-center p-4">
-              <div className="text-2xl font-bold text-purple-600">{transportadorasUnicas.length}</div>
-              <div className="text-sm text-gray-600">Transportadoras</div>
+              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{transportadorasUnicas.length}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-300">Transportadoras</div>
             </CardContent>
           </Card>
-          <Card className="border-orange-200">
+          <Card className="border-orange-200 dark:bg-gray-900 dark:border-orange-500/50">
             <CardContent className="text-center p-4">
-              <div className="text-2xl font-bold text-orange-600">{statusUnicos.length}</div>
-              <div className="text-sm text-gray-600">Status</div>
+              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{statusUnicos.length}</div>
+              <div className="text-sm text-gray-600 dark:text-gray-300">Status</div>
             </CardContent>
           </Card>
         </div>
 
         {/* Filtros */}
-        <Card className="border-blue-200 mb-8">
+        <Card className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50 mb-8">
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
+            <CardTitle className="flex items-center space-x-2 text-gray-900 dark:text-gray-200">
               <Filter className="h-5 w-5 text-blue-600" />
               <span>Filtros</span>
             </CardTitle>
@@ -428,30 +512,30 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
               {/* Período */}
               <div className="space-y-2">
-                <Label className="text-sm">Data Início</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">Data Início</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
+                    <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {dataInicio ? format(dataInicio, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar"}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
+                  <PopoverContent className="w-auto p-0 dark:bg-gray-800 dark:border-gray-600">
                     <Calendar mode="single" selected={dataInicio} onSelect={setDataInicio} />
                   </PopoverContent>
                 </Popover>
               </div>
 
               <div className="space-y-2">
-                <Label className="text-sm">Data Fim</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">Data Fim</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent">
+                    <Button variant="outline" className="w-full justify-start text-left font-normal bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                       <CalendarIcon className="mr-2 h-4 w-4" />
                       {dataFim ? format(dataFim, "dd/MM/yyyy", { locale: ptBR }) : "Selecionar"}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0">
+                  <PopoverContent className="w-auto p-0 dark:bg-gray-800 dark:border-gray-600">
                     <Calendar mode="single" selected={dataFim} onSelect={setDataFim} />
                   </PopoverContent>
                 </Popover>
@@ -459,12 +543,12 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Transportadora */}
               <div className="space-y-2">
-                <Label className="text-sm">Transportadora</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">Transportadora</Label>
                 <Select value={filtroTransportadora} onValueChange={setFiltroTransportadora}>
-                  <SelectTrigger className="bg-transparent">
+                  <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="dark:bg-gray-800 dark:border-gray-600">
                     <SelectItem value="all">Todas</SelectItem>
                     {transportadorasUnicas.map((transportadora) => (
                       <SelectItem key={transportadora} value={transportadora}>
@@ -477,12 +561,12 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Destino */}
               <div className="space-y-2">
-                <Label className="text-sm">Destino</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">Destino</Label>
                 <Select value={filtroDestino} onValueChange={setFiltroDestino}>
-                  <SelectTrigger className="bg-transparent">
+                  <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="dark:bg-gray-800 dark:border-gray-600">
                     <SelectItem value="all">Todos</SelectItem>
                     {destinosUnicos.map((destino) => (
                       <SelectItem key={destino} value={destino}>
@@ -495,12 +579,12 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Fornecedor */}
               <div className="space-y-2">
-                <Label className="text-sm">Fornecedor</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">Fornecedor</Label>
                 <Select value={filtroFornecedor} onValueChange={setFiltroFornecedor}>
-                  <SelectTrigger className="bg-transparent">
+                  <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="dark:bg-gray-800 dark:border-gray-600">
                     <SelectItem value="all">Todos</SelectItem>
                     {fornecedoresUnicos.map((fornecedor) => (
                       <SelectItem key={fornecedor} value={fornecedor}>
@@ -513,12 +597,12 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Tipo */}
               <div className="space-y-2">
-                <Label className="text-sm">Tipo</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">Tipo</Label>
                 <Select value={filtroTipo} onValueChange={setFiltroTipo}>
-                  <SelectTrigger className="bg-transparent">
+                  <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="dark:bg-gray-800 dark:border-gray-600">
                     <SelectItem value="all">Todos</SelectItem>
                     {tiposUnicos.map((tipo) => (
                       <SelectItem key={tipo} value={tipo}>
@@ -531,12 +615,12 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Status */}
               <div className="space-y-2">
-                <Label className="text-sm">Status</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">Status</Label>
                 <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-                  <SelectTrigger className="bg-transparent">
+                  <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todos" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="dark:bg-gray-800 dark:border-gray-600">
                     <SelectItem value="all">Todos</SelectItem>
                     {statusUnicos.map((status) => (
                       <SelectItem key={status} value={status}>
@@ -549,21 +633,21 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Busca */}
               <div className="space-y-2">
-                <Label className="text-sm">Busca Geral</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">Busca Geral</Label>
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
                   <Input
                     placeholder="Nota, transportadora..."
                     value={busca}
                     onChange={(e) => setBusca(e.target.value)}
-                    className="pl-10 bg-transparent"
+                    className="pl-10 bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                   />
                 </div>
               </div>
             </div>
 
             <div className="flex items-center space-x-4">
-              <Button onClick={limparFiltros} variant="outline" size="sm" className="bg-transparent">
+              <Button onClick={limparFiltros} variant="outline" size="sm" className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                 Limpar Filtros
               </Button>
               <Button
@@ -584,7 +668,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                 <Download className="h-4 w-4 mr-2" />
                 Exportar CSV ({notasFiltradas.length} registros)
               </Button>
-              <div className="text-sm text-gray-600">
+              <div className="text-sm text-gray-600 dark:text-gray-300">
                 Mostrando {notasFiltradas.length} de {notas.length} registros
               </div>
             </div>
@@ -592,12 +676,12 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
         </Card>
 
         {/* Tabela */}
-        <Card className="border-blue-200">
+        <Card className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50">
           <CardHeader>
-            <CardTitle className="text-lg flex items-center">
+            <CardTitle className="text-lg flex items-center text-gray-900 dark:text-gray-200">
               Dados Consolidados
               {carregando && (
-                <div className="ml-2 flex items-center text-sm text-blue-600">
+                <div className="ml-2 flex items-center text-sm text-blue-600 dark:text-blue-400">
                   <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
                   Carregando...
                 </div>
@@ -606,15 +690,15 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
           </CardHeader>
           <CardContent>
             {notasFiltradas.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Package className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <Package className="h-16 w-16 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
                 <h3 className="text-lg font-medium mb-2">Nenhum registro encontrado</h3>
                 <p>Tente ajustar os filtros ou adicionar novos dados.</p>
               </div>
             ) : (
               <ScrollArea className="h-[600px]">
-                <div className="border rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 px-4 py-2 grid grid-cols-12 gap-4 text-sm font-medium text-gray-700">
+                <div className="border rounded-lg overflow-hidden dark:border-gray-600">
+                  <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 grid grid-cols-12 gap-4 text-sm font-medium text-gray-700 dark:text-gray-200">
                     <div>Data Entrada</div>
                     <div>Data NF</div>
                     <div>Transportadora</div>
@@ -635,14 +719,14 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                         key={nota.id}
                         className={`px-4 py-2 grid grid-cols-12 gap-4 text-sm ${
                           foiBipada 
-                            ? "bg-green-100 border-l-4 border-green-500" 
-                            : index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                            ? "bg-green-100 dark:bg-green-900/20 border-l-4 border-green-500 dark:border-green-400" 
+                            : index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"
                         }`}
                       >
                         <div className="text-xs">{new Date(nota.dataEntrada).toLocaleString("pt-BR")}</div>
                         <div className="font-medium">{nota.data}</div>
                         <div className="font-medium">{nota.transportadora}</div>
-                        <div className="font-mono flex items-center">
+                        <div className="font-medium flex items-center">
                           {nota.nota}
                           {foiBipada && (
                             <span className="ml-2 text-green-600 text-xs font-bold">BIPADA</span>
@@ -680,7 +764,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                       </div>
                     )
                   })}
-                  <div className="bg-blue-50 px-4 py-2 grid grid-cols-12 gap-4 text-sm font-bold text-blue-800">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-2 grid grid-cols-12 gap-4 text-sm font-bold text-blue-800 dark:text-blue-300">
                     <div className="col-span-4">Total:</div>
                     <div className="text-center">{totalVolumes}</div>
                     <div className="col-span-7"></div>

@@ -22,11 +22,23 @@ import {
   User,
   Eye,
   Truck,
+  Sun,
+  Moon,
+  Monitor,
+  ChevronDown,
 } from "lucide-react"
 import BarcodeScanner from "./components/barcode-scanner"
 import ConfirmacaoModal from "./components/confirmacao-modal"
 import DivergenciaModal from "./components/divergencia-modal"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import RelatoriosModal from "./components/relatorios-modal"
 import SelecaoTransportadoraModal from "./components/selecao-transportadora-modal"
 import ConsultarNfsFaltantesModal from "./components/consultar-nfs-faltantes-modal"
@@ -39,6 +51,7 @@ import type { SessionData, NotaFiscal, Relatorio } from "@/lib/database-service"
 import { LocalAuthService } from "@/lib/local-auth-service"
 import { getSupabase } from "@/lib/supabase-client"
 import { useIsColetor } from "@/hooks/use-coletor"
+import { useTheme } from "@/contexts/theme-context"
 import ColetorView from "./components/coletor-view"
 import DarEntrada from "./components/dar-entrada"
 import VerConsolidado from "./components/ver-consolidado"
@@ -75,6 +88,9 @@ export default function RecebimentoPage() {
   
   // Hook para detectar se é um coletor
   const isColetor = useIsColetor()
+
+  // Hook do tema
+  const { theme, setTheme } = useTheme()
 
   // Hooks do banco de dados
   const { getSession } = useSession()
@@ -1359,45 +1375,103 @@ export default function RecebimentoPage() {
           <Loader text="Processando relatório..." duration={0} />
         )
       )}
-      <div className="min-h-screen bg-blue-50">
+      <div className="min-h-screen bg-blue-50 dark:bg-gray-950">
       {/* Renderização condicional: Desktop vs Coletor */}
       {!isColetor ? (
         <>
           {/* Header */}
-          <header className="bg-white shadow-sm border-b border-blue-100">
+          <header className="bg-white shadow-sm border-b border-blue-100 dark:bg-gray-900 dark:border-blue-900/20">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center py-2 sm:py-0 sm:h-16 gap-2 sm:gap-4">
             <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
               <Package className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-blue-600" />
               <div>
-                <h1 className="text-sm sm:text-base lg:text-xl font-bold text-gray-900">Recebimento</h1>
-                <p className="text-xs sm:text-sm text-gray-500 sm:block">Sistema de Recebimento de Notas Fiscais</p>
+                <h1 className="text-sm sm:text-base lg:text-xl font-bold text-gray-900 dark:text-gray-200">Recebimento</h1>
+                <p className="text-xs sm:text-sm text-gray-500 sm:block dark:text-gray-300">Sistema de Recebimento de Notas Fiscais</p>
               </div>
             </div>
 
             <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
-              <div className="flex flex-wrap items-center gap-1 sm:gap-2 text-xs sm:text-sm text-gray-600 sm:flex-none">
-                <div className="flex items-center gap-1 text-gray-600">
-                  <User className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
-                  <span className="font-medium truncate text-xs sm:text-sm">{sessionData.colaboradores}</span>
-                </div>
-                <div className="flex items-center space-x-4 text-xs text-gray-500">
-                  <div className="flex items-center space-x-1">
-                    <Calendar className="h-3 w-3" />
-                    <span>{sessionData.data}</span>
-                  </div>
-                  <Badge className="text-xs bg-blue-100 text-blue-800">Turno {sessionData.turno}</Badge>
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLogout}
-                className="flex items-center space-x-2 bg-transparent hover:bg-blue-50 border-blue-200"
-              >
-                <LogOut className="h-4 w-4" />
-                <span>Sair</span>
-              </Button>
+             
+              
+              {/* Dropdown do usuário com seletor de tema */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="flex items-center space-x-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border-gray-200 dark:border-gray-600"
+                  >
+                    <div className="flex items-center space-x-2">
+                      <User className="h-4 w-4 text-blue-600" />
+                      <div className="hidden sm:block text-left">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          {Array.isArray(sessionData.colaboradores) ? sessionData.colaboradores.join(', ') : sessionData.colaboradores}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Recebimento
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronDown className="h-4 w-4 text-gray-400 dark:text-gray-300" />
+                  </Button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent align="end" className="w-64 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none text-gray-900 dark:text-white">
+                        {Array.isArray(sessionData.colaboradores) ? sessionData.colaboradores.join(', ') : sessionData.colaboradores}
+                      </p>
+                      <p className="text-xs leading-none text-gray-500 dark:text-gray-400">
+                        Setor: Recebimento
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
+
+                  {/* Opções de Tema */}
+                  <DropdownMenuLabel className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Aparência
+                  </DropdownMenuLabel>
+
+                  <DropdownMenuItem
+                    onClick={() => setTheme('light')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Sun className="h-4 w-4" />
+                    <span>Modo Claro</span>
+                    {theme === 'light' && <span className="ml-auto text-blue-600">✓</span>}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => setTheme('dark')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Moon className="h-4 w-4" />
+                    <span>Modo Escuro</span>
+                    {theme === 'dark' && <span className="ml-auto text-blue-600">✓</span>}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={() => setTheme('system')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <Monitor className="h-4 w-4" />
+                    <span>Sistema</span>
+                    {theme === 'system' && <span className="ml-auto text-blue-600">✓</span>}
+                  </DropdownMenuItem>
+
+                  <DropdownMenuSeparator className="bg-gray-200 dark:bg-gray-700" />
+
+                  <DropdownMenuItem
+                    onClick={handleLogout}
+                    className="flex items-center space-x-2 cursor-pointer text-red-600 focus:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Sair</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -1409,12 +1483,12 @@ export default function RecebimentoPage() {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
           {/* Status da Sessão */}
           {!sessaoIniciada ? (
-            <Card className="border-red-200 bg-red-50">
+            <Card className="border-red-200 bg-red-50 dark:bg-gray-900 dark:border-red-500/50">
               <CardContent className="text-center p-4">
                 <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">
                   ⚠️
                 </div>
-                <div className="text-xs text-gray-600 leading-tight">
+                <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">
                   Sessão não iniciada
                 </div>
                 <div className="text-xs text-red-600 font-medium">
@@ -1424,12 +1498,12 @@ export default function RecebimentoPage() {
             </Card>
           ) : (
             /* Progresso da Transportadora */
-            <Card className="border-purple-200">
+            <Card className="border-purple-200 dark:bg-gray-900 dark:border-purple-500/50">
               <CardContent className="text-center p-4">
                 <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600">
                   {progressoTransportadora.bipadas}/{progressoTransportadora.total}
                 </div>
-                <div className="text-xs text-gray-600 leading-tight">
+                <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">
                   {transportadoraSelecionada}
                 </div>
                 <div className="text-xs text-purple-600 font-medium">
@@ -1440,49 +1514,49 @@ export default function RecebimentoPage() {
           )}
           
           {/* Total de Notas */}
-          <Card className="border-blue-200">
+          <Card className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50">
             <CardContent className="text-center p-4">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">{notas.length}</div>
-              <div className="text-xs text-gray-600 leading-tight">Total de Notas</div>
+              <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">Total de Notas</div>
             </CardContent>
           </Card>
           
           {/* Notas OK */}
-          <Card className="border-green-200">
+          <Card className="border-green-200 dark:bg-gray-900 dark:border-green-500/50">
             <CardContent className="text-center p-4">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">{notas.filter((n) => n.status === "ok").length}</div>
-              <div className="text-xs text-gray-600 leading-tight">Notas OK</div>
+              <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">Notas OK</div>
             </CardContent>
           </Card>
           
           {/* Com Divergência */}
-          <Card className="border-orange-200">
+          <Card className="border-orange-200 dark:bg-gray-900 dark:border-orange-500/50">
             <CardContent className="text-center p-4">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
                 {notas.filter((n) => n.status === "divergencia").length}
               </div>
-              <div className="text-xs text-gray-600 leading-tight">Com Divergência</div>
+              <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">Com Divergência</div>
             </CardContent>
           </Card>
         {/* Total de Volumes */}
-        <Card className="border-blue-200">
+        <Card className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50">
             <CardContent className="text-center p-4">
               <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600">{notas.reduce((sum, nota) => sum + (nota.divergencia?.volumesInformados || nota.volumes), 0)}</div>
-              <div className="text-xs text-gray-600 leading-tight">Total de Volumes</div>
+              <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">Total de Volumes</div>
             </CardContent>
           </Card>
         </div>
 
         {/* Mensagem quando sessão não iniciada */}
         {!sessaoIniciada && (
-          <Card className="border-orange-200 bg-orange-50 mb-8">
+          <Card className="border-orange-200 bg-orange-50 dark:bg-gray-900/20 dark:border-orange-500/50 mb-8">
             <CardContent className="text-center py-8">
               <div className="flex flex-col items-center space-y-4">
                 <div>
-                  <h3 className="text-xl font-semibold text-orange-800 mb-2">
+                  <h3 className="text-xl font-semibold text-orange-800 dark:text-orange-300 mb-2">
                     Selecione uma Transportadora
                   </h3>
-                  <p className="text-orange-600 mb-4">
+                  <p className="text-orange-600 dark:text-orange-400 mb-4">
                     Para começar a bipar notas, você precisa primeiro selecionar uma transportadora.
                   </p>
                   <Button
@@ -1503,10 +1577,10 @@ export default function RecebimentoPage() {
         {sessaoIniciada && !bipagemIniciada && (
           <div className="space-y-4 mb-8">
             {/* Progresso da Transportadora */}
-            <Card className="border-purple-200">
+            <Card className="border-purple-200 dark:bg-gray-900/20 dark:border-purple-500/50">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg flex items-center space-x-2">
+                  <CardTitle className="text-lg flex items-center space-x-2 text-gray-900 dark:text-gray-200">
                     <CheckCircle className="h-5 w-5 text-purple-600" />
                     <span>Progresso - {transportadoraSelecionada}</span>
                   </CardTitle>
@@ -1515,7 +1589,7 @@ export default function RecebimentoPage() {
                       onClick={() => setModalSelecaoTransportadora(true)}
                       variant="outline"
                       size="sm"
-                      className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                      className="text-blue-600 border-blue-300 hover:bg-blue-50 dark:border-blue-600 dark:hover:bg-blue-900/20"
                       title="Trocar transportadora selecionada"
                     >
                       <Truck className="h-3 w-3 mr-1" />
@@ -1527,8 +1601,8 @@ export default function RecebimentoPage() {
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Notas Bipadas</span>
-                    <span className="text-sm font-bold">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Notas Bipadas</span>
+                    <span className="text-sm font-bold text-gray-900 dark:text-gray-200">
                       {progressoTransportadora.bipadas} de {progressoTransportadora.total}
                     </span>
                   </div>
@@ -1541,7 +1615,7 @@ export default function RecebimentoPage() {
                       {progressoTransportadora.percentual}% Concluído
                     </Badge>
                   </div>
-                  <div className="text-xs text-gray-500 text-center">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
                     {notasTransportadoraCache.length > 0 ? (
                       `📋 ${notasTransportadoraCache.length} notas carregadas no cache`
                     ) : (
@@ -1554,15 +1628,15 @@ export default function RecebimentoPage() {
 
             {/* Opção de liberação parcial */}
             {progressoTransportadora.percentual < 100 && (
-              <Card className="border-orange-200">
+              <Card className="border-orange-200 dark:bg-gray-900/20 dark:border-orange-500/50">
                 <CardContent className="pt-4">
                   <div className="flex items-center space-x-3">
                     <AlertTriangle className="h-5 w-5 text-orange-600" />
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-orange-800">
+                      <p className="text-sm font-medium text-orange-800 dark:text-orange-300">
                         Progresso incompleto ({progressoTransportadora.percentual}%)
                       </p>
-                      <p className="text-xs text-orange-600">
+                      <p className="text-xs text-orange-600 dark:text-orange-400">
                         Você pode liberar parcialmente ou aguardar completar todas as notas.
                       </p>
                     </div>
@@ -1572,15 +1646,15 @@ export default function RecebimentoPage() {
             )}
 
             {/* Botão Iniciar Bipagem */}
-            <Card className="border-green-200 bg-green-50">
+            <Card className="border-green-200 bg-green-50 dark:bg-gray-900/20 dark:border-green-500/50">
               <CardContent className="text-center py-8">
                 <div className="flex flex-col items-center space-y-4">
                   <div className="text-6xl">📱</div>
                   <div>
-                    <h3 className="text-xl font-semibold text-green-800 mb-2">
+                    <h3 className="text-xl font-semibold text-green-800 dark:text-green-300 mb-2">
                       Pronto para Bipar
                     </h3>
-                    <p className="text-green-600 mb-4">
+                    <p className="text-green-600 dark:text-green-400 mb-4">
                       Clique abaixo para iniciar a bipagem das notas desta transportadora.
                     </p>
                     <Button
@@ -1600,20 +1674,20 @@ export default function RecebimentoPage() {
 
         {/* Campo de bipagem - só aparece se bipagem iniciada */}
         {sessaoIniciada && bipagemIniciada && (
-        <Card className="border-blue-200 mb-8">
+        <Card className="border-blue-200 dark:bg-gray-900/20 dark:border-blue-500/50 mb-8">
           <CardHeader>
-            <CardTitle className="text-lg flex items-center space-x-2">
+            <CardTitle className="text-lg flex items-center space-x-2 text-gray-900 dark:text-gray-200">
               <Scan className="h-5 w-5 text-blue-600" />
               <span>Bipar Código de Barras</span>
             </CardTitle>
-              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-900/20 dark:border-blue-500/50">
                 <div className="flex items-center space-x-2">
                   <Truck className="h-4 w-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-800">
+                  <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
                     Transportadora: {transportadoraSelecionada}
                   </span>
                 </div>
-                <p className="text-xs text-blue-600 mt-1">
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
                   Apenas notas desta transportadora serão aceitas. Verifique se o fornecedor ou cliente destino corresponde à transportadora selecionada.
                 </p>
               </div>
@@ -1622,7 +1696,7 @@ export default function RecebimentoPage() {
             {scannerAtivo ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium">Scanner de Código de Barras</h3>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-gray-200">Scanner de Código de Barras</h3>
                   <Button
                     variant="outline"
                     onClick={() => {
@@ -1630,7 +1704,7 @@ export default function RecebimentoPage() {
                       setScannerAtivo(false)
                       setScannerParaBipar(false)
                     }}
-                    className="text-red-600 hover:text-red-700"
+                    className="text-red-600 hover:text-red-700 dark:border-red-600 dark:hover:bg-red-900/20"
                   >
                     <CameraOff className="h-4 w-4 mr-2" />
                     Fechar Scanner
@@ -1654,7 +1728,7 @@ export default function RecebimentoPage() {
                       value={codigoInput}
                       onChange={(e) => setCodigoInput(e.target.value)}
                       onKeyPress={handleKeyPress}
-                      className="text-base h-12 font-mono"
+                      className="text-base h-12 font-mono dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
                     />
                   </div>
                     <Button 
@@ -1676,7 +1750,7 @@ export default function RecebimentoPage() {
                     Bipar
                   </Button>
                 </div>
-                <p className="text-xs text-gray-500">Formato: 45868|000068310|0014|RJ08|EMS S/A|SAO JO|ROD</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Formato: 45868|000068310|0014|RJ08|EMS S/A|SAO JO|ROD</p>
               </div>
             )}
           </CardContent>
@@ -1688,7 +1762,7 @@ export default function RecebimentoPage() {
           {!sessaoIniciada ? (
             <Button
               onClick={() => setModalSelecaoTransportadora(true)}
-              className="mb-3 bg-purple-600 hover:bg-purple-700 text-white"
+              className="mb-3 bg-purple-600 hover:bg-purple-800 text-white"
               size="sm"
             >
               <Truck className="h-4 w-4 mr-2" />
@@ -1724,7 +1798,7 @@ export default function RecebimentoPage() {
 
           <Button
             onClick={() => setModalRelatorios(true)}
-            className="mb-3 bg-blue-100 hover:bg-blue-200 text-blue-600"
+            className="mb-3 bg-blue-100 hover:bg-blue-200 text-blue-600 dark:bg-blue-300 dark:text-blue-900 dark:hover:bg-blue-500 dark:hover:text-blue-200"
             size="sm"
           >
             <Eye className="h-4 w-4 mr-2" />
@@ -1732,11 +1806,11 @@ export default function RecebimentoPage() {
           </Button>
 
           
-          {sessionData && (sessionData.colaboradores.includes("Elisangela") || sessionData.colaboradores.includes("Eduardarm") || sessionData.colaboradores.includes("Amanda Santos") || sessionData.colaboradores.includes("Ana Carolina")) || sessionData.colaboradores.includes("João Victor") || sessionData.colaboradores.includes("Alexsandro") || sessionData.colaboradores.includes("Manuelane") || sessionData.colaboradores.includes("Marcela") && (
+          {sessionData && (sessionData.colaboradores.includes("Elisangela") || sessionData.colaboradores.includes("Eduardarm") || sessionData.colaboradores.includes("Amanda Santos") || sessionData.colaboradores.includes("Ana Carolina") || sessionData.colaboradores.includes("João Victor") || sessionData.colaboradores.includes("Alexsandro") || sessionData.colaboradores.includes("Manuelane") || sessionData.colaboradores.includes("Marcela")) && (
             <Button
               onClick={() => setTelaAtiva("dar-entrada")}
               variant="outline"
-              className="mb-3 bg-purple-100 hover:bg-purple-200 text-purple-600"
+              className="mb-3 bg-purple-100 hover:bg-purple-200 text-purple-600 dark:bg-purple-300 dark:text-purple-900 dark:hover:bg-purple-500 dark:hover:text-purple-200"
               size="sm"
             >
               <Package className="h-5 w-5 mr-2" />
@@ -1748,13 +1822,13 @@ export default function RecebimentoPage() {
 
         {/* Lista de notas - só aparece se bipagem iniciada */}
         {sessaoIniciada && bipagemIniciada && (
-        <Card className="border-blue-200">
+        <Card className="border-blue-200 dark:bg-gray-900/20 dark:border-blue-500/50">
           <CardHeader>
-            <CardTitle className="text-lg">Notas Bipadas</CardTitle>
+            <CardTitle className="text-lg text-gray-900 dark:text-gray-200">Notas Bipadas</CardTitle>
           </CardHeader>
           <CardContent>
             {notas.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 Nenhuma nota bipada ainda. Use o campo acima para começar.
               </div>
             ) : (
@@ -1763,7 +1837,9 @@ export default function RecebimentoPage() {
                   <div
                     key={nota.id}
                     className={`p-4 border-l-4 rounded-r-lg ${
-                      nota.status === "ok" ? "border-l-green-500 bg-green-50" : "border-l-orange-500 bg-orange-50"
+                      nota.status === "ok" 
+                        ? "border-l-green-500 bg-green-50 dark:bg-green-900/20 dark:border-l-green-400" 
+                        : "border-l-orange-500 bg-orange-50 dark:bg-orange-900/20 dark:border-l-orange-400"
                     }`}
                   >
                     <div className="flex items-start justify-between">
@@ -1775,15 +1851,15 @@ export default function RecebimentoPage() {
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center space-x-4 mb-2">
-                            <div className="font-semibold text-gray-900">NF: {nota.numeroNF}</div>
-                            <Badge variant="outline" className="bg-white">
+                            <div className="font-semibold text-gray-900 dark:text-gray-200">NF: {nota.numeroNF}</div>
+                            <Badge variant="outline" className="bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                               Vol: {nota.divergencia?.volumesInformados || nota.volumes}
                             </Badge>
-                            <Badge variant="outline" className="bg-white">
+                            <Badge variant="outline" className="bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                               {nota.destino}
                             </Badge>
                           </div>
-                          <div className="text-sm text-gray-600 space-y-1">
+                          <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
                             <div>
                               <strong>Fornecedor:</strong> {nota.fornecedor} | <strong>Cliente:</strong>{" "}
                               {nota.clienteDestino}
@@ -1792,7 +1868,7 @@ export default function RecebimentoPage() {
                               <strong>Tipo:</strong> {nota.tipoCarga} | <strong>Data:</strong> {nota.data}
                             </div>
                             {nota.divergencia && (
-                              <div className="text-orange-600 font-medium">
+                              <div className="text-orange-600 dark:text-orange-400 font-medium">
                                 🔸 {nota.divergencia.observacoes}
                                 {nota.divergencia.volumesInformados !== nota.volumes && (
                                   <span>
@@ -1803,7 +1879,7 @@ export default function RecebimentoPage() {
                               </div>
                             )}
                           </div>
-                          <div className="text-xs text-gray-400 mt-2">
+                          <div className="text-xs text-gray-400 dark:text-gray-500 mt-2">
                             {new Date(nota.timestamp).toLocaleString("pt-BR")}
                           </div>
                         </div>

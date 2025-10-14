@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 import BarcodeScanner from "./barcode-scanner"
 import type { NotaFiscal } from "@/lib/database-service"
+import { useTheme } from "@/contexts/theme-context"
 import "../coletor-styles.css"
 
 interface ColetorViewProps {
@@ -88,16 +89,16 @@ const NotaItem = memo(({ nota }: { nota: NotaFiscal }) => {
         <div className="flex-1 min-w-0">
           {/* Cabeçalho da nota */}
           <div className="flex items-center justify-between mb-1">
-            <div className="font-semibold text-gray-900 text-sm">
+            <div className="font-semibold text-gray-900 dark:text-gray-200 text-sm">
               <span className="sr-only">Número da nota fiscal: </span>
               NF: {nota.numeroNF}
             </div>
             <div className="flex space-x-1" role="group" aria-label="Informações da nota">
-              <Badge variant="outline" className="text-xs bg-white coletor-badge">
+              <Badge variant="outline" className="text-xs bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 coletor-badge">
                 <span className="sr-only">Volumes: </span>
                 Vol: {nota.divergencia?.volumesInformados || nota.volumes}
               </Badge>
-              <Badge variant="outline" className="text-xs bg-white coletor-badge">
+              <Badge variant="outline" className="text-xs bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 coletor-badge">
                 <span className="sr-only">Destino: </span>
                 {nota.destino}
               </Badge>
@@ -169,6 +170,9 @@ export default function ColetorView({
   finalizando = false,
   setModalConsultarNfsFaltantes
 }: ColetorViewProps) {
+  // Hook do tema
+  const { theme } = useTheme()
+  
   // Memoizar cálculos para melhorar performance
   const totalVolumes = useMemo(() => {
     return notas.reduce((sum, nota) => sum + (nota.divergencia?.volumesInformados || nota.volumes), 0)
@@ -223,24 +227,24 @@ export default function ColetorView({
   }, [notas.length, sessionData, clearNotas])
 
   return (
-    <div className="min-h-screen bg-gray-50 p-2 coletor-container" role="main" aria-label="Área de recebimento - Coletor">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900/20 p-2 coletor-container" role="main" aria-label="Área de recebimento - Coletor">
       {/* Header compacto para coletor */}
-      <header className="bg-white rounded-lg shadow-sm mb-3 p-3 coletor-header" role="banner">
+      <header className="bg-white dark:bg-gray-900 rounded-lg shadow-sm mb-3 p-3 coletor-header" role="banner">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Package className="h-6 w-6 text-blue-600" aria-hidden="true" />
             <div>
-              <h1 className="text-lg font-bold text-gray-900">Recebimento</h1>
-              <p className="text-sm text-gray-500">Coletor</p>
+              <h1 className="text-lg font-bold text-gray-900 dark:text-gray-200">Recebimento</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Coletor</p>
             </div>
           </div>
           <div className="flex items-center space-x-3">
             <div className="text-right" role="status" aria-live="polite">
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-gray-500 dark:text-gray-400">
                 <span className="sr-only">Total de notas: </span>
                 Notas: {notas.length}
               </div>
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-gray-500 dark:text-gray-400">
                 <span className="sr-only">Total de volumes: </span>
                 Volumes: {totalVolumes}
               </div>
@@ -249,7 +253,7 @@ export default function ColetorView({
               onClick={handleLogout}
               variant="outline"
               size="icon"
-              className="h-8 px-1 text-red-600 hover:text-red-700 border-red-200 hover:border-red-300"
+              className="h-8 px-1 text-red-600 hover:text-red-700 border-red-200 hover:border-red-300 dark:border-red-600 dark:hover:bg-red-900/20"
               aria-label="Sair do sistema"
             >
               <LogOut className="h-3 w-3 mr-1" aria-hidden="true" />
@@ -260,7 +264,7 @@ export default function ColetorView({
 
       {/* Card de Seleção de Transportadora - se não iniciada */}
       {!sessaoIniciada && (
-        <Card className="mb-3 border-orange-200 coletor-card" role="region" aria-label="Seleção de transportadora">
+        <Card className="mb-3 border-orange-200 dark:bg-gray-900/20 dark:border-orange-500/50 coletor-card" role="region" aria-label="Seleção de transportadora">
           <CardHeader className="pb-2 coletor-card-header">
             <CardTitle className="text-base flex items-center space-x-2">
               <Truck className="h-4 w-4 text-orange-600" />
@@ -290,7 +294,7 @@ export default function ColetorView({
 
       {/* Card de Progresso da Transportadora - se disponível */}
       {transportadoraSelecionada && progressoTransportadora && (
-        <Card className="mb-3 border-purple-200 coletor-card" role="region" aria-label="Progresso da transportadora">
+        <Card className="mb-3 border-purple-200 dark:bg-gray-900/20 dark:border-purple-500/50 coletor-card" role="region" aria-label="Progresso da transportadora">
           <CardHeader className="pb-2 coletor-card-header">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center space-x-2">
@@ -302,7 +306,7 @@ export default function ColetorView({
                   onClick={() => setModalSelecaoTransportadora(true)}
                   variant="outline"
                   size="sm"
-                  className="text-blue-600 border-blue-300 hover:bg-blue-50 h-8 px-2"
+                  className="text-blue-600 border-blue-300 hover:bg-blue-50 dark:border-blue-600 dark:hover:bg-blue-900/20 h-8 px-2"
                   title="Trocar transportadora selecionada"
                 >
                   <Truck className="h-3 w-3 mr-1" />
@@ -336,7 +340,7 @@ export default function ColetorView({
 
               {/* Botão Iniciar Bipagem - se não iniciada */}
               {!bipagemIniciada && iniciarBipagem && (
-                <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                   <Button
                     onClick={iniciarBipagem}
                     className="w-full h-10 bg-green-600 hover:bg-green-700 text-white coletor-button"
@@ -354,7 +358,7 @@ export default function ColetorView({
 
       {/* Área de entrada - otimizada para coletor - só aparece após iniciar bipagem */}
       {bipagemIniciada && (
-        <Card className="mb-3 border-blue-200 coletor-card" role="region" aria-label="Scanner de código">
+        <Card className="mb-3 border-blue-200 dark:bg-gray-900/20 dark:border-blue-500/50 coletor-card" role="region" aria-label="Scanner de código">
           <CardHeader className="pb-2 coletor-card-header">
             <CardTitle className="text-base">Scanner de Código</CardTitle>
           </CardHeader>
@@ -473,7 +477,7 @@ export default function ColetorView({
 
             <Button
               onClick={handleClearNotas}
-              className="h-12 bg-red-50 hover:bg-red-100 text-red-700 border-red-200 hover:border-red-300 coletor-button"
+              className="h-12 bg-red-50 hover:bg-red-100 text-red-700 border-red-200 hover:border-red-300 dark:bg-red-900/20 dark:hover:bg-red-900/30 dark:border-red-600 coletor-button"
               aria-label={`Limpar ${notas.length} notas bipadas`}
             >
               <Trash2 className="h-4 w-4 mr-2" aria-hidden="true" />
@@ -496,7 +500,7 @@ export default function ColetorView({
             <div className="mb-3">
               <Button
                 onClick={() => setModalConsultarNfsFaltantes?.(true)}
-                className="w-full h-12 bg-orange-100 hover:bg-orange-200 text-orange-700 border-orange-200 hover:border-orange-300 coletor-button"
+                className="w-full h-12 bg-orange-100 hover:bg-orange-200 text-orange-700 border-orange-200 hover:border-orange-300 dark:bg-orange-900/20 dark:hover:bg-orange-900/30 dark:border-orange-600 coletor-button"
                 aria-label="Consultar notas fiscais faltantes da transportadora"
               >
                 <Search className="h-4 w-4 mr-2" aria-hidden="true" />
@@ -508,7 +512,7 @@ export default function ColetorView({
       )}
 
       {/* Lista de notas - otimizada para coletor */}
-      <Card className="border-blue-200 coletor-card" role="region" aria-label="Lista de notas processadas">
+      <Card className="border-blue-200 dark:bg-gray-900/20 dark:border-blue-500/50 coletor-card" role="region" aria-label="Lista de notas processadas">
         <CardHeader className="pb-2 coletor-card-header">
           <CardTitle className="text-base">Notas Bipadas</CardTitle>
         </CardHeader>
