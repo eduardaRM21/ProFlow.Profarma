@@ -117,11 +117,9 @@ export const useRelatoriosOptimized = () => {
         // Aplicar filtros se fornecidos
         if (area) {
           if (area === 'custos') {
-            // Para custos, buscar TODOS os relatórios de recebimento que foram liberados
+            // Para custos, buscar TODOS os relatórios de recebimento (todos os status)
             console.log('🔍 Buscando relatórios de recebimento para área custos')
-            relatoriosQuery = relatoriosQuery
-              .eq('area', 'recebimento')
-              .in('status', ['liberado', 'liberado_parcialmente'])
+            relatoriosQuery = relatoriosQuery.eq('area', 'recebimento')
           } else {
             console.log('🔍 Buscando relatórios para área:', area)
             relatoriosQuery = relatoriosQuery.eq('area', area)
