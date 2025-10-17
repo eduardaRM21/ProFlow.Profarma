@@ -379,6 +379,46 @@ export const useRecebimento = (chave: string) => {
           } catch (bipadasError) {
             console.warn('⚠️ Erro ao limpar da tabela notas_bipadas:', bipadasError)
           }
+
+          // 3. Limpar divergências relacionadas às notas da sessão
+          try {
+            const { getSupabase } = await import('@/lib/supabase-client')
+            const supabase = getSupabase()
+            
+            // Buscar IDs das notas fiscais da sessão atual
+            const { data: notasBipadas, error: buscaError } = await supabase
+              .from('notas_bipadas')
+              .select('numero_nf')
+              .eq('session_id', chave)
+              .eq('area_origem', 'recebimento')
+            
+            if (!buscaError && notasBipadas && notasBipadas.length > 0) {
+              // Buscar IDs das notas fiscais correspondentes
+              const numerosNF = notasBipadas.map(n => n.numero_nf)
+              const { data: notasFiscais, error: notasError } = await supabase
+                .from('notas_fiscais')
+                .select('id')
+                .in('numero_nf', numerosNF)
+              
+              if (!notasError && notasFiscais && notasFiscais.length > 0) {
+                const idsNotasFiscais = notasFiscais.map(n => n.id)
+                
+                // Deletar divergências relacionadas
+                const { error: deleteDivergenciasError } = await supabase
+                  .from('divergencias')
+                  .delete()
+                  .in('nota_fiscal_id', idsNotasFiscais)
+                
+                if (deleteDivergenciasError) {
+                  console.warn('⚠️ Erro ao deletar divergências:', deleteDivergenciasError)
+                } else {
+                  console.log('✅ Divergências removidas para a sessão (session_id: ' + chave + ')')
+                }
+              }
+            }
+          } catch (divergenciasError) {
+            console.warn('⚠️ Erro ao limpar divergências:', divergenciasError)
+          }
           
           // ✅ CORREÇÃO: NÃO DELETAR DA TABELA notas_fiscais!
           // As notas fiscais só são salvas quando o relatório for finalizado

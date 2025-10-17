@@ -243,6 +243,56 @@ export default function RecebimentoPage() {
       }
     }
 
+    // 1.1. Verificar se a nota já foi bipada na tabela notas_bipadas para esta sessão (CRÍTICO)
+    console.log(`🔍 Verificando se NF ${numeroNF} já foi bipada na tabela notas_bipadas...`)
+    try {
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      const sessionId = `recebimento_${Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0 
+        ? sessionData?.colaboradores.join('_') 
+        : 'sem_colaborador'}_${sessionData?.data}_${sessionData?.turno}`
+      
+      console.log(`🔍 SessionId para verificação: ${sessionId}`)
+      
+      const { data: notaBipadaExistente, error: erroVerificacao } = await supabase
+        .from('notas_bipadas')
+        .select('id, numero_nf, timestamp_bipagem, session_id')
+        .eq('numero_nf', numeroNF)
+        .eq('session_id', sessionId)
+        .eq('area_origem', 'recebimento')
+        .single()
+
+      if (erroVerificacao && erroVerificacao.code !== 'PGRST116') {
+        console.error('❌ Erro ao verificar duplicata na tabela notas_bipadas:', erroVerificacao)
+        // Em caso de erro, bloquear a bipagem para evitar duplicação
+        return {
+          valido: false,
+          erro: `Erro ao verificar duplicatas. Tente novamente em alguns segundos.`
+        }
+      } else if (notaBipadaExistente) {
+        const timestampFormatado = notaBipadaExistente.timestamp_bipagem 
+          ? new Date(notaBipadaExistente.timestamp_bipagem as string).toLocaleString('pt-BR')
+          : 'agora'
+        
+        console.log(`⚠️ NF ${numeroNF} já bipada na tabela notas_bipadas (${timestampFormatado})`)
+        console.log(`🔍 Dados da nota existente:`, notaBipadaExistente)
+        return {
+          valido: false,
+          erro: `NF ${numeroNF} já foi bipada nesta sessão (${timestampFormatado}). Duplicatas não são permitidas.`
+        }
+      }
+      
+      console.log(`✅ NF ${numeroNF} não encontrada na tabela notas_bipadas para esta sessão`)
+    } catch (error) {
+      console.error(`❌ Erro ao verificar duplicata na tabela notas_bipadas:`, error)
+      // Em caso de erro, bloquear a bipagem para evitar duplicação
+      return {
+        valido: false,
+        erro: `Erro ao verificar duplicatas. Tente novamente em alguns segundos.`
+      }
+    }
+
     // 2. Verificar se a nota está em algum relatório existente (qualquer setor)
     console.log(`🔍 Verificando se NF ${numeroNF} está em relatórios existentes...`)
     try {
@@ -781,7 +831,9 @@ export default function RecebimentoPage() {
         numero_nf: notaAtual.numeroNF,
         codigo_completo: notaAtual.codigoCompleto,
         area_origem: 'recebimento' as const,
-        session_id: `recebimento_${sessionData?.data}_${sessionData?.turno}`,
+        session_id: `recebimento_${Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0 
+          ? sessionData?.colaboradores.join('_') 
+          : 'sem_colaborador'}_${sessionData?.data}_${sessionData?.turno}`,
         colaboradores: Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0
           ? sessionData.colaboradores
           : ['Não informado'],
@@ -801,6 +853,16 @@ export default function RecebimentoPage() {
     } catch (error) {
       console.error('❌ Erro ao salvar nota bipada na tabela centralizada:', error);
       // Continuar com o processo mesmo se falhar ao salvar na tabela centralizada
+    }
+    
+    // Validação final: verificar se a nota não foi adicionada enquanto processávamos
+    const notaJaExiste = notas.find(n => n.numeroNF === notaAtual.numeroNF)
+    if (notaJaExiste) {
+      console.log(`⚠️ NF ${notaAtual.numeroNF} já foi adicionada durante o processamento - evitando duplicação`)
+      setModalConfirmacao(false)
+      setNotaAtual(null)
+      alert(`NF ${notaAtual.numeroNF} já foi processada. Duplicação evitada.`)
+      return
     }
     
     const notasAtualizadas = [notaComStatus, ...notas]
@@ -990,7 +1052,9 @@ export default function RecebimentoPage() {
         numero_nf: notaAtual.numeroNF,
         codigo_completo: notaAtual.codigoCompleto,
         area_origem: 'recebimento' as const,
-        session_id: `recebimento_${sessionData?.data}_${sessionData?.turno}`,
+        session_id: `recebimento_${Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0 
+          ? sessionData?.colaboradores.join('_') 
+          : 'sem_colaborador'}_${sessionData?.data}_${sessionData?.turno}`,
         colaboradores: Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0
           ? sessionData.colaboradores
           : ['Não informado'],
@@ -1010,6 +1074,16 @@ export default function RecebimentoPage() {
     } catch (error) {
       console.error('❌ Erro ao salvar nota bipada com divergência na tabela centralizada:', error);
       // Continuar com o processo mesmo se falhar ao salvar na tabela centralizada
+    }
+    
+    // Validação final: verificar se a nota não foi adicionada enquanto processávamos
+    const notaJaExiste = notas.find(n => n.numeroNF === notaAtual.numeroNF)
+    if (notaJaExiste) {
+      console.log(`⚠️ NF ${notaAtual.numeroNF} já foi adicionada durante o processamento de divergência - evitando duplicação`)
+      setModalDivergencia(false)
+      setNotaAtual(null)
+      alert(`NF ${notaAtual.numeroNF} já foi processada. Duplicação evitada.`)
+      return
     }
     
     const notasAtualizadas = [notaComDivergencia, ...notas]
@@ -1806,7 +1880,7 @@ export default function RecebimentoPage() {
           </Button>
 
           
-          {sessionData && (sessionData.colaboradores.includes("Elisangela") || sessionData.colaboradores.includes("Eduardarm") || sessionData.colaboradores.includes("Amanda Santos") || sessionData.colaboradores.includes("Ana Carolina") || sessionData.colaboradores.includes("João Victor") || sessionData.colaboradores.includes("Alexsandro") || sessionData.colaboradores.includes("Manuelane") || sessionData.colaboradores.includes("Marcela")) && (
+          {sessionData && (sessionData.colaboradores.includes("Elisangela") || sessionData.colaboradores.includes("Eduardarm") || sessionData.colaboradores.includes("Amanda Santos") || sessionData.colaboradores.includes("Ana Carolina") || sessionData.colaboradores.includes("João Victor") || sessionData.colaboradores.includes("Alexsandro") || sessionData.colaboradores.includes("Manuelane") || sessionData.colaboradores.includes("Rafael Lobo") || sessionData.colaboradores.includes("Marcela")) && (
             <Button
               onClick={() => setTelaAtiva("dar-entrada")}
               variant="outline"

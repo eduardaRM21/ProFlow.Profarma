@@ -48,18 +48,21 @@ export class NotasBipadasService {
     try {
       const supabase = getSupabase();
       
-      // Verificar se a nota já foi bipada na mesma sessão
+      // Verificar se a nota já foi bipada na mesma sessão (VALIDAÇÃO CRÍTICA)
+      console.log(`🔍 Verificando duplicata no serviço para NF ${nota.numero_nf}, session_id: ${nota.session_id}`);
+      
       const { data: notaExistente, error: erroVerificacao } = await supabase
         .from('notas_bipadas')
-        .select('id, numero_nf, timestamp_bipagem')
+        .select('id, numero_nf, timestamp_bipagem, session_id, area_origem')
         .eq('numero_nf', nota.numero_nf)
         .eq('session_id', nota.session_id)
         .eq('area_origem', nota.area_origem)
         .single();
 
       if (erroVerificacao && erroVerificacao.code !== 'PGRST116') {
-        console.error('❌ Erro ao verificar duplicata:', erroVerificacao);
-        throw erroVerificacao;
+        console.error('❌ Erro ao verificar duplicata no serviço:', erroVerificacao);
+        // Em caso de erro, bloquear o salvamento para evitar duplicação
+        throw new Error(`Erro ao verificar duplicatas. Não foi possível salvar a nota ${nota.numero_nf}.`);
       }
 
       if (notaExistente) {
@@ -67,8 +70,11 @@ export class NotasBipadasService {
           ? new Date(notaExistente.timestamp_bipagem as string).toLocaleString('pt-BR')
           : 'agora';
         
+        console.log(`⚠️ DUPLICATA DETECTADA no serviço: NF ${nota.numero_nf} já existe:`, notaExistente);
         throw new Error(`NF ${nota.numero_nf} já foi bipada nesta sessão (${timestampFormatado}). Duplicatas não são permitidas.`);
       }
+      
+      console.log(`✅ Validação de duplicata no serviço passou para NF ${nota.numero_nf}`);
       
       const { data, error } = await supabase
         .from('notas_bipadas')

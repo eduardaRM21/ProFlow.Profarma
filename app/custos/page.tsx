@@ -141,6 +141,29 @@ export default function CustosPage() {
   useEffect(() => {
     if (relatorios && relatorios.length > 0) {
       console.log('🔍 Relatórios carregados:', relatorios.length);
+      
+      // Verificar se os relatórios têm notas
+      const relatoriosComNotas = relatorios.filter(r => r.notas && r.notas.length > 0);
+      console.log('🔍 Relatórios com notas:', relatoriosComNotas.length);
+      
+      if (relatoriosComNotas.length > 0) {
+        console.log('🔍 Primeiro relatório com notas:', {
+          id: relatoriosComNotas[0].id,
+          nome: relatoriosComNotas[0].nome,
+          totalNotas: relatoriosComNotas[0].notas.length,
+          primeiraNota: relatoriosComNotas[0].notas[0]
+        });
+      } else {
+        console.log('⚠️ Nenhum relatório tem notas carregadas');
+        // Verificar estrutura dos relatórios
+        console.log('🔍 Estrutura do primeiro relatório:', {
+          id: relatorios[0].id,
+          nome: relatorios[0].nome,
+          campos: Object.keys(relatorios[0]),
+          temNotas: 'notas' in relatorios[0],
+          notas: relatorios[0].notas
+        });
+      }
     }
   }, [relatorios?.length]); // Apenas quando a quantidade muda
 
@@ -842,7 +865,8 @@ NOTAS FISCAIS:`
       notas: notas,
       tipo: typeof notas,
       isArray: Array.isArray(notas),
-      length: notas?.length || 0
+      length: notas?.length || 0,
+      primeiraNota: notas?.[0] || null
     });
     
     if (!notas || !Array.isArray(notas)) {
@@ -850,7 +874,13 @@ NOTAS FISCAIS:`
       return [];
     }
     
+    if (notas.length === 0) {
+      console.log('⚠️ Array de notas vazio, retornando array vazio');
+      return [];
+    }
+    
     let notasProcessadas = [...notas];
+    console.log('🔍 Notas processadas iniciais:', notasProcessadas.length);
 
     console.log('🔍 Filtrando notas:', {
       totalNotas: notas.length,
@@ -952,6 +982,53 @@ NOTAS FISCAIS:`
     return notasProcessadas;
   };
 
+  // useEffect para carregar divergências quando um relatório é selecionado
+  useEffect(() => {
+    const carregarDivergenciasDoRelatorio = async () => {
+      if (relatorioSelecionado && relatorioSelecionado.id) {
+        try {
+          console.log('🔍 Carregando divergências para o relatório:', relatorioSelecionado.id);
+          const divergencias = await getDivergenciasByRelatorio(relatorioSelecionado.id, true);
+          console.log('✅ Divergências carregadas:', divergencias.length);
+          
+          // Atualizar as notas com as divergências
+          if (divergencias.length > 0) {
+            const divergenciasMap: { [key: string]: any } = {};
+            divergencias.forEach(div => {
+              divergenciasMap[div.nota_fiscal_id as string] = div;
+            });
+            
+            // Atualizar as notas do relatório com as divergências
+            const notasAtualizadas = (relatorioSelecionado.notas || []).map(nota => {
+              const divergencia = divergenciasMap[nota.id as string];
+              if (divergencia) {
+                return {
+                  ...nota,
+                  divergencia: {
+                    observacoes: divergencia.observacoes || '',
+                    volumesInformados: divergencia.volumes_informados || nota.volumes
+                  }
+                };
+              }
+              return nota;
+            });
+            
+            setRelatorioSelecionado({
+              ...relatorioSelecionado,
+              notas: notasAtualizadas
+            });
+            
+            console.log('✅ Notas atualizadas com divergências');
+          }
+        } catch (error) {
+          console.error('❌ Erro ao carregar divergências:', error);
+        }
+      }
+    };
+    
+    carregarDivergenciasDoRelatorio();
+  }, [relatorioSelecionado?.id, getDivergenciasByRelatorio]);
+
   // Atualizar useEffect para aplicar filtros
   useEffect(() => {
     console.log('🔍 useEffect de filtros executado:', {
@@ -965,11 +1042,19 @@ NOTAS FISCAIS:`
 
     if (relatorioSelecionado) {
       console.log('🔍 Aplicando filtros ao relatório:', relatorioSelecionado.nome);
-      console.log('🔍 Notas originais do relatório:', relatorioSelecionado.notas);
+      console.log('🔍 Notas originais do relatório:', {
+        notas: relatorioSelecionado.notas,
+        tipo: typeof relatorioSelecionado.notas,
+        isArray: Array.isArray(relatorioSelecionado.notas),
+        length: relatorioSelecionado.notas?.length || 0,
+        primeiraNota: relatorioSelecionado.notas?.[0] || null
+      });
+      
       const notas = filtrarEOrdenarNotas(relatorioSelecionado.notas || []);
       console.log('🔍 Notas filtradas:', {
         totalOriginal: relatorioSelecionado.notas?.length || 0,
-        totalFiltradas: notas.length
+        totalFiltradas: notas.length,
+        primeiraNotaFiltrada: notas[0] || null
       });
       setNotasFiltradas(notas);
     } else {
@@ -1954,11 +2039,20 @@ NOTAS FISCAIS:`
                             size="sm"
                             onClick={() => {
                               console.log('🔍 Abrindo modal para relatório:', relatorio.nome);
+                              console.log('🔍 Dados completos do relatório:', {
+                                id: relatorio.id,
+                                nome: relatorio.nome,
+                                status: relatorio.status,
+                                notas: relatorio.notas,
+                                totalNotas: relatorio.notas?.length || 0,
+                                estruturaNotas: relatorio.notas?.slice(0, 2) || []
+                              });
                               setRelatorioSelecionado(relatorio);
                               setFiltroTexto("");
                               setOrdenacao("data_desc");
                               setNotasFiltradas(relatorio.notas || []);
                               console.log('✅ Modal aberto com dados básicos do relatório');
+                              console.log('🔍 Notas definidas no estado:', (relatorio.notas || []).length);
                             }}
                           >
                             <Eye className="h-3 w-3 dark:text-gray-400" />

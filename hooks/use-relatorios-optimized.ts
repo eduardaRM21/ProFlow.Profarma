@@ -117,9 +117,11 @@ export const useRelatoriosOptimized = () => {
         // Aplicar filtros se fornecidos
         if (area) {
           if (area === 'custos') {
-            // Para custos, buscar TODOS os relatórios de recebimento
+            // Para custos, buscar TODOS os relatórios de recebimento que foram liberados
             console.log('🔍 Buscando relatórios de recebimento para área custos')
-            relatoriosQuery = relatoriosQuery.eq('area', 'recebimento')
+            relatoriosQuery = relatoriosQuery
+              .eq('area', 'recebimento')
+              .in('status', ['liberado', 'liberado_parcialmente'])
           } else {
             console.log('🔍 Buscando relatórios para área:', area)
             relatoriosQuery = relatoriosQuery.eq('area', area)
@@ -287,6 +289,22 @@ export const useRelatoriosOptimized = () => {
             }, {})
             
             console.log('🔍 Notas agrupadas por relatório:', notasPorRelatorio)
+            
+            // Verificar se há relatórios sem notas
+            const relatoriosSemNotas = relatorioIds.filter(id => !notasPorRelatorio[id])
+            if (relatoriosSemNotas.length > 0) {
+              console.log('⚠️ Relatórios sem notas na tabela relatorio_notas:', relatoriosSemNotas)
+            }
+            
+            // Verificar estrutura dos dados
+            console.log('🔍 Estrutura da primeira nota:', {
+              relatorio_id: todasNotas[0]?.relatorio_id,
+              nota_fiscal_id: todasNotas[0]?.nota_fiscal_id,
+              tipo_relatorio_id: typeof todasNotas[0]?.relatorio_id,
+              tipo_nota_fiscal_id: typeof todasNotas[0]?.nota_fiscal_id
+            })
+          } else {
+            console.log('⚠️ Nenhuma nota encontrada na tabela relatorio_notas para os relatórios:', relatorioIds)
           }
         }
 
@@ -296,6 +314,16 @@ export const useRelatoriosOptimized = () => {
           const notaIds = [...new Set(todasNotas.map(tn => tn.nota_fiscal_id))]
           console.log('🔍 Buscando dados das notas fiscais para IDs:', notaIds)
           console.log('🔍 Total de IDs únicos de notas:', notaIds.length)
+          
+          // Verificar se há IDs nulos ou inválidos
+          const idsInvalidos = notaIds.filter(id => !id || id === null || id === undefined)
+          if (idsInvalidos.length > 0) {
+            console.log('⚠️ IDs inválidos encontrados:', idsInvalidos)
+          }
+          
+          // Verificar tipos dos IDs
+          const tiposIds = [...new Set(notaIds.map(id => typeof id))]
+          console.log('🔍 Tipos dos IDs:', tiposIds)
           
           // Primeiro, verificar se a tabela notas_fiscais existe
           const { data: tabelaNotasExiste, error: erroTabelaNotas } = await supabase
@@ -315,10 +343,21 @@ export const useRelatoriosOptimized = () => {
             console.log('✅ Tabela notas_fiscais existe')
           }
           
+          console.log('🔍 Executando query para buscar notas fiscais com IDs:', notaIds.slice(0, 5), '...')
+          
+          // Filtrar IDs válidos antes da query
+          const idsValidos = notaIds.filter(id => id && id !== null && id !== undefined)
+          console.log('🔍 IDs válidos para query:', idsValidos.length, 'de', notaIds.length)
+          
+          if (idsValidos.length === 0) {
+            console.log('⚠️ Nenhum ID válido para buscar notas fiscais')
+            return []
+          }
+          
           const { data: notasFiscais, error: notasFiscaisError } = await supabase
             .from('notas_fiscais')
             .select('*')
-            .in('id', notaIds)
+            .in('id', idsValidos)
 
           if (notasFiscaisError) {
             console.warn('⚠️ Erro ao buscar notas fiscais:', notasFiscaisError)
@@ -334,6 +373,31 @@ export const useRelatoriosOptimized = () => {
             
             if (notasFiscais && notasFiscais.length > 0) {
               console.log('🔍 Campos da primeira nota fiscal:', Object.keys(notasFiscais[0]))
+              console.log('🔍 IDs das notas fiscais encontradas:', notasFiscais.map(n => n.id))
+            } else {
+              console.log('⚠️ Nenhuma nota fiscal encontrada para os IDs:', idsValidos.slice(0, 10))
+              
+              // Verificar se há notas na tabela notas_fiscais
+              const { data: todasNotasFiscais, error: erroTodasNotas } = await supabase
+                .from('notas_fiscais')
+                .select('id')
+                .limit(5)
+              
+              if (erroTodasNotas) {
+                console.error('❌ Erro ao verificar notas fiscais:', erroTodasNotas)
+              } else {
+                console.log('🔍 Exemplo de IDs na tabela notas_fiscais:', todasNotasFiscais?.map(n => n.id))
+                
+                // Verificar se há algum ID em comum
+                const idsComuns = idsValidos.filter(id => todasNotasFiscais?.some(n => n.id === id))
+                console.log('🔍 IDs em comum:', idsComuns.length, 'de', idsValidos.length)
+                
+                if (idsComuns.length === 0) {
+                  console.log('⚠️ Nenhum ID em comum entre relatorio_notas e notas_fiscais!')
+                  console.log('🔍 IDs buscados:', idsValidos.slice(0, 5))
+                  console.log('🔍 IDs na tabela:', todasNotasFiscais?.slice(0, 5))
+                }
+              }
             }
           }
 
@@ -343,6 +407,12 @@ export const useRelatoriosOptimized = () => {
               return acc
             }, {} as { [key: string]: any })
             console.log('🔍 Dados das notas mapeados:', Object.keys(dadosNotas).length, 'notas')
+            
+            // Verificar se há IDs de notas que não foram encontrados
+            const idsNaoEncontrados = idsValidos.filter(id => !dadosNotas[id])
+            if (idsNaoEncontrados.length > 0) {
+              console.log('⚠️ IDs de notas não encontrados na tabela notas_fiscais:', idsNaoEncontrados)
+            }
           }
         } else {
           console.log('⚠️ Nenhuma nota encontrada na tabela relatorio_notas')
@@ -351,7 +421,7 @@ export const useRelatoriosOptimized = () => {
         // CONSULTA EM LOTE: Buscar TODAS as divergências de uma vez
         let todasDivergencias: any[] = []
         if (todasNotas && todasNotas.length > 0) {
-          const notaIds = todasNotas.map(tn => tn.nota_fiscal_id)
+          const notaIds = todasNotas.map(tn => tn.nota_fiscal_id).filter(id => id && id !== null && id !== undefined)
           
           // Primeiro, verificar se a tabela divergencias existe
           const { data: tabelaDivergenciasExiste, error: erroTabelaDivergencias } = await supabase
@@ -388,6 +458,8 @@ export const useRelatoriosOptimized = () => {
             todasDivergencias = divergenciasData || []
             console.log('✅ Divergências carregadas:', todasDivergencias.length)
           }
+        } else {
+          console.log('⚠️ Nenhuma nota para buscar divergências')
         }
 
         console.log(`📊 Dados carregados em lote:`)
@@ -397,6 +469,24 @@ export const useRelatoriosOptimized = () => {
         console.log(`   - Notas: ${todasNotas?.length || 0}`)
         console.log(`   - Divergências: ${todasDivergencias.length}`)
         console.log(`   - Dados das notas fiscais: ${Object.keys(dadosNotas).length}`)
+        
+        // Verificar se há relatórios sem notas
+        if (todasNotas && todasNotas.length > 0) {
+          const notasPorRelatorio = todasNotas.reduce((acc: any, nota: any) => {
+            if (!acc[nota.relatorio_id]) {
+              acc[nota.relatorio_id] = []
+            }
+            acc[nota.relatorio_id].push(nota.nota_fiscal_id)
+            return acc
+          }, {})
+          
+          const relatoriosSemNotas = relatorioIds.filter(id => !notasPorRelatorio[id])
+          if (relatoriosSemNotas.length > 0) {
+            console.log('⚠️ Relatórios sem notas na tabela relatorio_notas:', relatoriosSemNotas)
+          }
+        } else {
+          console.log('⚠️ Nenhuma nota encontrada na tabela relatorio_notas')
+        }
 
         // PROCESSAR DADOS EM MEMÓRIA (muito mais rápido)
         const relatoriosCompletos = relatorios.map(relatorio => {
@@ -410,6 +500,10 @@ export const useRelatoriosOptimized = () => {
           // Buscar notas deste relatório
           const notasRelatorio = todasNotas?.filter(tn => tn.relatorio_id === relatorio.id) || []
           console.log(`🔍 Relatório ${relatorio.id} tem ${notasRelatorio.length} notas na tabela relatorio_notas`)
+          
+          if (notasRelatorio.length === 0) {
+            console.log(`⚠️ Relatório ${relatorio.id} não tem notas na tabela relatorio_notas`)
+          }
           
           const notasProcessadas = notasRelatorio.map((tn: any) => {
             const nota = dadosNotas[tn.nota_fiscal_id]
@@ -448,7 +542,7 @@ export const useRelatoriosOptimized = () => {
           
           console.log(`✅ Relatório ${relatorio.id} processado com ${notas.length} notas válidas`)
 
-          return {
+          const relatorioProcessado = {
             id: relatorio.id,
             nome: relatorio.nome || 'Relatório sem nome',
             colaboradores,
@@ -463,10 +557,45 @@ export const useRelatoriosOptimized = () => {
             status: relatorio.status || 'liberado',
           }
           
-          console.log('🔍 Relatório processado:', relatorio.nome, 'Status final:', relatorio.status || 'liberado')
+          console.log('🔍 Relatório processado:', relatorio.nome, 'Status final:', relatorio.status || 'liberado', 'Notas:', notas.length)
+          return relatorioProcessado
         })
 
         console.log(`✅ ${relatoriosCompletos.length} relatórios processados com sucesso`)
+        
+        // Verificar quantos relatórios têm notas
+        const relatoriosComNotas = relatoriosCompletos.filter(r => r.notas && r.notas.length > 0)
+        console.log(`📊 Relatórios com notas: ${relatoriosComNotas.length} de ${relatoriosCompletos.length}`)
+        
+        if (relatoriosComNotas.length === 0) {
+          console.log('⚠️ NENHUM RELATÓRIO TEM NOTAS CARREGADAS!')
+          console.log('🔍 Estrutura do primeiro relatório:', {
+            id: relatoriosCompletos[0]?.id,
+            nome: relatoriosCompletos[0]?.nome,
+            notas: relatoriosCompletos[0]?.notas,
+            totalNotas: relatoriosCompletos[0]?.notas?.length || 0
+          })
+          
+          // Verificar se há dados na tabela notas_fiscais
+          console.log('🔍 Verificando se há dados na tabela notas_fiscais...')
+          const { data: verificacaoNotas, error: erroVerificacao } = await supabase
+            .from('notas_fiscais')
+            .select('id, numero_nf, created_at')
+            .limit(10)
+          
+          if (erroVerificacao) {
+            console.error('❌ Erro ao verificar notas fiscais:', erroVerificacao)
+          } else {
+            console.log('✅ Exemplo de notas na tabela notas_fiscais:', verificacaoNotas)
+          }
+        } else {
+          console.log('✅ Relatórios com notas encontrados:', relatoriosComNotas.map(r => ({
+            id: r.id,
+            nome: r.nome,
+            totalNotas: r.notas.length
+          })))
+        }
+        
         return relatoriosCompletos
 
       })()

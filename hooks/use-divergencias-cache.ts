@@ -104,13 +104,29 @@ export const useDivergenciasCache = () => {
         // Se relatorioId for fornecido, buscar divergências das notas do relatório
         if (relatorioId && !notaFiscalId) {
           // Primeiro buscar as notas do relatório
-          const { data: relatorioNotas } = await supabase
+          const { data: relatorioNotas, error: relatorioError } = await supabase
             .from('relatorio_notas')
             .select('nota_fiscal_id')
             .eq('relatorio_id', relatorioId)
 
+          if (relatorioError) {
+            console.error('❌ Erro ao buscar notas do relatório:', relatorioError)
+            throw relatorioError
+          }
+
           if (relatorioNotas && relatorioNotas.length > 0) {
-            const notaIds = relatorioNotas.map(rn => rn.nota_fiscal_id)
+            // Filtrar IDs válidos e únicos
+            const notaIds = relatorioNotas
+              .map(rn => rn.nota_fiscal_id)
+              .filter(id => id && typeof id === 'string' && id.trim() !== '')
+              .filter((id, index, array) => array.indexOf(id) === index) // Remove duplicatas
+            
+            console.log(`🔍 IDs de notas encontrados: ${notaIds.length}`, notaIds.slice(0, 5))
+            
+            if (notaIds.length === 0) {
+              console.log('⚠️ Nenhum ID válido encontrado para o relatório')
+              return []
+            }
             
             // Dividir em lotes de 50 IDs para evitar URL muito longa e problemas de rede
             const BATCH_SIZE = 50
@@ -125,6 +141,7 @@ export const useDivergenciasCache = () => {
               const batch = batches[i]
               try {
                 console.log(`🔍 Buscando divergências lote ${i + 1}/${batches.length} (${batch.length} IDs)`)
+                console.log('🔍 IDs do lote:', batch.slice(0, 3), batch.length > 3 ? '...' : '')
                 
                 const { data: batchData, error: batchError } = await supabase
                   .from('divergencias')
@@ -132,7 +149,13 @@ export const useDivergenciasCache = () => {
                   .in('nota_fiscal_id', batch)
                 
                 if (batchError) {
-                  console.warn('⚠️ Erro ao buscar lote de divergências:', batchError)
+                  console.error('❌ Erro ao buscar lote de divergências:', batchError)
+                  console.error('❌ Detalhes do erro:', {
+                    message: batchError.message,
+                    details: batchError.details,
+                    hint: batchError.hint,
+                    code: batchError.code
+                  })
                   continue
                 }
                 
@@ -146,14 +169,16 @@ export const useDivergenciasCache = () => {
                   await new Promise(resolve => setTimeout(resolve, 100))
                 }
               } catch (fetchError) {
-                console.warn('⚠️ Erro de conectividade ao buscar lote:', fetchError)
+                console.error('❌ Erro de conectividade ao buscar lote:', fetchError)
                 continue
               }
             }
             
+            console.log(`✅ Total de divergências encontradas: ${allDivergencias.length}`)
             return allDivergencias
           } else {
             // Se não há notas no relatório, retornar array vazio
+            console.log('⚠️ Nenhuma nota encontrada para o relatório')
             return []
           }
         }
