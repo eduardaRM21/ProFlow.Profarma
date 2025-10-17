@@ -54,6 +54,7 @@ import {
   Moon,
   Monitor,
   Clock,
+  Loader2,
 } from "lucide-react";
 import { useSession, useConnectivity, useDatabase } from "@/hooks/use-database"
 import { useRelatorios } from "@/hooks/use-relatorios-optimized";
@@ -211,6 +212,9 @@ export default function CustosPage() {
   const [showModalDevolvidas, setShowModalDevolvidas] = useState(false);
   const [notasDevolvidas, setNotasDevolvidas] = useState<NotaFiscal[]>([]);
   const [loadingDevolvidas, setLoadingDevolvidas] = useState(false);
+  
+  // Estado para carregamento de notas no modal
+  const [carregandoNotas, setCarregandoNotas] = useState(false);
   
   // Estados para loading dos botões de status
   const [loadingStatusButtons, setLoadingStatusButtons] = useState<{[key: string]: boolean}>({});
@@ -982,51 +986,109 @@ NOTAS FISCAIS:`
     return notasProcessadas;
   };
 
-  // useEffect para carregar divergências quando um relatório é selecionado
+  // useEffect para carregar notas e divergências quando um relatório é selecionado
   useEffect(() => {
-    const carregarDivergenciasDoRelatorio = async () => {
+    const carregarNotasEDivergenciasDoRelatorio = async () => {
       if (relatorioSelecionado && relatorioSelecionado.id) {
+        setCarregandoNotas(true);
         try {
-          console.log('🔍 Carregando divergências para o relatório:', relatorioSelecionado.id);
+          console.log('🔍 Carregando notas e divergências para o relatório:', relatorioSelecionado.id);
+          
+          // Primeiro, buscar as notas do relatório diretamente do banco
+          const { getSupabase } = await import('@/lib/supabase-client');
+          const supabase = getSupabase();
+          
+          // Buscar notas do relatório na tabela relatorio_notas
+          const { data: relatorioNotas, error: relatorioNotasError } = await supabase
+            .from('relatorio_notas')
+            .select('nota_fiscal_id')
+            .eq('relatorio_id', relatorioSelecionado.id);
+          
+          if (relatorioNotasError) {
+            console.error('❌ Erro ao buscar notas do relatório:', relatorioNotasError);
+            return;
+          }
+          
+          if (!relatorioNotas || relatorioNotas.length === 0) {
+            console.log('⚠️ Nenhuma nota encontrada para o relatório');
+            return;
+          }
+          
+          console.log('✅ Notas encontradas na tabela relatorio_notas:', relatorioNotas.length);
+          
+          // Buscar dados das notas fiscais
+          const notaIds = relatorioNotas.map(rn => rn.nota_fiscal_id).filter(id => id);
+          const { data: notasFiscais, error: notasFiscaisError } = await supabase
+            .from('notas_fiscais')
+            .select('*')
+            .in('id', notaIds);
+          
+          if (notasFiscaisError) {
+            console.error('❌ Erro ao buscar notas fiscais:', notasFiscaisError);
+            return;
+          }
+          
+          console.log('✅ Notas fiscais carregadas:', notasFiscais?.length || 0);
+          
+          // Buscar divergências
           const divergencias = await getDivergenciasByRelatorio(relatorioSelecionado.id, true);
           console.log('✅ Divergências carregadas:', divergencias.length);
           
-          // Atualizar as notas com as divergências
-          if (divergencias.length > 0) {
-            const divergenciasMap: { [key: string]: any } = {};
-            divergencias.forEach(div => {
-              divergenciasMap[div.nota_fiscal_id as string] = div;
-            });
+          // Processar as notas
+          const divergenciasMap: { [key: string]: any } = {};
+          divergencias.forEach(div => {
+            divergenciasMap[div.nota_fiscal_id as string] = div;
+          });
+          
+          const notasProcessadas: NotaFiscal[] = (notasFiscais || []).map(nota => {
+            const notaId = nota.id as string;
+            const divergencia = divergenciasMap[notaId];
             
-            // Atualizar as notas do relatório com as divergências
-            const notasAtualizadas = (relatorioSelecionado.notas || []).map(nota => {
-              const divergencia = divergenciasMap[nota.id as string];
-              if (divergencia) {
-                return {
-                  ...nota,
-                  divergencia: {
-                    observacoes: divergencia.observacoes || '',
-                    volumesInformados: divergencia.volumes_informados || nota.volumes
-                  }
-                };
-              }
-              return nota;
-            });
+            // Determinar o status da nota
+            let status: 'ok' | 'divergencia' | 'devolvida';
+            if (nota.status === 'devolvida') {
+              status = 'devolvida';
+            } else if (divergencia) {
+              status = 'divergencia';
+            } else {
+              status = 'ok';
+            }
             
-            setRelatorioSelecionado({
-              ...relatorioSelecionado,
-              notas: notasAtualizadas
-            });
-            
-            console.log('✅ Notas atualizadas com divergências');
-          }
+            return {
+              id: notaId,
+              codigoCompleto: (nota.codigo_completo as string) || '',
+              data: (nota.data as string) || '',
+              numeroNF: (nota.numero_nf as string) || (nota.codigo_completo as string) || '',
+              volumes: (nota.volumes as number) || 0,
+              destino: (nota.destino as string) || 'Não informado',
+              fornecedor: (nota.fornecedor as string) || 'Não informado',
+              clienteDestino: (nota.cliente_destino as string) || 'Não informado',
+              tipoCarga: (nota.tipo_carga as string) || 'Não informado',
+              timestamp: (nota.timestamp as string) || (nota.created_at as string) || '',
+              status,
+              divergencia: divergencia ? {
+                observacoes: divergencia.observacoes || '',
+                volumesInformados: divergencia.volumes_informados || nota.volumes
+              } : undefined
+            };
+          });
+          
+          // Atualizar o relatório com as notas carregadas
+          setRelatorioSelecionado({
+            ...relatorioSelecionado,
+            notas: notasProcessadas
+          });
+          
+          console.log('✅ Relatório atualizado com', notasProcessadas.length, 'notas');
         } catch (error) {
-          console.error('❌ Erro ao carregar divergências:', error);
+          console.error('❌ Erro ao carregar notas e divergências:', error);
+        } finally {
+          setCarregandoNotas(false);
         }
       }
     };
     
-    carregarDivergenciasDoRelatorio();
+    carregarNotasEDivergenciasDoRelatorio();
   }, [relatorioSelecionado?.id, getDivergenciasByRelatorio]);
 
   // Atualizar useEffect para aplicar filtros
@@ -2335,19 +2397,27 @@ NOTAS FISCAIS:`
                             </div>
 
                             {/* Tabela de Notas com dados filtrados */}
-                            <ScrollArea className="max-h-96 overflow-y-auto overflow-x-hidden ">
-                              <div className="min-w-max">
-                                {/* Cabeçalho fixo */}
-                                <div className="grid grid-cols-8 gap-4 bg-gray-100 px-4 py-2 sticky top-0 z-10 text-sm font-semibold text-gray-700 border-b border-gray-300 dark:bg-gray-900/50 dark:border-gray-900/20 dark:text-gray-200 dark:text-gray-300">
-                                  <div>NF</div>
-                                  <div>Volumes</div>
-                                  <div>Destino</div>
-                                  <div>Fornecedor</div>
-                                  <div>Cliente</div>
-                                  <div>Status</div>
-                                  <div>Divergência</div>
-                                  <div>Ações</div>
+                            {carregandoNotas ? (
+                              <div className="flex items-center justify-center py-8">
+                                <div className="flex items-center space-x-2">
+                                  <Loader2 className="h-4 w-4 animate-spin text-orange-600 dark:text-orange-400" />
+                                  <span className="text-sm text-gray-600 dark:text-gray-400">Carregando notas...</span>
                                 </div>
+                              </div>
+                            ) : (
+                              <ScrollArea className="max-h-96 overflow-y-auto overflow-x-hidden ">
+                                <div className="min-w-max">
+                                  {/* Cabeçalho fixo */}
+                                  <div className="grid grid-cols-8 gap-4 bg-gray-100 px-4 py-2 sticky top-0 z-10 text-sm font-semibold text-gray-700 border-b border-gray-300 dark:bg-gray-900/50 dark:border-gray-900/20 dark:text-gray-200 dark:text-gray-300">
+                                    <div>NF</div>
+                                    <div>Volumes</div>
+                                    <div>Destino</div>
+                                    <div>Fornecedor</div>
+                                    <div>Cliente</div>
+                                    <div>Status</div>
+                                    <div>Divergência</div>
+                                    <div>Ações</div>
+                                  </div>
                                 {notasFiltradas.map((nota, index) => {
                                   if (index === 0) {
                                     console.log('🔍 Renderizando notas filtradas:', notasFiltradas.length, 'notas');
@@ -2455,6 +2525,7 @@ NOTAS FISCAIS:`
                                 </div>
                               </div>
                             </ScrollArea>
+                            )}
                           </div>
                         </DialogContent>
                       </Dialog>

@@ -818,7 +818,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                 <div className="flex items-center justify-center py-8">
                   <div className="flex items-center space-x-2">
                     <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                    <span className="text-sm text-gray-600 dark:text-gray-400">Carregando notas...</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400"> </span>
                   </div>
                 </div>
               ) : relatorioSelecionado.notas && relatorioSelecionado.notas.length > 0 ? (
