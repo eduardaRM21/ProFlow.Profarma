@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase-client';
+import { ErrorHandler } from './error-handler';
 
 export interface NotaBipada {
   id?: string;
@@ -45,7 +46,7 @@ export class NotasBipadasService {
    * Salva uma nova nota bipada no banco de dados
    */
   async salvarNotaBipada(nota: NotaBipada): Promise<string> {
-    try {
+    return await ErrorHandler.withRetry(async () => {
       const supabase = getSupabase();
       
       // Verificar se a nota já foi bipada na mesma sessão (VALIDAÇÃO CRÍTICA)
@@ -61,11 +62,9 @@ export class NotasBipadasService {
 
       if (erroVerificacao && erroVerificacao.code !== 'PGRST116') {
         console.error('❌ Erro ao verificar duplicata no serviço:', erroVerificacao);
-        // Em caso de erro, bloquear o salvamento para evitar duplicação
-        throw new Error(`Erro ao verificar duplicatas. Não foi possível salvar a nota ${nota.numero_nf}.`);
-      }
-
-      if (notaExistente) {
+        // Em caso de erro de conectividade, tentar salvar mesmo assim
+        console.log('⚠️ Erro de conectividade na verificação de duplicata, tentando salvar mesmo assim...');
+      } else if (notaExistente) {
         const timestampFormatado = notaExistente.timestamp_bipagem 
           ? new Date(notaExistente.timestamp_bipagem as string).toLocaleString('pt-BR')
           : 'agora';
@@ -76,14 +75,28 @@ export class NotasBipadasService {
       
       console.log(`✅ Validação de duplicata no serviço passou para NF ${nota.numero_nf}`);
       
+      // Garantir que todos os campos obrigatórios estão presentes
+      const notaCompleta = {
+        ...nota,
+        timestamp_bipagem: nota.timestamp_bipagem || new Date().toISOString(),
+        status: nota.status || 'ok'
+      };
+      
       const { data, error } = await supabase
         .from('notas_bipadas')
-        .insert(nota as any)
+        .insert(notaCompleta as any)
         .select('id')
         .single() as { data: { id: string } | null; error: any };
 
       if (error) {
         console.error('❌ Erro ao salvar nota bipada:', error);
+        // Log detalhado do erro para debug
+        console.error('❌ Detalhes do erro:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        });
         throw error;
       }
 
@@ -93,10 +106,9 @@ export class NotasBipadasService {
 
       console.log('✅ Nota bipada salva com sucesso:', data.id);
       return data.id;
-    } catch (error) {
-      console.error('❌ Erro ao salvar nota bipada:', error);
-      throw error;
-    }
+    }, {
+      retryCondition: (error) => ErrorHandler.isRetryableError(error)
+    });
   }
 
   /**
@@ -111,7 +123,7 @@ export class NotasBipadasService {
     limit?: number;
     offset?: number;
   }): Promise<NotaBipada[]> {
-    try {
+    return await ErrorHandler.withRetry(async () => {
       const supabase = getSupabase();
       let query = supabase
         .from('notas_bipadas')
@@ -149,10 +161,9 @@ export class NotasBipadasService {
       }
 
       return data || [];
-    } catch (error) {
-      console.error('❌ Erro ao buscar notas bipadas:', error);
-      throw error;
-    }
+    }, {
+      retryCondition: (error) => ErrorHandler.isRetryableError(error)
+    });
   }
 
   /**

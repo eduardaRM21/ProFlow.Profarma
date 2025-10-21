@@ -55,11 +55,13 @@ import {
   Monitor,
   Clock,
   Loader2,
+  X
 } from "lucide-react";
 import { useSession, useConnectivity, useDatabase } from "@/hooks/use-database"
 import { useRelatorios } from "@/hooks/use-relatorios-optimized";
 import { useDivergenciasCache } from "@/hooks/use-divergencias-cache";
 import { useRealtimeMonitoring } from "@/hooks/use-realtime-monitoring";
+import { useRelatoriosCache } from "@/hooks/use-relatorios-cache";
 import { ConnectionStatus } from "@/components/connection-status";
 import { useTheme } from "@/contexts/theme-context";
 import type { SessionData, NotaFiscal, Relatorio } from "@/lib/database-service";
@@ -138,6 +140,15 @@ export default function CustosPage() {
     error: divergenciasError
   } = useDivergenciasCache();
 
+  // Hook para cache de relatórios
+  const {
+    isRelatorioCached,
+    getRelatorioFromCache,
+    saveRelatorioToCache,
+    updateRelatorioInCache,
+    getCacheStats
+  } = useRelatoriosCache();
+
   // Debug dos relatórios carregados (reduzido para evitar logs excessivos)
   useEffect(() => {
     if (relatorios && relatorios.length > 0) {
@@ -197,6 +208,8 @@ export default function CustosPage() {
   const [notasFiltradas, setNotasFiltradas] = useState<NotaFiscal[]>([]);
   const [relatorioSelecionado, setRelatorioSelecionado] =
     useState<Relatorio | null>(null);
+  const [forcarRecarregamento, setForcarRecarregamento] = useState(0);
+  const [modalAberto, setModalAberto] = useState(false);
 
   // Estados para estatísticas calculadas
   const [estatisticas, setEstatisticas] = useState({
@@ -224,6 +237,27 @@ export default function CustosPage() {
   
   // Hook do tema
   const { theme, setTheme } = useTheme();
+
+  // Remover foco de elementos quando modal abrir para evitar conflitos de acessibilidade
+  useEffect(() => {
+    if (relatorioSelecionado) {
+      // Remover foco de qualquer elemento ativo
+      if (document.activeElement && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur()
+      }
+      
+      // Focar no primeiro elemento focável do modal após um pequeno delay
+      setTimeout(() => {
+        const modal = document.querySelector('[role="dialog"]')
+        if (modal) {
+          const firstFocusable = modal.querySelector('input, button, [tabindex]:not([tabindex="-1"])') as HTMLElement
+          if (firstFocusable) {
+            firstFocusable.focus()
+          }
+        }
+      }, 100)
+    }
+  }, [relatorioSelecionado])
 
   // Funções auxiliares para o dropdown
   const getUserDisplayName = () => {
@@ -986,13 +1020,30 @@ NOTAS FISCAIS:`
     return notasProcessadas;
   };
 
-  // useEffect para carregar notas e divergências quando um relatório é selecionado
+  // useEffect para carregar notas e divergências quando um relatório é selecionado (com cache)
   useEffect(() => {
     const carregarNotasEDivergenciasDoRelatorio = async () => {
       if (relatorioSelecionado && relatorioSelecionado.id) {
+        // Verificar se o relatório está em cache
+        if (isRelatorioCached(relatorioSelecionado.id)) {
+          console.log(`📦 Relatório ${relatorioSelecionado.id} encontrado no cache, carregando...`)
+          
+          const relatorioCached = getRelatorioFromCache(relatorioSelecionado.id)
+          if (relatorioCached && relatorioCached.notas) {
+            // Atualizar o relatório selecionado com dados do cache
+            setRelatorioSelecionado({
+              ...relatorioSelecionado,
+              notas: relatorioCached.notas
+            });
+            
+            console.log(`✅ Notas carregadas do cache para relatório ${relatorioSelecionado.id}:`, relatorioCached.notas.length)
+            return
+          }
+        }
+        
         setCarregandoNotas(true);
         try {
-          console.log('🔍 Carregando notas e divergências para o relatório:', relatorioSelecionado.id);
+          console.log('🔍 Carregando notas e divergências para o relatório do banco de dados:', relatorioSelecionado.id);
           
           // Primeiro, buscar as notas do relatório diretamente do banco
           const { getSupabase } = await import('@/lib/supabase-client');
@@ -1073,13 +1124,19 @@ NOTAS FISCAIS:`
             };
           });
           
-          // Atualizar o relatório com as notas carregadas
-          setRelatorioSelecionado({
+          // Criar relatório atualizado
+          const relatorioAtualizado = {
             ...relatorioSelecionado,
             notas: notasProcessadas
-          });
+          };
+
+          // Salvar no cache
+          saveRelatorioToCache(relatorioAtualizado, notasProcessadas);
           
-          console.log('✅ Relatório atualizado com', notasProcessadas.length, 'notas');
+          // Atualizar o relatório com as notas carregadas
+          setRelatorioSelecionado(relatorioAtualizado);
+          
+          console.log('✅ Relatório atualizado e salvo no cache com', notasProcessadas.length, 'notas');
         } catch (error) {
           console.error('❌ Erro ao carregar notas e divergências:', error);
         } finally {
@@ -1089,7 +1146,22 @@ NOTAS FISCAIS:`
     };
     
     carregarNotasEDivergenciasDoRelatorio();
-  }, [relatorioSelecionado?.id, getDivergenciasByRelatorio]);
+  }, [relatorioSelecionado?.id, getDivergenciasByRelatorio, forcarRecarregamento, isRelatorioCached, getRelatorioFromCache, saveRelatorioToCache]);
+
+  // useEffect para limpar estado quando relatorioSelecionado é limpo
+  useEffect(() => {
+    if (!relatorioSelecionado) {
+      // Modal foi fechado, limpar estado
+      setNotasFiltradas([]);
+      setFiltroTexto("");
+      setFiltroStatus("todos");
+      setOrdenacao("data_desc");
+      setCarregandoNotas(false);
+      setForcarRecarregamento(0);
+      setModalAberto(false);
+      console.log('🧹 Modal fechado, estado limpo');
+    }
+  }, [relatorioSelecionado]);
 
   // Atualizar useEffect para aplicar filtros
   useEffect(() => {
@@ -2093,7 +2165,11 @@ NOTAS FISCAIS:`
                     </div>
 
                     <div className="flex justify-center items-center space-x-2">
-                      <Dialog>
+                      <Dialog open={!!relatorioSelecionado && relatorioSelecionado.id === relatorio.id} onOpenChange={(open) => {
+                        if (!open) {
+                          setRelatorioSelecionado(null);
+                        }
+                      }}>
                         <DialogTrigger asChild>
                           <Button
                             variant="outline"
@@ -2113,6 +2189,7 @@ NOTAS FISCAIS:`
                               setFiltroTexto("");
                               setOrdenacao("data_desc");
                               setNotasFiltradas(relatorio.notas || []);
+                              setForcarRecarregamento(prev => prev + 1); // Forçar recarregamento
                               console.log('✅ Modal aberto com dados básicos do relatório');
                               console.log('🔍 Notas definidas no estado:', (relatorio.notas || []).length);
                             }}
@@ -2181,6 +2258,9 @@ NOTAS FISCAIS:`
                               >
                                 <Copy className="h-4 w-4 mr-2" />
                                 Copiar NFs ({notasFiltradas.length})
+                                {isRelatorioCached(relatorio.id) && (
+                                  <span className="ml-1 text-xs"></span>
+                                )}
                               </Button>
                               <Button
                                 onClick={() => copiarVolumes(notasFiltradas)}

@@ -64,10 +64,12 @@ export default function ConsultarNfsFaltantesModal({
       console.log(`🔍 Buscando notas faltantes para: ${nomeTransportadora}`)
 
       // Buscar todas as notas da transportadora no consolidado
+      // IMPORTANTE: Filtrar apenas notas com status "deu entrada"
       const { data: consolidadoData, error: consolidadoError } = await supabase
         .from('notas_consolidado')
-        .select('numero_nf, fornecedor, cliente_destino, volumes, data, tipo_carga, transportadora')
+        .select('numero_nf, fornecedor, cliente_destino, volumes, data, tipo_carga, transportadora, status')
         .eq('transportadora', transportadoraSelecionada)
+        .eq('status', 'deu entrada') // FILTRO CRÍTICO: Apenas notas com status "deu entrada"
         .order('numero_nf', { ascending: true })
 
       if (consolidadoError) {

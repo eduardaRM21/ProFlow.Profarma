@@ -119,6 +119,7 @@ export default function RecebimentoPage() {
   const [sessaoIniciada, setSessaoIniciada] = useState(false)
   const [bipagemIniciada, setBipagemIniciada] = useState(false)
   const [notasTransportadoraCache, setNotasTransportadoraCache] = useState<any[]>([])
+  const [problemasSalvamento, setProblemasSalvamento] = useState<string[]>([])
 
   // Lógica de sessão e carregamento inicial
   useEffect(() => {
@@ -661,10 +662,12 @@ export default function RecebimentoPage() {
       const supabase = getSupabase()
       
       // Buscar notas da transportadora no consolidado (por campo transportadora)
+      // IMPORTANTE: Filtrar apenas notas com status "deu entrada"
       const { data: consolidadoData, error: errorConsolidado } = await supabase
         .from('notas_consolidado')
         .select('*')
         .eq('transportadora', transportadora)
+        .eq('status', 'deu entrada') // FILTRO CRÍTICO: Apenas notas com status "deu entrada"
         .order('numero_nf', { ascending: true })
 
       if (errorConsolidado) {
@@ -672,10 +675,12 @@ export default function RecebimentoPage() {
       }
 
       // Buscar notas por fornecedor (caso a transportadora seja o fornecedor)
+      // IMPORTANTE: Filtrar apenas notas com status "deu entrada"
       const { data: fornecedorData, error: errorFornecedor } = await supabase
         .from('notas_consolidado')
         .select('*')
         .eq('fornecedor', transportadora)
+        .eq('status', 'deu entrada') // FILTRO CRÍTICO: Apenas notas com status "deu entrada"
         .order('numero_nf', { ascending: true })
 
       if (errorFornecedor) {
@@ -683,10 +688,12 @@ export default function RecebimentoPage() {
       }
 
       // Buscar notas por cliente destino (caso a transportadora seja o cliente destino)
+      // IMPORTANTE: Filtrar apenas notas com status "deu entrada"
       const { data: clienteData, error: errorCliente } = await supabase
         .from('notas_consolidado')
         .select('*')
         .eq('cliente_destino', transportadora)
+        .eq('status', 'deu entrada') // FILTRO CRÍTICO: Apenas notas com status "deu entrada"
         .order('numero_nf', { ascending: true })
 
       if (errorCliente) {
@@ -826,6 +833,7 @@ export default function RecebimentoPage() {
     }
 
     // Salvar nota bipada na tabela centralizada
+    let salvamentoCentralizadoSucesso = false;
     try {
       const notaBipada = {
         numero_nf: notaAtual.numeroNF,
@@ -845,14 +853,24 @@ export default function RecebimentoPage() {
         cliente_destino: notaAtual.clienteDestino,
         tipo_carga: notaAtual.tipoCarga,
         status: 'ok',
-        observacoes: 'NF recebida no setor de Recebimento'
+        observacoes: 'NF recebida no setor de Recebimento',
+        timestamp_bipagem: new Date().toISOString()
       };
 
       await notasBipadasService.salvarNotaBipada(notaBipada);
       console.log('✅ Nota bipada salva na tabela centralizada');
+      salvamentoCentralizadoSucesso = true;
     } catch (error) {
       console.error('❌ Erro ao salvar nota bipada na tabela centralizada:', error);
-      // Continuar com o processo mesmo se falhar ao salvar na tabela centralizada
+      // Mostrar alerta para o usuário sobre o problema
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      console.warn(`⚠️ ATENÇÃO: NF ${notaAtual.numeroNF} foi processada localmente mas NÃO foi salva na tabela centralizada. Erro: ${errorMessage}`);
+      
+      // Registrar problema de salvamento
+      setProblemasSalvamento(prev => [...prev, `NF ${notaAtual.numeroNF}: ${errorMessage}`]);
+      
+      // Adicionar uma observação na nota local indicando o problema
+      (notaComStatus as any).observacoes = `NF processada localmente - Erro ao salvar na tabela centralizada: ${errorMessage}`;
     }
     
     // Validação final: verificar se a nota não foi adicionada enquanto processávamos
@@ -1047,6 +1065,7 @@ export default function RecebimentoPage() {
     }
     
     // Salvar nota bipada na tabela centralizada
+    let salvamentoCentralizadoSucesso = false;
     try {
       const notaBipada = {
         numero_nf: notaAtual.numeroNF,
@@ -1066,14 +1085,24 @@ export default function RecebimentoPage() {
         cliente_destino: notaAtual.clienteDestino,
         tipo_carga: notaAtual.tipoCarga,
         status: 'divergencia',
-        observacoes: `NF recebida com divergência: ${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`
+        observacoes: `NF recebida com divergência: ${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`,
+        timestamp_bipagem: new Date().toISOString()
       };
 
       await notasBipadasService.salvarNotaBipada(notaBipada);
       console.log('✅ Nota bipada com divergência salva na tabela centralizada');
+      salvamentoCentralizadoSucesso = true;
     } catch (error) {
       console.error('❌ Erro ao salvar nota bipada com divergência na tabela centralizada:', error);
-      // Continuar com o processo mesmo se falhar ao salvar na tabela centralizada
+      // Mostrar alerta para o usuário sobre o problema
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      console.warn(`⚠️ ATENÇÃO: NF ${notaAtual.numeroNF} com divergência foi processada localmente mas NÃO foi salva na tabela centralizada. Erro: ${errorMessage}`);
+      
+      // Registrar problema de salvamento
+      setProblemasSalvamento(prev => [...prev, `NF ${notaAtual.numeroNF} (divergência): ${errorMessage}`]);
+      
+      // Adicionar uma observação na nota local indicando o problema
+      (notaComDivergencia as any).observacoes = `NF processada localmente com divergência - Erro ao salvar na tabela centralizada: ${errorMessage}`;
     }
     
     // Validação final: verificar se a nota não foi adicionada enquanto processávamos
@@ -1288,6 +1317,10 @@ export default function RecebimentoPage() {
   // Função para limpar a flag de scanner para bipar
   const limparScannerParaBipar = () => {
     setScannerParaBipar(false)
+  }
+
+  const limparProblemasSalvamento = () => {
+    setProblemasSalvamento([])
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -1553,6 +1586,39 @@ export default function RecebimentoPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Alertas de Problemas de Salvamento */}
+        {problemasSalvamento.length > 0 && (
+          <Card className="border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-500/50 mb-4">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2 mb-2">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+                <h3 className="text-sm font-semibold text-red-800 dark:text-red-300">
+                  Problemas de Salvamento na Tabela Centralizada
+                </h3>
+              </div>
+              <div className="text-xs text-red-700 dark:text-red-400 space-y-1">
+                {problemasSalvamento.map((problema, index) => (
+                  <div key={index}>• {problema}</div>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <div className="text-xs text-red-600 dark:text-red-400">
+                  ⚠️ As notas foram processadas localmente, mas não foram salvas na tabela centralizada. 
+                  Entre em contato com o administrador do sistema.
+                </div>
+                <Button
+                  onClick={limparProblemasSalvamento}
+                  variant="outline"
+                  size="sm"
+                  className="text-red-600 border-red-300 hover:bg-red-50 dark:border-red-600 dark:hover:bg-red-900/20"
+                >
+                  Limpar Alertas
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Indicadores de Status */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
           {/* Status da Sessão */}

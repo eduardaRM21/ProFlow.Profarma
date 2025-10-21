@@ -23,6 +23,7 @@ export interface NotaFiscal {
   tipoCarga: string
   timestamp: string
   status: 'ok' | 'divergencia' | 'devolvida'
+  observacoes?: string
   divergencia?: {
     volumesInformados: number
     observacoes: string

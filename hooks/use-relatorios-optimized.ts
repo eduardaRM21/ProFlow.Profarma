@@ -531,8 +531,30 @@ export const useRelatoriosOptimized = () => {
             const divergencia = todasDivergencias?.find(d => d.nota_fiscal_id === nota?.id)
 
             if (!nota) {
-              console.warn(`⚠️ Nota fiscal ${tn.nota_fiscal_id} não encontrada nos dados carregados - pulando`)
-              return null // Retornar null para notas não encontradas
+              // Log mais detalhado para debug
+              console.warn(`⚠️ Nota fiscal ${tn.nota_fiscal_id} não encontrada nos dados carregados`)
+              console.warn(`   - Relatório: ${relatorio.nome} (${relatorio.id})`)
+              console.warn(`   - Total de notas carregadas: ${Object.keys(dadosNotas).length}`)
+              console.warn(`   - IDs disponíveis (primeiros 5): ${Object.keys(dadosNotas).slice(0, 5)}`)
+              
+              // Retornar uma nota "fantasma" com dados básicos para manter a integridade do relatório
+              return {
+                id: tn.nota_fiscal_id,
+                codigoCompleto: `NF-${tn.nota_fiscal_id.slice(0, 8)}`,
+                data: new Date().toISOString(),
+                numeroNF: `NF-${tn.nota_fiscal_id.slice(0, 8)}`,
+                volumes: 0,
+                destino: 'Não encontrado',
+                fornecedor: 'Nota não encontrada',
+                clienteDestino: 'Não encontrado',
+                tipoCarga: 'Não encontrado',
+                timestamp: new Date().toISOString(),
+                status: 'erro',
+                divergencia: null,
+                observacoes: 'Nota fiscal não encontrada no banco de dados',
+                volumesInformados: 0,
+                isNotFound: true // Flag para identificar notas não encontradas
+              }
             }
 
             return {
@@ -550,11 +572,23 @@ export const useRelatoriosOptimized = () => {
               divergencia: divergencia ? {
                 volumesInformados: divergencia.volumes_informados,
                 observacoes: divergencia.observacoes
-              } : null
+              } : null,
+              isNotFound: false
             }
           })
+
+          // Separar notas válidas das não encontradas
+          const notasValidas = notasProcessadas.filter(nota => !nota.isNotFound)
+          const notasNaoEncontradas = notasProcessadas.filter(nota => nota.isNotFound)
           
-          const notas = notasProcessadas.filter(nota => nota !== null) // Filtrar notas nulas
+          if (notasNaoEncontradas.length > 0) {
+            console.warn(`⚠️ Relatório ${relatorio.nome}: ${notasNaoEncontradas.length} notas não encontradas de ${notasProcessadas.length} total`)
+            
+            // Opcional: Limpar referências órfãs (comentado para não executar automaticamente)
+            // await limparReferenciasOrfas(notasNaoEncontradas.map(n => n.id))
+          }
+          
+          const notas = notasValidas // Usar apenas notas válidas
           const notasPuladas = notasProcessadas.length - notas.length
           
           if (notasPuladas > 0) {
@@ -898,5 +932,28 @@ export const useRelatorios = (
     refresh: () => fetchData(true),
     invalidateCache,
     reproduzirNotificacaoCustos
+  }
+}
+
+// Função para limpar referências órfãs na tabela relatorio_notas
+export const limparReferenciasOrfas = async (notaIds: string[]) => {
+  try {
+    const { getSupabase } = await import('@/lib/supabase-client')
+    const supabase = getSupabase()
+    
+    console.log(`🧹 Limpando ${notaIds.length} referências órfãs...`)
+    
+    const { error } = await supabase
+      .from('relatorio_notas')
+      .delete()
+      .in('nota_fiscal_id', notaIds)
+    
+    if (error) {
+      console.error('❌ Erro ao limpar referências órfãs:', error)
+    } else {
+      console.log(`✅ ${notaIds.length} referências órfãs removidas`)
+    }
+  } catch (error) {
+    console.error('❌ Erro ao limpar referências órfãs:', error)
   }
 }

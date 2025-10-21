@@ -56,17 +56,21 @@ export default function SelecaoTransportadoraModal({
       const supabase = getSupabase()
       
       // Buscar transportadoras e suas notas do consolidado
+      // IMPORTANTE: Filtrar apenas notas com status "deu entrada"
       const { data: consolidadoData, error } = await supabase
         .from('notas_consolidado')
-        .select('transportadora, numero_nf')
+        .select('transportadora, numero_nf, status')
         .not('transportadora', 'is', null) // Excluir valores nulos
         .neq('transportadora', '') // Excluir valores vazios
+        .eq('status', 'deu entrada') // FILTRO CRÍTICO: Apenas notas com status "deu entrada"
         .order('data_entrada', { ascending: false })
 
       if (error) {
         console.error('❌ Erro ao carregar transportadoras:', error)
         return
       }
+
+      console.log(`📋 Notas com status "deu entrada" encontradas: ${consolidadoData?.length || 0}`)
 
       // Buscar notas bipadas
       const { data: notasBipadasData, error: bipadasError } = await supabase
@@ -140,7 +144,7 @@ export default function SelecaoTransportadoraModal({
         return a.nomeOriginal.localeCompare(b.nomeOriginal)
       })
 
-      console.log('📋 Transportadoras carregadas (excluindo 100% bipadas):', transportadorasComProgresso)
+      console.log('📋 Transportadoras carregadas (apenas com notas "deu entrada" e progresso < 100%):', transportadorasComProgresso)
       setTransportadoras(transportadorasComProgresso)
     } catch (error) {
       console.error('❌ Erro ao carregar transportadoras:', error)

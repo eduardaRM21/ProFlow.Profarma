@@ -360,25 +360,9 @@ export const useRecebimento = (chave: string) => {
           await RecebimentoService.deleteNotas(chave)
           console.log('✅ Notas removidas da tabela recebimento_notas')
           
-          // 2. Limpar da tabela notas_bipadas (histórico de bipagem)
-          try {
-            const { getSupabase } = await import('@/lib/supabase-client')
-            const supabase = getSupabase()
-            
-            // Limpar por session_id específico para ser mais preciso
-            const { error: deleteBipadasError } = await supabase
-              .from('notas_bipadas')
-              .delete()
-              .eq('session_id', chave)
-            
-            if (deleteBipadasError) {
-              console.warn('⚠️ Erro ao deletar da tabela notas_bipadas:', deleteBipadasError)
-            } else {
-              console.log('✅ Notas removidas da tabela notas_bipadas (session_id: ' + chave + ')')
-            }
-          } catch (bipadasError) {
-            console.warn('⚠️ Erro ao limpar da tabela notas_bipadas:', bipadasError)
-          }
+          // 2. NOTA: A tabela notas_bipadas NÃO deve ser limpa!
+          // Ela é um registro histórico permanente de todas as notas bipadas
+          console.log('ℹ️ Preservando histórico na tabela notas_bipadas (registro permanente)')
 
           // 3. Limpar divergências relacionadas às notas da sessão
           try {
