@@ -125,8 +125,8 @@ export default function CustosPage() {
     invalidateCache: invalidateRelatoriosCache,
     reproduzirNotificacaoCustos
   } = useRelatorios('custos', {
-    refreshInterval: 0, // Desabilitar refresh automático para reduzir requisições
-    revalidateOnFocus: false, // Desabilitar revalidação ao focar
+    refreshInterval: 60000, // Verificar novos relatórios a cada 1 minuto
+    revalidateOnFocus: true, // Revalidar ao focar na janela
     revalidateOnReconnect: true // Manter revalidação ao reconectar
   });
 
@@ -1768,6 +1768,9 @@ NOTAS FISCAIS:`
             <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
             
               <ConnectionStatus />
+              
+              {/* Botão de Refresh Manual */}
+              
               
               {/* Menu Dropdown do Usuário */}
               <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>

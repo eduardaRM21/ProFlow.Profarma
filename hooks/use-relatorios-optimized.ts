@@ -845,13 +845,17 @@ export const useRelatorios = (
 
   // Função para reproduzir áudio de notificação para custos
   const reproduzirNotificacaoCustos = useCallback(async () => {
-    const sucesso = await playAudio('/new-notification-Custos.mp3', 0.7)
-    if (sucesso) {
+    try {
+      const audio = new Audio('/new-notification-Custos.mp3')
+      audio.volume = 0.7
+      audio.preload = 'auto'
+      
+      await audio.play()
       console.log('🔊 Notificação de áudio reproduzida com sucesso')
-    } else {
-      console.log('🔇 Áudio não reproduzido - permissão não concedida')
+    } catch (error: any) {
+      console.warn('⚠️ Erro ao reproduzir áudio de notificação:', error)
     }
-  }, [playAudio])
+  }, [])
 
   // Função para solicitar permissão de áudio (alias para compatibilidade)
   const solicitarPermissaoAudio = useCallback(async () => {
