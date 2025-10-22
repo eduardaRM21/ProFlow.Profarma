@@ -598,13 +598,11 @@ export const useRelatoriosOptimized = () => {
           if (notasNaoEncontradas.length > 0) {
             console.warn(`⚠️ Relatório ${relatorio.nome}: ${notasNaoEncontradas.length} notas não encontradas de ${notasProcessadas.length} total`)
             
-            // Limpar referências órfãs automaticamente (apenas em desenvolvimento)
-            if (process.env.NODE_ENV === 'development' && notasNaoEncontradas.length > 0) {
-              console.log(`🧹 Limpando ${notasNaoEncontradas.length} referências órfãs automaticamente...`)
-              // Executar limpeza de forma assíncrona sem bloquear o processamento
-              limparReferenciasOrfas(notasNaoEncontradas.map(n => n.id)).catch(error => {
-                console.error('❌ Erro ao limpar referências órfãs:', error)
-              })
+            // LIMPEZA AUTOMÁTICA REMOVIDA PERMANENTEMENTE
+            // Esta funcionalidade estava causando perda de dados críticos
+            // Use scripts manuais se necessário: npm run limpar-orfas:clean
+            if (notasNaoEncontradas.length > 0) {
+              console.log(`ℹ️ ${notasNaoEncontradas.length} referências órfãs detectadas - limpeza automática foi REMOVIDA para proteger dados`)
             }
           }
           
@@ -1021,7 +1019,8 @@ export const detectarELimparNotasOrfas = async (relatorioId: string) => {
     
     if (idsOrfas.length > 0) {
       console.log(`🔍 Detectadas ${idsOrfas.length} notas órfãs no relatório ${relatorioId}`)
-      await limparReferenciasOrfas(idsOrfas as string[])
+      console.log(`ℹ️ Limpeza automática foi DESABILITADA para proteger dados - use script manual se necessário`)
+      // LIMPEZA AUTOMÁTICA DESABILITADA: await limparReferenciasOrfas(idsOrfas as string[])
     }
     
   } catch (error) {

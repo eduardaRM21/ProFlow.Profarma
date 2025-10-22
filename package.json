@@ -15,6 +15,13 @@
     "deploy:functions": "node scripts/deploy-edge-functions.js",
     "limpar-orfas:check": "node scripts/limpar-notas-orfas.js verificar",
     "limpar-orfas:clean": "node scripts/limpar-notas-orfas.js limpar",
+    "verificar-notas:check": "node scripts/verificar-notas-perdidas.js verificar",
+    "verificar-notas:orfas": "node scripts/verificar-notas-perdidas.js orfas",
+    "verificar-notas:completo": "node scripts/verificar-notas-perdidas.js completo",
+    "analisar-recuperacao": "node scripts/analisar-dados-recuperacao.js",
+    "recuperar-dados": "node scripts/recuperar-dados-relatorios.js",
+    "recuperar-dados:historico": "node scripts/recuperar-dados-relatorios.js historico",
+    "recuperar-dados:completo": "node scripts/recuperar-dados-relatorios.js completo",
     "fix-dialog-accessibility": "node scripts/fix-dialog-accessibility.js",
     "test-406-fix": "node scripts/test-406-fix.js"
   },
