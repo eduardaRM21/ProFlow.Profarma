@@ -153,17 +153,17 @@ export const useDivergenciasHybrid = (
 
   return {
     // Dados
-    data: result.data || result.divergencias || [],
+    data: (result as any).data || (result as any).divergencias || [],
     isLoading: result.isLoading,
     error: result.error,
     
     // Funcionalidades de paginação (se habilitado)
     ...(enablePagination && {
-      hasMore: result.hasMore,
-      totalCount: result.totalCount,
-      currentPage: result.currentPage,
-      loadMore: result.loadMore,
-      loadPage: result.loadPage
+      hasMore: (result as any).hasMore,
+      totalCount: (result as any).totalCount,
+      currentPage: (result as any).currentPage,
+      loadMore: (result as any).loadMore,
+      loadPage: (result as any).loadPage
     }),
     
     // Funcionalidades de realtime (se habilitado)
@@ -175,13 +175,13 @@ export const useDivergenciasHybrid = (
     
     // Funcionalidades gerais
     refresh,
-    mutate: result.mutate,
+    mutate: (result as any).mutate,
     
     // Estatísticas de performance
     performance: {
       cacheHit,
       lastFetch,
-      dataSize: JSON.stringify(result.data || result.divergencias || []).length,
+      dataSize: JSON.stringify((result as any).data || (result as any).divergencias || []).length,
       strategy
     }
   }
@@ -274,16 +274,16 @@ export const useNotasFiscaisHybrid = (
   }, [strategy, swrResult, lazyResult])
 
   return {
-    data: result.data || result.notas || [],
+    data: (result as any).data || (result as any).notas || [],
     isLoading: result.isLoading,
     error: result.error,
     
     ...(enablePagination && {
-      hasMore: result.hasMore,
-      totalCount: result.totalCount,
-      currentPage: result.currentPage,
-      loadMore: result.loadMore,
-      loadPage: result.loadPage
+      hasMore: (result as any).hasMore,
+      totalCount: (result as any).totalCount,
+      currentPage: (result as any).currentPage,
+      loadMore: (result as any).loadMore,
+      loadPage: (result as any).loadPage
     }),
     
     ...(enableRealtime && {
@@ -293,12 +293,12 @@ export const useNotasFiscaisHybrid = (
     }),
     
     refresh,
-    mutate: result.mutate,
+    mutate: (result as any).mutate,
     
     performance: {
       cacheHit,
       lastFetch,
-      dataSize: JSON.stringify(result.data || result.notas || []).length,
+      dataSize: JSON.stringify((result as any).data || (result as any).notas || []).length,
       strategy
     }
   }
@@ -385,16 +385,16 @@ export const useCarrosHybrid = (
   }, [strategy, swrResult, lazyResult])
 
   return {
-    data: result.data || result.carros || [],
+    data: (result as any).data || (result as any).carros || [],
     isLoading: result.isLoading,
     error: result.error,
     
     ...(enablePagination && {
-      hasMore: result.hasMore,
-      totalCount: result.totalCount,
-      currentPage: result.currentPage,
-      loadMore: result.loadMore,
-      loadPage: result.loadPage
+      hasMore: (result as any).hasMore,
+      totalCount: (result as any).totalCount,
+      currentPage: (result as any).currentPage,
+      loadMore: (result as any).loadMore,
+      loadPage: (result as any).loadPage
     }),
     
     ...(enableRealtime && {
@@ -404,12 +404,12 @@ export const useCarrosHybrid = (
     }),
     
     refresh,
-    mutate: result.mutate,
+    mutate: (result as any).mutate,
     
     performance: {
       cacheHit,
       lastFetch,
-      dataSize: JSON.stringify(result.data || result.carros || []).length,
+      dataSize: JSON.stringify((result as any).data || (result as any).carros || []).length,
       strategy
     }
   }
@@ -496,16 +496,16 @@ export const useRelatoriosHybrid = (
   }, [strategy, swrResult, lazyResult])
 
   return {
-    data: result.data || result.relatorios || [],
+    data: (result as any).data || (result as any).relatorios || [],
     isLoading: result.isLoading,
     error: result.error,
     
     ...(enablePagination && {
-      hasMore: result.hasMore,
-      totalCount: result.totalCount,
-      currentPage: result.currentPage,
-      loadMore: result.loadMore,
-      loadPage: result.loadPage
+      hasMore: (result as any).hasMore,
+      totalCount: (result as any).totalCount,
+      currentPage: (result as any).currentPage,
+      loadMore: (result as any).loadMore,
+      loadPage: (result as any).loadPage
     }),
     
     ...(enableRealtime && {
@@ -515,12 +515,12 @@ export const useRelatoriosHybrid = (
     }),
     
     refresh,
-    mutate: result.mutate,
+    mutate: (result as any).mutate,
     
     performance: {
       cacheHit,
       lastFetch,
-      dataSize: JSON.stringify(result.data || result.relatorios || []).length,
+      dataSize: JSON.stringify((result as any).data || (result as any).relatorios || []).length,
       strategy
     }
   }

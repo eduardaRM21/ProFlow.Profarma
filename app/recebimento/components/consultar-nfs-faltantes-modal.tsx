@@ -103,7 +103,7 @@ export default function ConsultarNfsFaltantesModal({
       // Filtrar apenas as notas que ainda não foram bipadas
       const notasRestantes = (consolidadoData || []).filter(nota => 
         !notasBipadasSet.has(nota.numero_nf)
-      )
+      ) as NotaFaltante[]
 
       setNotasFaltantes(notasRestantes)
       

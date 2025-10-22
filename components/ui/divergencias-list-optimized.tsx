@@ -110,6 +110,7 @@ export const DivergenciasListOptimized = ({
     {
       data: divergencias,
       isLoading,
+      isLoadingMore: false,
       hasMore: hasMore || false,
       totalCount: totalCount || 0,
       currentPage,

@@ -140,7 +140,7 @@ export const useLazyLoading = <T>(
       }
 
       const result = {
-        data: pageData || [],
+        data: (pageData || []) as T[],
         totalCount: count || 0,
         hasMore: (count || 0) > page * pageSize
       }

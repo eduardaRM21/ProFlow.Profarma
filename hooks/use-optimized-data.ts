@@ -87,7 +87,7 @@ const fetchDivergencias = async (key: string) => {
           }
           
         } catch (fetchError) {
-          console.warn(`⚠️ Erro de conectividade no lote ${i + 1}:`, fetchError.message)
+          console.warn(`⚠️ Erro de conectividade no lote ${i + 1}:`, (fetchError as Error).message)
           errorCount++
           
           // Delay maior em caso de erro
@@ -154,7 +154,7 @@ const fetchCarros = async () => {
       carrosMap.set(nota.carro_id, {
         carro_id: nota.carro_id,
         nome_carro: nota.nome_carro || `Carro ${nota.carro_id}`,
-        colaboradores: nota.colaboradores ? nota.colaboradores.split(',').map(c => c.trim()) : [],
+        colaboradores: typeof nota.colaboradores === 'string' ? nota.colaboradores.split(',').map(c => c.trim()) : [],
         data: nota.data,
         turno: nota.turno,
         destino_final: nota.destino,
@@ -176,7 +176,7 @@ const fetchCarros = async () => {
     
     const carro = carrosMap.get(nota.carro_id)
     carro.quantidade_nfs++
-    carro.total_volumes += nota.volumes || 0
+    carro.total_volumes += (nota as any).volumes || 0
     carro.estimativa_pallets = Math.ceil(carro.total_volumes / 100)
   })
   

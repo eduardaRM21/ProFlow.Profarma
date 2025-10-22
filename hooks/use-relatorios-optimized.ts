@@ -298,7 +298,7 @@ export const useRelatoriosOptimized = () => {
             console.log('🔍 Notas agrupadas por relatório:', notasPorRelatorio)
             
             // Verificar se há relatórios sem notas
-            const relatoriosSemNotas = relatorioIds.filter(id => !notasPorRelatorio[id])
+            const relatoriosSemNotas = relatorioIds.filter(id => !notasPorRelatorio[id as string])
             if (relatoriosSemNotas.length > 0) {
               console.log('⚠️ Relatórios sem notas na tabela relatorio_notas:', relatoriosSemNotas)
             }
@@ -435,7 +435,7 @@ export const useRelatoriosOptimized = () => {
             console.log('🔍 Dados das notas mapeados:', Object.keys(dadosNotas).length, 'notas')
             
             // Verificar se há IDs de notas que não foram encontrados
-            const idsNaoEncontrados = idsValidos.filter(id => !dadosNotas[id])
+            const idsNaoEncontrados = idsValidos.filter(id => !dadosNotas[id as string])
             if (idsNaoEncontrados.length > 0) {
               console.log('⚠️ IDs de notas não encontrados na tabela notas_fiscais:', idsNaoEncontrados)
             }
@@ -506,7 +506,7 @@ export const useRelatoriosOptimized = () => {
             return acc
           }, {})
           
-          const relatoriosSemNotas = relatorioIds.filter(id => !notasPorRelatorio[id])
+          const relatoriosSemNotas = relatorioIds.filter(id => !notasPorRelatorio[id as string])
           if (relatoriosSemNotas.length > 0) {
             console.log('⚠️ Relatórios sem notas na tabela relatorio_notas:', relatoriosSemNotas)
           }
@@ -1017,7 +1017,7 @@ export const detectarELimparNotasOrfas = async (relatorioId: string) => {
     
     if (idsOrfas.length > 0) {
       console.log(`🔍 Detectadas ${idsOrfas.length} notas órfãs no relatório ${relatorioId}`)
-      await limparReferenciasOrfas(idsOrfas)
+      await limparReferenciasOrfas(idsOrfas as string[])
     }
     
   } catch (error) {

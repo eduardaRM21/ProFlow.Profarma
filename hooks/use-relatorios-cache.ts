@@ -64,7 +64,7 @@ export function useRelatoriosCache() {
     setCache(prevCache => {
       const newCache = {
         ...prevCache,
-        [relatorio.id]: {
+        [relatorio.id as string]: {
           relatorio: {
             ...relatorio,
             notas: notas

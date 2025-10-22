@@ -18,6 +18,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Carregar tema do localStorage na inicialização
   useEffect(() => {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return
+    
     const savedTheme = localStorage.getItem('theme') as Theme;
     if (savedTheme) {
       setThemeState(savedTheme);
@@ -42,7 +45,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         root.classList.add(theme);
       }
       
-      localStorage.setItem('theme', theme);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('theme', theme);
+      }
     }
   }, [theme, mounted]);
 

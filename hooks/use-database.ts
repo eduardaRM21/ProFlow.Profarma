@@ -25,6 +25,9 @@ import { LocalAuthService } from '@/lib/local-auth-service'
  */
 const useLocalStorage = <T>(key: string, initialValue: T) => {
   const [storedValue, setStoredValue] = useState<T>(() => {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return initialValue
+    
     try {
       const item = localStorage.getItem(key)
       return item ? JSON.parse(item) : initialValue
@@ -35,6 +38,9 @@ const useLocalStorage = <T>(key: string, initialValue: T) => {
   })
 
   useEffect(() => {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return
+    
     try {
       localStorage.setItem(key, JSON.stringify(storedValue))
     } catch (error) {
@@ -55,6 +61,9 @@ export const useDatabase = () => {
   const [migrationComplete, setMigrationComplete] = useState(false)
 
   useEffect(() => {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return
+    
     const performAutoMigration = async () => {
       const hasLocalData =
         localStorage.getItem('sistema_session') ||
@@ -190,6 +199,7 @@ export const useSession = () => {
 
       // Fallback para localStorage
       console.log('🔍 Tentando fallback para localStorage...')
+      if (typeof window === 'undefined') return null
       const sessionLocal = localStorage.getItem("sistema_session")
       if (sessionLocal) {
         const sessionObj = JSON.parse(sessionLocal)
@@ -256,9 +266,11 @@ export const useSession = () => {
       }
 
       // Sempre salvar no localStorage como fallback
-      const sessionKey = 'sistema_session'
-      localStorage.setItem(sessionKey, JSON.stringify(sessionData))
-      console.log('✅ Sessão salva no localStorage')
+      if (typeof window !== 'undefined') {
+        const sessionKey = 'sistema_session'
+        localStorage.setItem(sessionKey, JSON.stringify(sessionData))
+        console.log('✅ Sessão salva no localStorage')
+      }
       
       // Atualizar cache
       sessionCache = sessionData
@@ -278,7 +290,9 @@ export const useSession = () => {
       lastSessionFetch = 0
       
       // Limpar localStorage
-      localStorage.removeItem("sistema_session")
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem("sistema_session")
+      }
       
       // TODO: Implementar logout no banco quando o serviço estiver disponível
       if (isFullyConnected) {
@@ -308,7 +322,9 @@ export const useRecebimento = (chave: string) => {
       setNotas(notas)
       
       // Salvar localmente primeiro
-      localStorage.setItem(chave, JSON.stringify(notas))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(chave, JSON.stringify(notas))
+      }
       
       // Tentar salvar no banco se conectado
       if (isFullyConnected) {
@@ -323,6 +339,7 @@ export const useRecebimento = (chave: string) => {
   const getNotas = useCallback(async (chave: string): Promise<any[]> => {
     try {
       // Carregar do localStorage primeiro
+      if (typeof window === 'undefined') return []
       const notasLocal = localStorage.getItem(chave)
       const notas = notasLocal ? JSON.parse(notasLocal) : []
       
@@ -334,7 +351,9 @@ export const useRecebimento = (chave: string) => {
             // Mesclar dados locais e do banco
             const merged = [...notas, ...notasDB]
             const uniqueById = Array.from(new Map(merged.map(n => [n.id, n])).values())
-            localStorage.setItem(chave, JSON.stringify(uniqueById))
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(chave, JSON.stringify(uniqueById))
+            }
             return uniqueById
           }
         } catch (error) {
@@ -352,7 +371,9 @@ export const useRecebimento = (chave: string) => {
   const clearNotas = useCallback(async (chave: string): Promise<void> => {
     try {
       setNotas([])
-      localStorage.removeItem(chave)
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(chave)
+      }
       
       if (isFullyConnected) {
         try {
@@ -439,11 +460,13 @@ export const useRelatorios = () => {
       }
 
       // Salvar localmente como backup
-      const relatoriosData = localStorage.getItem('relatorios_local') || '[]'
-      const relatorios = JSON.parse(relatoriosData)
-      const updatedRelatorios = Array.from(new Map([...relatorios, relatorio].map(r => [r.id, r])).values())
-      localStorage.setItem('relatorios_local', JSON.stringify(updatedRelatorios))
-      console.log('💾 Relatório salvo localmente:', relatorio.area)
+      if (typeof window !== 'undefined') {
+        const relatoriosData = localStorage.getItem('relatorios_local') || '[]'
+        const relatorios = JSON.parse(relatoriosData)
+        const updatedRelatorios = Array.from(new Map([...relatorios, relatorio].map(r => [r.id, r])).values())
+        localStorage.setItem('relatorios_local', JSON.stringify(updatedRelatorios))
+        console.log('💾 Relatório salvo localmente:', relatorio.area)
+      }
 
       // Invalidar cache
       relatoriosCache = null
@@ -463,13 +486,15 @@ export const useRelatorios = () => {
       }
 
       // Atualizar localmente como backup
-      const relatoriosData = localStorage.getItem('relatorios_local') || '[]'
-      const relatorios = JSON.parse(relatoriosData)
-      const updatedRelatorios = relatorios.map((r: any) => 
-        r.id === relatorioId ? { ...r, status: novoStatus } : r
-      )
-      localStorage.setItem('relatorios_local', JSON.stringify(updatedRelatorios))
-      console.log('🔄 Status do relatório atualizado localmente')
+      if (typeof window !== 'undefined') {
+        const relatoriosData = localStorage.getItem('relatorios_local') || '[]'
+        const relatorios = JSON.parse(relatoriosData)
+        const updatedRelatorios = relatorios.map((r: any) => 
+          r.id === relatorioId ? { ...r, status: novoStatus } : r
+        )
+        localStorage.setItem('relatorios_local', JSON.stringify(updatedRelatorios))
+        console.log('🔄 Status do relatório atualizado localmente')
+      }
 
       // Invalidar cache
       relatoriosCache = null
@@ -610,7 +635,9 @@ export const useEmbalagem = () => {
   const saveCarros = useCallback(async (chave: string, carros: any[]): Promise<void> => {
     try {
       // Salvar localmente primeiro
-      localStorage.setItem(chave, JSON.stringify({ carros }))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(chave, JSON.stringify({ carros }))
+      }
       
       // Tentar salvar no banco se conectado
       if (isFullyConnected) {
@@ -625,6 +652,7 @@ export const useEmbalagem = () => {
   const getCarros = useCallback(async (chave: string): Promise<any[]> => {
     try {
       // Carregar do localStorage primeiro
+      if (typeof window === 'undefined') return []
       const carrosLocal = localStorage.getItem(chave)
       const carros = carrosLocal ? JSON.parse(carrosLocal).carros || [] : []
       
@@ -636,7 +664,9 @@ export const useEmbalagem = () => {
             // Mesclar dados locais e do banco
             const merged = [...carros, ...carrosDB]
             const uniqueById = Array.from(new Map(merged.map(c => [c.id, c])).values())
-            localStorage.setItem(chave, JSON.stringify({ carros: uniqueById }))
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(chave, JSON.stringify({ carros: uniqueById }))
+            }
             return uniqueById
           }
         } catch (error) {
@@ -708,10 +738,12 @@ export const useChat = () => {
   const saveMensagem = useCallback(async (mensagem: any): Promise<void> => {
     try {
       // Salvar localmente primeiro
-      const mensagensData = localStorage.getItem(`chat_${mensagem.area}`) || '[]'
-      const mensagens = JSON.parse(mensagensData)
-      mensagens.push(mensagem)
-      localStorage.setItem(`chat_${mensagem.area}`, JSON.stringify(mensagens))
+      if (typeof window !== 'undefined') {
+        const mensagensData = localStorage.getItem(`chat_${mensagem.area}`) || '[]'
+        const mensagens = JSON.parse(mensagensData)
+        mensagens.push(mensagem)
+        localStorage.setItem(`chat_${mensagem.area}`, JSON.stringify(mensagens))
+      }
       
       // Tentar salvar no banco se conectado
       if (isFullyConnected) {
@@ -726,6 +758,7 @@ export const useChat = () => {
   const getMensagens = useCallback(async (area: string): Promise<any[]> => {
     try {
       // Carregar do localStorage primeiro
+      if (typeof window === 'undefined') return []
       const mensagensLocal = localStorage.getItem(`chat_${area}`)
       const mensagens = mensagensLocal ? JSON.parse(mensagensLocal) : []
       
@@ -737,7 +770,9 @@ export const useChat = () => {
             // Mesclar dados locais e do banco
             const merged = [...mensagens, ...mensagensDB]
             const uniqueById = Array.from(new Map(merged.map(m => [m.id, m])).values())
-            localStorage.setItem(`chat_${area}`, JSON.stringify(uniqueById))
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(`chat_${area}`, JSON.stringify(uniqueById))
+            }
             return uniqueById
           }
         } catch (error) {
@@ -765,7 +800,9 @@ export const useInventario = () => {
   const saveInventario = useCallback(async (sessionId: string, itens: any[]): Promise<void> => {
     try {
       // Salvar localmente primeiro
-      localStorage.setItem(`inventario_${sessionId}`, JSON.stringify(itens))
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`inventario_${sessionId}`, JSON.stringify(itens))
+      }
       
       // Tentar salvar no banco se conectado
       if (isFullyConnected) {
@@ -781,6 +818,7 @@ export const useInventario = () => {
   const getInventario = useCallback(async (sessionId: string): Promise<any[]> => {
     try {
       // Carregar do localStorage
+      if (typeof window === 'undefined') return []
       const inventarioLocal = localStorage.getItem(`inventario_${sessionId}`)
       const inventario = inventarioLocal ? JSON.parse(inventarioLocal) : []
       
@@ -799,10 +837,12 @@ export const useInventario = () => {
   const saveRelatorio = useCallback(async (relatorio: any): Promise<void> => {
     try {
       // Salvar localmente primeiro
-      const relatoriosData = localStorage.getItem('relatorios_inventario') || '[]'
-      const relatorios = JSON.parse(relatoriosData)
-      relatorios.push(relatorio)
-      localStorage.setItem('relatorios_inventario', JSON.stringify(relatorios))
+      if (typeof window !== 'undefined') {
+        const relatoriosData = localStorage.getItem('relatorios_inventario') || '[]'
+        const relatorios = JSON.parse(relatoriosData)
+        relatorios.push(relatorio)
+        localStorage.setItem('relatorios_inventario', JSON.stringify(relatorios))
+      }
       
       // Tentar salvar no banco se conectado
       if (isFullyConnected) {

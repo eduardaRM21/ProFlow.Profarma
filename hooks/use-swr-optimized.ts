@@ -45,11 +45,7 @@ const createFetcher = <T>(
     console.log('🔄 SWR: Buscando dados do banco para', key)
     const supabase = getSupabase()
     
-    let query = supabase.from(table)
-    
-    if (selectQuery) {
-      query = query.select(selectQuery)
-    }
+    let query = supabase.from(table).select(selectQuery || '*')
     
     // Aplicar filtros
     if (filters) {

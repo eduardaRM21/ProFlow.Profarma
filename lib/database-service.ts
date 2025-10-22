@@ -1465,6 +1465,12 @@ export const ChatService = {
 // Função para migrar dados do localStorage para o banco
 export const migrateFromLocalStorage = async () => {
   try {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') {
+      console.log('ℹ️ Migração não executada - ambiente servidor')
+      return
+    }
+    
     console.log('🔄 Iniciando migração do localStorage para o banco...')
 
     // Verificar se há dados para migrar

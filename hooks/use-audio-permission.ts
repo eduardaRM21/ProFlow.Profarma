@@ -24,6 +24,9 @@ export const useAudioPermission = () => {
 
   // Verificar permissão salva no localStorage
   useEffect(() => {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return
+    
     const permissaoSalva = localStorage.getItem('audio_permission_granted')
     if (permissaoSalva === 'true') {
       setState(prev => ({
@@ -56,7 +59,9 @@ export const useAudioPermission = () => {
       audio.currentTime = 0
       
       // Salvar permissão
-      localStorage.setItem('audio_permission_granted', 'true')
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('audio_permission_granted', 'true')
+      }
       
       setState({
         isGranted: true,
@@ -72,7 +77,9 @@ export const useAudioPermission = () => {
       console.warn('⚠️ Permissão de áudio negada:', error)
       
       // Salvar negação
-      localStorage.setItem('audio_permission_granted', 'false')
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('audio_permission_granted', 'false')
+      }
       
       setState({
         isGranted: false,
@@ -87,7 +94,9 @@ export const useAudioPermission = () => {
 
   // Revogar permissão
   const revokePermission = useCallback(() => {
-    localStorage.setItem('audio_permission_granted', 'false')
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('audio_permission_granted', 'false')
+    }
     setState({
       isGranted: false,
       isRequested: true,

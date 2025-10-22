@@ -50,8 +50,11 @@ export class CacheManager {
   }
 
   constructor() {
-    this.loadFromLocalStorage()
-    this.startCleanupInterval()
+    // Verificar se estamos no lado do cliente antes de acessar localStorage
+    if (typeof window !== 'undefined') {
+      this.loadFromLocalStorage()
+      this.startCleanupInterval()
+    }
   }
 
   // =====================================================
@@ -192,6 +195,9 @@ export class CacheManager {
   // =====================================================
 
   private saveToLocalStorage(key: string, entry: CacheEntry<any>): void {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return
+    
     try {
       const storageKey = `${this.localStoragePrefix}${key}`
       const data = CACHE_CONFIG.compression 
@@ -205,6 +211,9 @@ export class CacheManager {
   }
 
   private loadFromLocalStorage(key?: string): CacheEntry<any> | null {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return null
+    
     try {
       if (key) {
         const storageKey = `${this.localStoragePrefix}${key}`
@@ -244,6 +253,9 @@ export class CacheManager {
   }
 
   private removeFromLocalStorage(key: string): void {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return
+    
     try {
       const storageKey = `${this.localStoragePrefix}${key}`
       localStorage.removeItem(storageKey)
@@ -253,11 +265,17 @@ export class CacheManager {
   }
 
   private hasInLocalStorage(key: string): boolean {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return false
+    
     const storageKey = `${this.localStoragePrefix}${key}`
     return localStorage.getItem(storageKey) !== null
   }
 
   private clearLocalStorage(): void {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return
+    
     try {
       const keys = Object.keys(localStorage)
         .filter(k => k.startsWith(this.localStoragePrefix))
@@ -290,6 +308,9 @@ export class CacheManager {
   // =====================================================
 
   private startCleanupInterval(): void {
+    // Verificar se estamos no lado do cliente
+    if (typeof window === 'undefined') return
+    
     setInterval(() => {
       this.cleanup()
     }, 60000) // A cada minuto
