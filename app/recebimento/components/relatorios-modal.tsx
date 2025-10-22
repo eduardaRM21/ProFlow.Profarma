@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +18,7 @@ interface RelatoriosModalProps {
   isOpen: boolean
   onClose: () => void
 }
+
 
 export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProps) {
   const [relatorios, setRelatorios] = useState<Relatorio[]>([])
@@ -47,24 +48,43 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
   // Hook do tema
   const { theme } = useTheme()
 
-  // Remover foco de elementos quando modal abrir para evitar conflitos de acessibilidade
+  // Refs para evitar reflows forçados
+  const modalRef = useRef<HTMLDivElement>(null)
+  const focusTimeoutRef = useRef<NodeJS.Timeout>()
+
+  // Otimizar foco do modal sem causar reflows
   useEffect(() => {
     if (isOpen) {
-      // Remover foco de qualquer elemento ativo
-      if (document.activeElement && document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur()
+      // Usar requestAnimationFrame para evitar reflows forçados
+      const focusElement = () => {
+        requestAnimationFrame(() => {
+          if (document.activeElement && document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur()
+          }
+          
+          // Focar no primeiro elemento focável do modal
+          if (modalRef.current) {
+            const firstFocusable = modalRef.current.querySelector('input, button, [tabindex]:not([tabindex="-1"])') as HTMLElement
+            if (firstFocusable) {
+              firstFocusable.focus()
+            }
+          }
+        })
+      }
+
+      // Limpar timeout anterior se existir
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current)
       }
       
-      // Focar no primeiro elemento focável do modal após um pequeno delay
-      setTimeout(() => {
-        const modal = document.querySelector('[role="dialog"]')
-        if (modal) {
-          const firstFocusable = modal.querySelector('input, button, [tabindex]:not([tabindex="-1"])') as HTMLElement
-          if (firstFocusable) {
-            firstFocusable.focus()
-          }
-        }
-      }, 100)
+      // Usar setTimeout com requestAnimationFrame para melhor performance
+      focusTimeoutRef.current = setTimeout(focusElement, 100)
+    }
+
+    return () => {
+      if (focusTimeoutRef.current) {
+        clearTimeout(focusTimeoutRef.current)
+      }
     }
   }, [isOpen])
 
@@ -270,6 +290,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
         console.log(`✅ Relatório ${relatorioId} tem ${notaIds.length} notas relacionadas`)
 
         // Buscar detalhes das notas fiscais
+        console.log(`🔍 Buscando detalhes das notas fiscais com IDs:`, notaIds)
         const { data: notasData, error: notasError } = await supabase
           .from('notas_fiscais')
           .select('*')
@@ -279,41 +300,101 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
           console.error('❌ Erro ao buscar notas fiscais:', notasError)
           return
         }
+        
+        console.log(`🔍 Notas fiscais encontradas:`, notasData.length)
+        if (notasData.length > 0) {
+          console.log(`🔍 Primeira nota fiscal:`, {
+            id: notasData[0].id,
+            numero_nf: notasData[0].numero_nf,
+            status: notasData[0].status,
+            volumes: notasData[0].volumes
+          })
+        }
 
-        // Para cada nota, buscar divergências se houver
-        const notasComDivergencias: NotaFiscal[] = await Promise.all(
-          notasData.map(async (nota: any) => {
-            let divergencia = null
+        // Buscar todas as divergências de uma vez para melhor performance
+        const notasIdsParaDivergencias = notasData.map(nota => nota.id)
+        console.log(`🔍 IDs das notas para buscar divergências:`, notasIdsParaDivergencias)
+        
+        const { data: todasDivergencias, error: divergenciasError } = await supabase
+          .from('divergencias')
+          .select('*')
+          .in('nota_fiscal_id', notasIdsParaDivergencias)
+          
+        if (divergenciasError) {
+          console.error('❌ Erro ao buscar divergências:', divergenciasError)
+        }
 
-            const { data: divergenciaData, error: divergenciaError } = await supabase
+        console.log(`🔍 Divergências encontradas:`, todasDivergencias?.length || 0)
+        if (todasDivergencias && todasDivergencias.length > 0) {
+          console.log(`🔍 Primeira divergência:`, todasDivergencias[0])
+        } else {
+          console.log(`⚠️ Nenhuma divergência encontrada para as notas:`, notasIdsParaDivergencias)
+          // Verificar se há divergências para cada nota individualmente
+          for (const notaId of notasIdsParaDivergencias) {
+            const { data: divergenciaIndividual, error: erroIndividual } = await supabase
               .from('divergencias')
               .select('*')
-              .eq('nota_fiscal_id', nota.id)
-              .single()
-
-            if (!divergenciaError && divergenciaData) {
-              divergencia = {
-                volumesInformados: divergenciaData.volumes_informados,
-                observacoes: divergenciaData.observacoes
-              }
+              .eq('nota_fiscal_id', notaId as string)
+            console.log(`🔍 Verificação individual para nota ${notaId}:`, divergenciaIndividual?.length || 0, 'divergências')
+            if (divergenciaIndividual && divergenciaIndividual.length > 0) {
+              console.log(`🔍 Divergência individual encontrada:`, divergenciaIndividual[0])
             }
+          }
+        }
 
-            return {
-              id: nota.id,
-              codigoCompleto: nota.codigo_completo || '',
-              numeroNF: nota.numero_nf || nota.codigo_completo,
-              volumes: nota.volumes || 0,
-              data: nota.data || new Date().toISOString(),
-              tipoCarga: nota.tipo_carga || 'normal',
-              timestamp: nota.timestamp || new Date().toISOString(),
-              destino: nota.destino || 'Não informado',
-              fornecedor: nota.fornecedor || 'Não informado',
-              clienteDestino: nota.cliente_destino || 'Não informado',
-              status: nota.status === 'devolvida' ? 'devolvida' : (divergencia ? 'divergencia' : 'ok'),
-              divergencia: divergencia
-            } as NotaFiscal
+        // Criar mapa de divergências por nota_fiscal_id
+        const divergenciasMap: { [key: string]: any } = {}
+        if (!divergenciasError && todasDivergencias) {
+          todasDivergencias.forEach(div => {
+            divergenciasMap[div.nota_fiscal_id as string] = div
+            console.log(`🔍 Mapeando divergência para nota ${div.nota_fiscal_id}:`, div)
           })
-        )
+        }
+        
+        console.log(`🔍 Mapa de divergências criado:`, Object.keys(divergenciasMap).length, 'divergências')
+
+        // Para cada nota, processar com divergências
+        const notasComDivergencias: NotaFiscal[] = notasData.map((nota: any) => {
+          const divergencia = divergenciasMap[nota.id]
+          
+          console.log(`🔍 Processando nota ${nota.numero_nf} (ID: ${nota.id}):`)
+          console.log(`  - Status na tabela notas_fiscais: ${nota.status}`)
+          console.log(`  - Divergência encontrada:`, divergencia ? 'SIM' : 'NÃO')
+          if (divergencia) {
+            console.log(`  - Detalhes da divergência:`, divergencia)
+          }
+          
+          // Determinar o status da nota (mesma lógica da página de custos)
+          let status: 'ok' | 'divergencia' | 'devolvida'
+          if (nota.status === 'devolvida') {
+            status = 'devolvida'
+            console.log(`  - Status final: devolvida (baseado no status da tabela)`)
+          } else if (divergencia) {
+            status = 'divergencia'
+            console.log(`  - Status final: divergencia (baseado na divergência encontrada)`)
+          } else {
+            status = 'ok'
+            console.log(`  - Status final: ok (sem divergência)`)
+          }
+
+          return {
+            id: nota.id,
+            codigoCompleto: nota.codigo_completo || '',
+            numeroNF: nota.numero_nf || nota.codigo_completo,
+            volumes: nota.volumes || 0,
+            data: nota.data || new Date().toISOString(),
+            tipoCarga: nota.tipo_carga || 'normal',
+            timestamp: nota.timestamp || new Date().toISOString(),
+            destino: nota.destino || 'Não informado',
+            fornecedor: nota.fornecedor || 'Não informado',
+            clienteDestino: nota.cliente_destino || 'Não informado',
+            status: status,
+            divergencia: divergencia ? {
+              volumesInformados: divergencia.volumes_informados,
+              observacoes: divergencia.observacoes
+            } : null
+          } as NotaFiscal
+        })
 
         // Encontrar o relatório original
         const relatorioOriginal = relatorios.find(rel => rel.id === relatorioId)
@@ -365,8 +446,8 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
     }
   }, [carregandoNotas, notasCarregadas, isRelatorioCached, getRelatorioFromCache, saveRelatorioToCache, relatorios])
 
-  const aplicarFiltros = useCallback(() => {
-    // Usar useMemo seria melhor, mas mantendo compatibilidade
+  // Otimizar filtros com useMemo para evitar recálculos desnecessários
+  const relatoriosFiltradosMemo = useMemo(() => {
     let relatoriosFiltrados = [...relatorios]
 
     // Filtro por texto (otimizado)
@@ -425,33 +506,34 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
       })
     }
 
-    setRelatoriosFiltrados(relatoriosFiltrados)
+    return relatoriosFiltrados
   }, [relatorios, filtroTexto, dataInicio, dataFim])
 
-  // Carregar relatórios quando o modal abrir
+  // Atualizar estado apenas quando necessário
+  useEffect(() => {
+    setRelatoriosFiltrados(relatoriosFiltradosMemo)
+  }, [relatoriosFiltradosMemo])
+
+  // Carregar relatórios quando o modal abrir (otimizado)
   useEffect(() => {
     if (isOpen) {
-      // Usar setTimeout para não bloquear a renderização inicial do modal
-      const timer = setTimeout(() => {
-        carregarRelatorios()
-      }, 500) // Aumentado para 500ms para melhor estabilidade
-      return () => clearTimeout(timer)
+      // Usar requestIdleCallback para melhor performance
+      const loadData = () => {
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(() => carregarRelatorios(), { timeout: 1000 })
+        } else {
+          setTimeout(() => carregarRelatorios(), 100)
+        }
+      }
+      
+      loadData()
     } else {
       // Limpar dados quando o modal fechar para permitir recarregamento
       setRelatorios([])
       setRelatoriosFiltrados([])
       setNotasCarregadas(new Set())
     }
-  }, [isOpen]) // Removido carregarRelatorios da dependência para evitar loop
-
-  // Aplicar filtros quando dados mudarem
-  useEffect(() => {
-    // Debounce para evitar re-renderizações excessivas
-    const timer = setTimeout(() => {
-      aplicarFiltros()
-    }, 500) // Aumentado para 500ms para melhor performance
-    return () => clearTimeout(timer)
-  }, [relatorios, filtroTexto, dataInicio, dataFim]) // Removido aplicarFiltros das dependências
+  }, [isOpen])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -468,8 +550,8 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
     }
   }
 
-  // Função para calcular o percentual de progresso do relatório
-  const calcularPercentualProgresso = (relatorio: Relatorio): number => {
+  // Função para calcular o percentual de progresso do relatório (memoizada)
+  const calcularPercentualProgresso = useCallback((relatorio: Relatorio): number => {
     // Só calcular se o status é 'liberado' ou 'liberado_parcialmente'
     if (relatorio.status !== 'liberado' && relatorio.status !== 'liberado_parcialmente') {
       return 100
@@ -494,12 +576,22 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
     
     // Por padrão, se está liberado sem problemas aparentes, considerar 100%
     return 100
-  }
+  }, [])
 
   // Função para verificar se o relatório foi liberado parcialmente
   const isRelatorioLiberadoParcialmente = (relatorio: Relatorio) => {
     return relatorio.status === 'liberado_parcialmente'
   }
+
+  // Função otimizada para visualizar detalhes do relatório
+  const handleViewDetails = useCallback(async (relatorio: Relatorio) => {
+    requestAnimationFrame(async () => {
+      setRelatorioSelecionado(relatorio)
+      if (relatorio.id && !notasCarregadas.has(relatorio.id)) {
+        await carregarNotasRelatorio(relatorio.id)
+      }
+    })
+  }, [notasCarregadas, carregarNotasRelatorio])
 
   // Função para formatar o nome do relatório com percentual
   const formatarNomeRelatorio = (relatorio: Relatorio): string => {
@@ -530,7 +622,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-8xl max-h-[95vh] w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[80vw] xl:w-[90vw] overflow-hidden dark:bg-gray-900 dark:border-gray-700 coletor-modal" aria-describedby="relatorios-description">
+        <DialogContent ref={modalRef} className="max-w-8xl max-h-[95vh] w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[80vw] xl:w-[90vw] overflow-hidden dark:bg-gray-900 dark:border-gray-700 coletor-modal">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-gray-200">
               <FileText className="h-5 w-5 text-blue-600" />
@@ -542,11 +634,10 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                 </span>
               )}
             </DialogTitle>
+            <DialogDescription>
+              Visualize e gerencie relatórios de recebimento, incluindo filtros por nome, colaboradores e data
+            </DialogDescription>
           </DialogHeader>
-
-          <div id="relatorios-description" className="sr-only">
-            Modal para visualizar e gerenciar relatórios de recebimento, incluindo filtros por nome, colaboradores e data.
-          </div>
 
           <div className="flex flex-col h-full max-h-[85vh]">
             {/* Header fixo */}
@@ -613,12 +704,15 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                 <div className="flex flex-wrap items-center gap-2 sm:gap-4">
                  
                   <Button
-                onClick={() => {
-                  setRelatorios([])
-                  setRelatoriosFiltrados([])
-                  setNotasCarregadas(new Set())
-                  carregarRelatorios(true) // Forçar recarregamento
-                }}
+                onClick={useCallback(() => {
+                  // Usar requestAnimationFrame para não bloquear a UI
+                  requestAnimationFrame(() => {
+                    setRelatorios([])
+                    setRelatoriosFiltrados([])
+                    setNotasCarregadas(new Set())
+                    carregarRelatorios(true) // Forçar recarregamento
+                  })
+                }, [carregarRelatorios])}
                 variant="outline"
                 size="sm"
                 disabled={carregando}
@@ -632,11 +726,14 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                 {carregando ? 'Carregando...' : 'Recarregar'}
               </Button>
               <Button
-                    onClick={() => {
-                      setFiltroTexto("")
-                      setDataInicio("")
-                      setDataFim("")
-                    }}
+                    onClick={useCallback(() => {
+                      // Usar requestAnimationFrame para não bloquear a UI
+                      requestAnimationFrame(() => {
+                        setFiltroTexto("")
+                        setDataInicio("")
+                        setDataFim("")
+                      })
+                    }, [])}
                     variant="outline"
                     size="sm"
                     className="text-xs sm:text-sm h-7 sm:h-9 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
@@ -729,96 +826,18 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 pb-4">
                       {relatoriosFiltrados.map((relatorio) => (
-                        <Card key={relatorio.id} className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50 hover:shadow-md transition-shadow">
-                          <CardHeader className="pb-2 sm:pb-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                <FileText className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600 flex-shrink-0" />
-                                <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1">
-                                  <span className="font-semibold text-gray-900 dark:text-gray-200 text-xs sm:text-sm truncate" title={formatarNomeRelatorio(relatorio)}>
-                                    {formatarNomeRelatorio(relatorio)}
-                                  </span>
-                                  {isRelatorioLiberadoParcialmente(relatorio) && (
-                                    <Badge variant="outline" className="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-600/50 font-medium flex-shrink-0">
-                                      <AlertTriangle className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
-                                      <span className="hidden sm:inline">Parcialmente</span>
-                                      <span className="sm:hidden">Parc.</span>
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                              <Badge className={`text-xs flex-shrink-0 ${getStatusColor(relatorio.status)}`}>
-                                {getStatusLabel(relatorio.status)}
-                              </Badge>
-                            </div>
-                          </CardHeader>
-
-                          <CardContent className="space-y-2 sm:space-y-3">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs sm:text-sm">
-                              <div>
-                                <div className="text-gray-600 dark:text-gray-400 text-xs">Colaboradores</div>
-                                <div className="font-medium text-gray-900 dark:text-gray-200 truncate" title={Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0 ? relatorio.colaboradores.join(', ') : 'Não informado'}>
-                                  {Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
-                                    ? relatorio.colaboradores.join(', ')
-                                    : 'Não informado'}
-                                </div>
-                              </div>
-                              <div>
-                                <div className="text-gray-600 dark:text-gray-400 text-xs">Data/Turno</div>
-                                <div className="font-medium text-gray-900 dark:text-gray-200">
-                                  {relatorio.data} - {relatorio.turno}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-2 sm:gap-4 py-1 sm:py-2">
-                              <div className="text-center">
-                                <div className="text-sm sm:text-lg font-bold text-blue-600 dark:text-blue-400">{relatorio.quantidadeNotas}</div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400">Notas</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="text-sm sm:text-lg font-bold text-green-600 dark:text-green-400">
-                                  {relatorio.somaVolumes || 0}
-                                </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400">Volumes</div>
-                              </div>
-                              <div className="text-center">
-                                <div className="text-sm sm:text-lg font-bold text-red-600 dark:text-red-400">
-                                  {relatorio.totalDivergencias || 0}
-                                </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400">Divergências</div>
-                              </div>
-                            </div>
-
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                              Liberado em: {new Date(relatorio.dataFinalizacao).toLocaleString("pt-BR")}
-                            </div>
-
-                        <Button
-                          onClick={async () => {
-                            setRelatorioSelecionado(relatorio)
-                            // Carregar notas se ainda não foram carregadas
-                            if (relatorio.id && !notasCarregadas.has(relatorio.id)) {
-                              await carregarNotasRelatorio(relatorio.id)
-                            }
-                          }}
-                          variant="outline"
-                          className="w-full bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 h-8 sm:h-9"
-                          size="sm"
-                          disabled={carregandoNotas}
-                        >
-                          {carregandoNotas ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                          <Eye className="h-3 w-3" />
-                          )}
-                          <span className="ml-1 sm:ml-2 text-xs sm:text-sm">
-                            {carregandoNotas ? 'Carregando...' : 
-                             (relatorio.id && isRelatorioCached(relatorio.id!)) ? 'Ver Detalhes (Cache)' : 'Ver Detalhes'}
-                          </span>
-                        </Button>
-                          </CardContent>
-                        </Card>
+                        <RelatorioCard 
+                          key={relatorio.id} 
+                          relatorio={relatorio}
+                          onViewDetails={() => handleViewDetails(relatorio)}
+                          isCached={relatorio.id ? isRelatorioCached(relatorio.id) : false}
+                          carregandoNotas={carregandoNotas}
+                          calcularPercentualProgresso={calcularPercentualProgresso}
+                          isRelatorioLiberadoParcialmente={isRelatorioLiberadoParcialmente}
+                          formatarNomeRelatorio={formatarNomeRelatorio}
+                          getStatusColor={getStatusColor}
+                          getStatusLabel={getStatusLabel}
+                        />
                       ))}
                     </div>
                   )}
@@ -832,7 +851,7 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
       {/* Modal de Detalhes do Relatório */}
       {relatorioSelecionado && (
         <Dialog open={!!relatorioSelecionado} onOpenChange={() => setRelatorioSelecionado(null)}>
-          <DialogContent className="max-w-6xl max-h-[90vh] w-[95vw] sm:w-[90vw] md:w-[85vw] lg:w-[80vw] xl:w-[75vw] overflow-hidden dark:bg-gray-900 dark:border-gray-700 coletor-modal" aria-describedby="relatorio-detalhes-description">
+          <DialogContent className="max-w-7xl max-h-[90vh] w-[98vw] sm:w-[95vw] md:w-[90vw] lg:w-[85vw] xl:w-[80vw] overflow-hidden dark:bg-gray-900 dark:border-gray-700 coletor-modal">
             <DialogHeader>
               <DialogTitle className="flex items-center space-x-2 text-gray-900 dark:text-gray-200">
                 <Package className="h-5 w-5 text-blue-600" />
@@ -846,11 +865,10 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                   )}
                 </div>
               </DialogTitle>
+              <DialogDescription>
+                Detalhes do relatório de recebimento, incluindo informações sobre colaboradores, notas fiscais e divergências
+              </DialogDescription>
             </DialogHeader>
-
-            <div id="relatorio-detalhes-description" className="sr-only">
-              Detalhes do relatório de recebimento, incluindo informações sobre colaboradores, notas fiscais e divergências.
-            </div>
 
             <div className="flex flex-col h-full max-h-[80vh]">
               {/* Header fixo */}
@@ -914,34 +932,34 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                   <ScrollArea className="h-full coletor-scroll">
                     <div className="p-1">
                       <div className="border dark:border-gray-600 rounded-lg overflow-x-auto">
-                        <div className="min-w-max">
-                          <div className="bg-gray-50 dark:bg-gray-800 px-2 sm:px-4 py-2 grid grid-cols-6 sm:grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-200">
-                            <div>NF</div>
-                            <div>Volumes</div>
-                            <div className="hidden sm:block">Destino</div>
-                            <div className="hidden lg:block">Fornecedor</div>
-                            <div className="hidden lg:block">Cliente</div>
-                            <div>Status</div>
-                            <div>Divergência</div>
+                        <div className="min-w-[800px]">
+                          <div className="bg-gray-50 dark:bg-gray-800 px-2 sm:px-4 py-2 grid grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-200">
+                            <div className="min-w-[80px]">NF</div>
+                            <div className="min-w-[100px]">Volumes</div>
+                            <div className="min-w-[80px] hidden sm:block">Destino</div>
+                            <div className="min-w-[120px] hidden lg:block">Fornecedor</div>
+                            <div className="min-w-[80px] hidden lg:block">Cliente</div>
+                            <div className="min-w-[80px]">Status</div>
+                            <div className="min-w-[150px]">Divergência</div>
                           </div>
                           {relatorioSelecionado.notas.map((nota: any, index: any) => (
                             <div
                               key={nota.id}
-                              className={`px-2 sm:px-4 py-2 grid grid-cols-6 sm:grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm ${
+                              className={`px-2 sm:px-4 py-2 grid grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm ${
                                 index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"
                               }`}
                             >
-                              <div className="font-medium truncate text-gray-900 dark:text-gray-200" title={nota.numeroNF}>{nota.numeroNF}</div>
-                              <div className="font-mono text-gray-900 dark:text-gray-200">
+                              <div className="font-medium truncate text-gray-900 dark:text-gray-200 min-w-[80px]" title={nota.numeroNF}>{nota.numeroNF}</div>
+                              <div className="font-mono text-gray-900 dark:text-gray-200 min-w-[100px]">
                                 {nota.divergencia?.volumesInformados || nota.volumes}
                                 {nota.divergencia?.volumesInformados !== nota.volumes && (
                                   <span className="text-orange-600 dark:text-orange-400 text-xs ml-1">(era {nota.volumes})</span>
                                 )}
                               </div>
-                              <div className="hidden sm:block text-xs truncate text-gray-900 dark:text-gray-200" title={nota.destino}>{nota.destino}</div>
-                              <div className="hidden lg:block text-xs truncate text-gray-900 dark:text-gray-200" title={nota.fornecedor}>{nota.fornecedor}</div>
-                              <div className="hidden lg:block text-xs truncate text-gray-900 dark:text-gray-200" title={nota.clienteDestino}>{nota.clienteDestino}</div>
-                              <div className="flex items-center">
+                              <div className="hidden sm:block text-xs truncate text-gray-900 dark:text-gray-200 min-w-[80px]" title={nota.destino}>{nota.destino}</div>
+                              <div className="hidden lg:block text-xs truncate text-gray-900 dark:text-gray-200 min-w-[120px]" title={nota.fornecedor}>{nota.fornecedor}</div>
+                              <div className="hidden lg:block text-xs truncate text-gray-900 dark:text-gray-200 min-w-[80px]" title={nota.clienteDestino}>{nota.clienteDestino}</div>
+                              <div className="flex items-center min-w-[80px]">
                                 {nota.status === "ok" ? (
                                   <div className="flex items-center text-green-600 dark:text-green-400">
                                     <CheckCircle className="h-3 w-3 mr-1" />
@@ -959,12 +977,12 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                                   </div>
                                 )}
                               </div>
-                              <div className="text-xs truncate text-gray-900 dark:text-gray-200" title={nota.divergencia ? `${nota.divergencia.volumesInformados} vol. - ${nota.divergencia.observacoes}` : ''}>
+                              <div className="text-xs text-gray-900 dark:text-gray-200 min-w-[150px]" title={nota.divergencia ? `${nota.divergencia.volumesInformados} vol. - ${nota.divergencia.observacoes}` : ''}>
                                 {nota.divergencia ? (
                                   <div className="text-orange-600 dark:text-orange-400">
                                     <div className="font-medium">{nota.divergencia.volumesInformados} vol.</div>
                                     {nota.divergencia.observacoes && (
-                                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                      <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 break-words">
                                         {nota.divergencia.observacoes}
                                       </div>
                                     )}
@@ -975,15 +993,15 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
                               </div>
                             </div>
                           ))}
-                          <div className="bg-blue-50 dark:bg-blue-900/20 px-2 sm:px-4 py-2 grid grid-cols-6 sm:grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-bold text-blue-800 dark:text-blue-300">
-                            <div className="col-span-3 sm:col-span-4">Total:</div>
+                          <div className="bg-blue-50 dark:bg-blue-900/20 px-2 sm:px-4 py-2 grid grid-cols-7 gap-2 sm:gap-4 text-xs sm:text-sm font-bold text-blue-800 dark:text-blue-300">
+                            <div className="col-span-3">Total:</div>
                             <div className="text-center">
                               {relatorioSelecionado.notas.reduce(
                                 (sum: any, nota: any) => sum + (nota.divergencia?.volumesInformados || nota.volumes),
                                 0,
                               )}
                             </div>
-                            <div className="col-span-2 sm:col-span-2"></div>
+                            <div className="col-span-3"></div>
                           </div>
                         </div>
                       </div>
@@ -1013,4 +1031,119 @@ export default function RelatoriosModal({ isOpen, onClose }: RelatoriosModalProp
     </>
   )
 }
+
+// Componente otimizado para card de relatório
+interface RelatorioCardProps {
+  relatorio: Relatorio
+  onViewDetails: () => void
+  isCached: boolean
+  carregandoNotas: boolean
+  calcularPercentualProgresso: (relatorio: Relatorio) => number
+  isRelatorioLiberadoParcialmente: (relatorio: Relatorio) => boolean
+  formatarNomeRelatorio: (relatorio: Relatorio) => string
+  getStatusColor: (status: string) => string
+  getStatusLabel: (status: string) => string
+}
+
+const RelatorioCard = React.memo(({
+  relatorio,
+  onViewDetails,
+  isCached,
+  carregandoNotas,
+  calcularPercentualProgresso,
+  isRelatorioLiberadoParcialmente,
+  formatarNomeRelatorio,
+  getStatusColor,
+  getStatusLabel
+}: RelatorioCardProps) => {
+  return (
+    <Card className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50 hover:shadow-md transition-shadow">
+      <CardHeader className="pb-2 sm:pb-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 min-w-0 flex-1">
+            <FileText className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600 flex-shrink-0" />
+            <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1">
+              <span className="font-semibold text-gray-900 dark:text-gray-200 text-xs sm:text-sm truncate" title={formatarNomeRelatorio(relatorio)}>
+                {formatarNomeRelatorio(relatorio)}
+              </span>
+              {isRelatorioLiberadoParcialmente(relatorio) && (
+                <Badge variant="outline" className="text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 border-orange-300 dark:border-orange-600/50 font-medium flex-shrink-0">
+                  <AlertTriangle className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
+                  <span className="hidden sm:inline">Parcialmente</span>
+                  <span className="sm:hidden">Parc.</span>
+                </Badge>
+              )}
+            </div>
+          </div>
+          <Badge className={`text-xs flex-shrink-0 ${getStatusColor(relatorio.status)}`}>
+            {getStatusLabel(relatorio.status)}
+          </Badge>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-2 sm:space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs sm:text-sm">
+          <div>
+            <div className="text-gray-600 dark:text-gray-400 text-xs">Colaboradores</div>
+            <div className="font-medium text-gray-900 dark:text-gray-200 truncate" title={Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0 ? relatorio.colaboradores.join(', ') : 'Não informado'}>
+              {Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
+                ? relatorio.colaboradores.join(', ')
+                : 'Não informado'}
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-600 dark:text-gray-400 text-xs">Data/Turno</div>
+            <div className="font-medium text-gray-900 dark:text-gray-200">
+              {relatorio.data} - {relatorio.turno}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 py-1 sm:py-2">
+          <div className="text-center">
+            <div className="text-sm sm:text-lg font-bold text-blue-600 dark:text-blue-400">{relatorio.quantidadeNotas}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Notas</div>
+          </div>
+          <div className="text-center">
+            <div className="text-sm sm:text-lg font-bold text-green-600 dark:text-green-400">
+              {relatorio.somaVolumes || 0}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Volumes</div>
+          </div>
+          <div className="text-center">
+            <div className="text-sm sm:text-lg font-bold text-red-600 dark:text-red-400">
+              {relatorio.totalDivergencias || 0}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Divergências</div>
+          </div>
+        </div>
+
+        <div className="text-xs text-gray-500 dark:text-gray-400">
+          Liberado em: {new Date(relatorio.dataFinalizacao).toLocaleString("pt-BR")}
+        </div>
+
+        <Button
+          onClick={onViewDetails}
+          variant="outline"
+          className="w-full bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 h-8 sm:h-9"
+          size="sm"
+          disabled={carregandoNotas}
+        >
+          {carregandoNotas ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Eye className="h-3 w-3" />
+          )}
+          <span className="ml-1 sm:ml-2 text-xs sm:text-sm">
+            {carregandoNotas ? 'Carregando...' : 
+             isCached ? 'Ver Detalhes (Cache)' : 'Ver Detalhes'}
+          </span>
+        </Button>
+      </CardContent>
+    </Card>
+  )
+})
+
+RelatorioCard.displayName = 'RelatorioCard'
+
   

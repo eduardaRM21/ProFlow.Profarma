@@ -12,7 +12,11 @@
     "migrate-data": "node scripts/migrate-data.js",
     "db:setup": "node scripts/setup-database.js",
     "db:migrate": "node scripts/migrate-data.js",
-    "deploy:functions": "node scripts/deploy-edge-functions.js"
+    "deploy:functions": "node scripts/deploy-edge-functions.js",
+    "limpar-orfas:check": "node scripts/limpar-notas-orfas.js verificar",
+    "limpar-orfas:clean": "node scripts/limpar-notas-orfas.js limpar",
+    "fix-dialog-accessibility": "node scripts/fix-dialog-accessibility.js",
+    "test-406-fix": "node scripts/test-406-fix.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -44,6 +48,7 @@
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
     "@supabase/supabase-js": "^2.53.0",
+    "@tanstack/react-query": "^5.90.5",
     "@zxing/library": "latest",
     "autoprefixer": "^10.4.20",
     "bcryptjs": "^3.0.2",

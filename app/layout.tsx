@@ -3,6 +3,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/contexts/theme-context"
+import { SWRProvider } from "@/contexts/swr-provider"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -30,9 +31,11 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider>
-          {children}
-        </ThemeProvider>
+        <SWRProvider>
+          <ThemeProvider>
+            {children}
+          </ThemeProvider>
+        </SWRProvider>
       </body>
     </html>
   )

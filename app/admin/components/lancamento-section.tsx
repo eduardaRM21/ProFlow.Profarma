@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger  } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
@@ -425,6 +425,9 @@ export default function LancamentoSection() {
                             NFs do {carro.nomeCarro || "Carro"} - {carro.colaboradores.join(" + ")}
                           </span>
                         </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
                       </DialogHeader>
 
                       <div className="space-y-4">
@@ -513,6 +516,9 @@ export default function LancamentoSection() {
                 {carroSelecionado?.colaboradores.join(" + ")})
               </span>
             </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
           </DialogHeader>
 
           {carroSelecionado && (

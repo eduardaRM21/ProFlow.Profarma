@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle  } from "@/components/ui/dialog"
 import { Send, MessageCircle, User, Clock, CheckCircle2 } from "lucide-react"
 import { getSupabase } from '@/lib/supabase-client'
 import { useToast } from '@/hooks/use-toast'

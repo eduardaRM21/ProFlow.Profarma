@@ -1,6 +1,6 @@
 "use client"
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle  } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { CheckCircle, Package, Truck } from "lucide-react"
 
@@ -43,6 +43,9 @@ export default function ConfirmacaoModal({ isOpen, onClose, nf, carroNome, onCon
             <CheckCircle className="h-5 w-5" />
             NF Validada com Sucesso!
           </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4">

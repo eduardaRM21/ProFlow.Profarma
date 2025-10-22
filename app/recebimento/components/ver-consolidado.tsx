@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -54,7 +54,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
   const [notas, setNotas] = useState<NotaFiscal[]>([])
   const [notasFiltradas, setNotasFiltradas] = useState<NotaFiscal[]>([])
   const [notasBipadas, setNotasBipadas] = useState<Set<string>>(new Set())
-  
+
   // Hook do tema
   const { theme, setTheme } = useTheme()
 
@@ -75,6 +75,48 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
     carregarNotasBipadas()
   }, [])
 
+  // Resetar filtros quando o período de data for alterado
+  useEffect(() => {
+    // Calcular opções baseadas no período atual
+    let notasParaFiltro = [...notas]
+
+    // Se há filtro de data, usar apenas notas do período
+    if (dataInicio && dataFim) {
+      notasParaFiltro = notasParaFiltro.filter((nota) => {
+        const dataEntrada = parseISO(nota.dataEntrada)
+        return isWithinInterval(dataEntrada, {
+          start: startOfDay(dataInicio),
+          end: endOfDay(dataFim),
+        })
+      })
+    }
+
+    const opcoesAtuais = {
+      transportadoras: [...new Set(notasParaFiltro.map((n) => n.transportadora))].sort(),
+      destinos: [...new Set(notasParaFiltro.map((n) => n.destino))].sort(),
+      fornecedores: [...new Set(notasParaFiltro.map((n) => n.fornecedor))].sort(),
+      tipos: [...new Set(notasParaFiltro.map((n) => n.tipo))].sort(),
+      status: [...new Set(notasParaFiltro.map((n) => n.status || 'deu entrada'))].sort()
+    }
+
+    // Resetar filtros que não existem mais no período selecionado
+    if (filtroTransportadora !== "all" && !opcoesAtuais.transportadoras.includes(filtroTransportadora)) {
+      setFiltroTransportadora("all")
+    }
+    if (filtroDestino !== "all" && !opcoesAtuais.destinos.includes(filtroDestino)) {
+      setFiltroDestino("all")
+    }
+    if (filtroFornecedor !== "all" && !opcoesAtuais.fornecedores.includes(filtroFornecedor)) {
+      setFiltroFornecedor("all")
+    }
+    if (filtroTipo !== "all" && !opcoesAtuais.tipos.includes(filtroTipo)) {
+      setFiltroTipo("all")
+    }
+    if (filtroStatus !== "all" && !opcoesAtuais.status.includes(filtroStatus)) {
+      setFiltroStatus("all")
+    }
+  }, [dataInicio, dataFim, notas, filtroTransportadora, filtroDestino, filtroFornecedor, filtroTipo, filtroStatus])
+
   useEffect(() => {
     aplicarFiltros()
   }, [
@@ -91,7 +133,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
   const carregarNotas = async () => {
     setCarregando(true)
-    
+
     try {
       // Tentar carregar do banco de dados primeiro
       const supabase = getSupabase()
@@ -269,10 +311,10 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
         // Atualizar estado local
         const notasAtualizadas = notas.filter((nota) => nota.id !== id)
         setNotas(notasAtualizadas)
-        
+
         // Atualizar localStorage também
         localStorage.setItem("sistema_notas_consolidado", JSON.stringify(notasAtualizadas))
-        
+
         console.log('✅ Nota excluída com sucesso')
       } catch (error) {
         console.error('❌ Erro ao excluir nota:', error)
@@ -347,11 +389,38 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
   }
 
   // Obter listas únicas para filtros
-  const transportadorasUnicas = [...new Set(notas.map((n) => n.transportadora))].sort()
-  const destinosUnicos = [...new Set(notas.map((n) => n.destino))].sort()
-  const fornecedoresUnicos = [...new Set(notas.map((n) => n.fornecedor))].sort()
-  const tiposUnicos = [...new Set(notas.map((n) => n.tipo))].sort()
-  const statusUnicos = [...new Set(notas.map((n) => n.status || 'deu entrada'))].sort()
+  // Função para calcular opções de filtro baseadas no período selecionado
+  const calcularOpcoesFiltro = useCallback(() => {
+    let notasParaFiltro = [...notas]
+
+    // Se há filtro de data, usar apenas notas do período
+    if (dataInicio && dataFim) {
+      notasParaFiltro = notasParaFiltro.filter((nota) => {
+        const dataEntrada = parseISO(nota.dataEntrada)
+        return isWithinInterval(dataEntrada, {
+          start: startOfDay(dataInicio),
+          end: endOfDay(dataFim),
+        })
+      })
+    }
+
+    return {
+      transportadoras: [...new Set(notasParaFiltro.map((n) => n.transportadora))].sort(),
+      destinos: [...new Set(notasParaFiltro.map((n) => n.destino))].sort(),
+      fornecedores: [...new Set(notasParaFiltro.map((n) => n.fornecedor))].sort(),
+      tipos: [...new Set(notasParaFiltro.map((n) => n.tipo))].sort(),
+      status: [...new Set(notasParaFiltro.map((n) => n.status || 'deu entrada'))].sort()
+    }
+  }, [notas, dataInicio, dataFim])
+
+  const opcoesFiltro = calcularOpcoesFiltro()
+
+  // Manter compatibilidade com código existente
+  const transportadorasUnicas = opcoesFiltro.transportadoras
+  const destinosUnicos = opcoesFiltro.destinos
+  const fornecedoresUnicos = opcoesFiltro.fornecedores
+  const tiposUnicos = opcoesFiltro.tipos
+  const statusUnicos = opcoesFiltro.status
 
   // Estatísticas
   const totalNotas = notasFiltradas.length
@@ -377,7 +446,7 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Voltar
               </Button>
-              
+
               {/* Dropdown do usuário com seletor de tema */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -503,9 +572,12 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
         {/* Filtros */}
         <Card className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50 mb-8">
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2 text-gray-900 dark:text-gray-200">
-              <Filter className="h-5 w-5 text-blue-600" />
-              <span>Filtros</span>
+            <CardTitle className="flex items-center justify-between text-gray-900 dark:text-gray-200">
+              <div className="flex items-center space-x-2">
+                <Filter className="h-5 w-5 text-blue-600" />
+                <span>Filtros</span>
+              </div>
+
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -543,7 +615,10 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Transportadora */}
               <div className="space-y-2">
-                <Label className="text-sm text-gray-900 dark:text-gray-200">Transportadora</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">
+                  Transportadora
+
+                </Label>
                 <Select value={filtroTransportadora} onValueChange={setFiltroTransportadora}>
                   <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todas" />
@@ -561,7 +636,10 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Destino */}
               <div className="space-y-2">
-                <Label className="text-sm text-gray-900 dark:text-gray-200">Destino</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">
+                  Destino
+
+                </Label>
                 <Select value={filtroDestino} onValueChange={setFiltroDestino}>
                   <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todos" />
@@ -579,7 +657,10 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Fornecedor */}
               <div className="space-y-2">
-                <Label className="text-sm text-gray-900 dark:text-gray-200">Fornecedor</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">
+                  Fornecedor
+
+                </Label>
                 <Select value={filtroFornecedor} onValueChange={setFiltroFornecedor}>
                   <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todos" />
@@ -597,7 +678,10 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Tipo */}
               <div className="space-y-2">
-                <Label className="text-sm text-gray-900 dark:text-gray-200">Tipo</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">
+                  Tipo
+
+                </Label>
                 <Select value={filtroTipo} onValueChange={setFiltroTipo}>
                   <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todos" />
@@ -615,7 +699,10 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
               {/* Status */}
               <div className="space-y-2">
-                <Label className="text-sm text-gray-900 dark:text-gray-200">Status</Label>
+                <Label className="text-sm text-gray-900 dark:text-gray-200">
+                  Status
+
+                </Label>
                 <Select value={filtroStatus} onValueChange={setFiltroStatus}>
                   <SelectTrigger className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
                     <SelectValue placeholder="Todos" />
@@ -717,11 +804,10 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                     return (
                       <div
                         key={nota.id}
-                        className={`px-4 py-2 grid grid-cols-12 gap-4 text-sm ${
-                          foiBipada 
-                            ? "bg-green-100 dark:bg-green-900/20 border-l-4 border-green-500 dark:border-green-400" 
-                            : index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"
-                        }`}
+                        className={`px-4 py-2 grid grid-cols-12 gap-4 text-sm ${foiBipada
+                          ? "bg-green-100 dark:bg-green-900/20 border-l-4 border-green-500 dark:border-green-400"
+                          : index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"
+                          }`}
                       >
                         <div className="text-xs">{new Date(nota.dataEntrada).toLocaleString("pt-BR")}</div>
                         <div className="font-medium">{nota.data}</div>
@@ -740,13 +826,12 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                         <div>{nota.clienteDestino}</div>
                         <div>{nota.tipo}</div>
                         <div className="text-xs">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            nota.status === 'recebida' 
-                              ? 'bg-green-200 text-green-800' 
-                              : nota.status === 'deu entrada'
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${nota.status === 'recebida'
+                            ? 'bg-green-200 text-green-800'
+                            : nota.status === 'deu entrada'
                               ? 'bg-blue-100 text-blue-800'
                               : 'bg-gray-100 text-gray-800'
-                          }`}>
+                            }`}>
                             {nota.status || 'deu entrada'}
                           </span>
                         </div>

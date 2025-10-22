@@ -1819,6 +1819,9 @@ export default function GerenciarCarrosSection() {
                 {carroLancamentoSelecionado?.colaboradores.join(" + ")})
               </span>
             </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
           </DialogHeader>
 
           {carroLancamentoSelecionado && (
@@ -1912,6 +1915,9 @@ export default function GerenciarCarrosSection() {
                 {carroParaSAP?.colaboradores.join(" + ")})
               </span>
             </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
           </DialogHeader>
 
           {carroParaSAP && (
@@ -2041,6 +2047,9 @@ export default function GerenciarCarrosSection() {
                 } ({carroSelecionado?.colaboradores.join(" + ")})
               </span>
             </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
           </DialogHeader>
 
           {carroSelecionado && (
@@ -2284,6 +2293,9 @@ export default function GerenciarCarrosSection() {
                 Detalhes do Lançamento - {carroLancamentoSelecionado?.nomeCarro || "Carro"} ({carroLancamentoSelecionado?.colaboradores.join(" + ")})
               </span>
             </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
           </DialogHeader>
 
           {carroLancamentoSelecionado && (

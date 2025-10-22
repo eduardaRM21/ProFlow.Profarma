@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -124,7 +125,7 @@ export default function CustosPage() {
     invalidateCache: invalidateRelatoriosCache,
     reproduzirNotificacaoCustos
   } = useRelatorios('custos', {
-    refreshInterval: 60000, // Refresh a cada 1 minuto
+    refreshInterval: 0, // Desabilitar refresh automático para reduzir requisições
     revalidateOnFocus: false, // Desabilitar revalidação ao focar
     revalidateOnReconnect: true // Manter revalidação ao reconectar
   });
@@ -198,9 +199,11 @@ export default function CustosPage() {
 
   // Estados para filtros e ordenação
   const [modalRelatorios, setModalRelatorios] = useState(false)
-  const [filtroTexto, setFiltroTexto] = useState("")
+  const [filtroTexto, setFiltroTexto] = useState("") // Filtro da página principal
+  const [filtroTextoModal, setFiltroTextoModal] = useState("") // Filtro do modal
   const [filtroNF, setFiltroNF] = useState("")
-  const [filtroStatus, setFiltroStatus] = useState("todos")
+  const [filtroStatus, setFiltroStatus] = useState("todos") // Filtro de status da página principal
+  const [filtroStatusModal, setFiltroStatusModal] = useState("todos") // Filtro de status do modal
   const [filtroColaborador, setFiltroColaborador] = useState("todos")
   const [filtroDataInicio, setFiltroDataInicio] = useState("")
   const [filtroDataFim, setFiltroDataFim] = useState("")
@@ -899,13 +902,7 @@ NOTAS FISCAIS:`
 
   // Função para filtrar e ordenar notas
   const filtrarEOrdenarNotas = (notas: NotaFiscal[]) => {
-    console.log('🔍 filtrarEOrdenarNotas chamada com:', {
-      notas: notas,
-      tipo: typeof notas,
-      isArray: Array.isArray(notas),
-      length: notas?.length || 0,
-      primeiraNota: notas?.[0] || null
-    });
+    // Log de debug removido para evitar spam no console
     
     if (!notas || !Array.isArray(notas)) {
       console.log('⚠️ Notas inválidas, retornando array vazio');
@@ -918,55 +915,82 @@ NOTAS FISCAIS:`
     }
     
     let notasProcessadas = [...notas];
-    console.log('🔍 Notas processadas iniciais:', notasProcessadas.length);
-
-    console.log('🔍 Filtrando notas:', {
-      totalNotas: notas.length,
-      filtroTexto: filtroTexto,
-      filtroStatus: filtroStatus,
-      ordenacao: ordenacao
-    });
+    // Logs de debug removidos para evitar spam no console
 
     // Aplicar filtro de texto
-    if (filtroTexto) {
-      console.log('🔍 Aplicando filtro de texto:', filtroTexto);
+    if (filtroTextoModal && filtroTextoModal.trim()) {
+      console.log('🔍 Aplicando filtro de texto do modal:', filtroTextoModal);
       const notasAntes = notasProcessadas.length;
+      const filtroLower = filtroTextoModal.toLowerCase().trim();
 
       notasProcessadas = notasProcessadas.filter(
         (nota) => {
+          // Verificar se a nota existe e tem os campos necessários
+          if (!nota) return false;
+          
           const numeroNF = nota.numeroNF?.toLowerCase() || '';
           const fornecedor = nota.fornecedor?.toLowerCase() || '';
           const destino = nota.destino?.toLowerCase() || '';
           const clienteDestino = nota.clienteDestino?.toLowerCase() || '';
-          const filtroLower = filtroTexto.toLowerCase();
 
           const match = numeroNF.includes(filtroLower) ||
             fornecedor.includes(filtroLower) ||
             destino.includes(filtroLower) ||
             clienteDestino.includes(filtroLower);
 
-          console.log('🔍 Verificando nota:', {
-            numeroNF,
-            fornecedor,
-            destino,
-            clienteDestino,
-            filtro: filtroLower,
-            match
-          });
+          // Log apenas para as primeiras 3 notas para evitar spam no console
+          if (notasProcessadas.indexOf(nota) < 3) {
+            console.log('🔍 Verificando nota:', {
+              numeroNF,
+              fornecedor,
+              destino,
+              clienteDestino,
+              filtro: filtroLower,
+              match
+            });
+          }
 
           return match;
         }
       );
 
-      console.log('🔍 Filtro de texto aplicado:', {
+      console.log('🔍 Filtro de texto do modal aplicado:', {
         notasAntes,
         notasDepois: notasProcessadas.length,
-        filtro: filtroTexto
+        filtro: filtroTextoModal,
+        filtroTrimmed: filtroLower
       });
     }
 
-    // Nota: O filtro de status é aplicado apenas aos relatórios, não às notas individuais
-    // As notas têm status diferentes (ok, divergencia, devolvida) dos relatórios (liberado, em_lancamento, lancado)
+    // Aplicar filtro de status do modal
+    if (filtroStatusModal !== "todos") {
+      console.log('🔍 Aplicando filtro de status do modal:', filtroStatusModal);
+      const notasAntes = notasProcessadas.length;
+
+      notasProcessadas = notasProcessadas.filter((nota) => {
+        if (!nota) return false;
+        
+        const match = nota.status === filtroStatusModal;
+        
+        // Log apenas para as primeiras 3 notas para evitar spam no console
+        if (notasProcessadas.indexOf(nota) < 3) {
+          console.log('🔍 Verificando status da nota:', {
+            numeroNF: nota.numeroNF,
+            status: nota.status,
+            filtro: filtroStatusModal,
+            match
+          });
+        }
+
+        return match;
+      });
+
+      console.log('🔍 Filtro de status do modal aplicado:', {
+        notasAntes,
+        notasDepois: notasProcessadas.length,
+        filtro: filtroStatusModal
+      });
+    }
 
     // Aplicar ordenação
     switch (ordenacao) {
@@ -1153,8 +1177,8 @@ NOTAS FISCAIS:`
     if (!relatorioSelecionado) {
       // Modal foi fechado, limpar estado
       setNotasFiltradas([]);
-      setFiltroTexto("");
-      setFiltroStatus("todos");
+      setFiltroTextoModal("");
+      setFiltroStatusModal("todos");
       setOrdenacao("data_desc");
       setCarregandoNotas(false);
       setForcarRecarregamento(0);
@@ -1165,37 +1189,16 @@ NOTAS FISCAIS:`
 
   // Atualizar useEffect para aplicar filtros
   useEffect(() => {
-    console.log('🔍 useEffect de filtros executado:', {
-      relatorioSelecionado: !!relatorioSelecionado,
-      filtroTexto,
-      filtroStatus,
-      ordenacao,
-      relatorioId: relatorioSelecionado?.id,
-      totalNotas: relatorioSelecionado?.notas?.length || 0
-    });
+    // Log removido para evitar spam no console - useEffect de filtros
 
     if (relatorioSelecionado) {
-      console.log('🔍 Aplicando filtros ao relatório:', relatorioSelecionado.nome);
-      console.log('🔍 Notas originais do relatório:', {
-        notas: relatorioSelecionado.notas,
-        tipo: typeof relatorioSelecionado.notas,
-        isArray: Array.isArray(relatorioSelecionado.notas),
-        length: relatorioSelecionado.notas?.length || 0,
-        primeiraNota: relatorioSelecionado.notas?.[0] || null
-      });
-      
+      // Logs de debug removidos para evitar spam no console
       const notas = filtrarEOrdenarNotas(relatorioSelecionado.notas || []);
-      console.log('🔍 Notas filtradas:', {
-        totalOriginal: relatorioSelecionado.notas?.length || 0,
-        totalFiltradas: notas.length,
-        primeiraNotaFiltrada: notas[0] || null
-      });
       setNotasFiltradas(notas);
     } else {
-      console.log('🔍 Nenhum relatório selecionado, limpando notas filtradas');
       setNotasFiltradas([]);
     }
-  }, [relatorioSelecionado, filtroTexto, filtroStatus, ordenacao]);
+  }, [relatorioSelecionado, filtroTextoModal, filtroStatusModal, ordenacao]);
 
   // Obter lista de colaboradores únicos para filtro
   const colaboradoresUnicos = [
@@ -1736,7 +1739,7 @@ NOTAS FISCAIS:`
         resultado = minutos > 0 ? `${horas}h ${minutos}min` : `${horas}h`
       }
       
-      console.log(`✅ Tempo de bipagem calculado para ${relatorio.nome}: ${resultado} (${diferencaMinutos} min)`)
+      // Log removido para evitar spam no console - tempo de bipagem calculado
       return resultado
     } catch (error) {
       console.warn('Erro ao calcular tempo de bipagem para relatório:', relatorio.nome, error)
@@ -2186,7 +2189,8 @@ NOTAS FISCAIS:`
                                 estruturaNotas: relatorio.notas?.slice(0, 2) || []
                               });
                               setRelatorioSelecionado(relatorio);
-                              setFiltroTexto("");
+                              setFiltroTextoModal("");
+                              setFiltroStatusModal("todos");
                               setOrdenacao("data_desc");
                               setNotasFiltradas(relatorio.notas || []);
                               setForcarRecarregamento(prev => prev + 1); // Forçar recarregamento
@@ -2205,6 +2209,9 @@ NOTAS FISCAIS:`
                               <Package className="h-4 w-4 text-orange-600" />
                               <span>{formatarNomeRelatorio(relatorio)}</span>
                             </DialogTitle>
+                            <DialogDescription>
+                              Visualize e gerencie as divergências encontradas neste relatório
+                            </DialogDescription>
                           </DialogHeader>
 
                           <div className="space-y-4 ">
@@ -2386,21 +2393,44 @@ NOTAS FISCAIS:`
                                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                                     <Input
                                       placeholder="NF, fornecedor, destino..."
-                                      value={filtroTexto}
+                                      value={filtroTextoModal}
                                       onChange={(e) => {
-                                        console.log('🔍 Campo de filtro alterado:', e.target.value);
-                                        setFiltroTexto(e.target.value);
+                                        const valor = e.target.value;
+                                        setFiltroTextoModal(valor);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                        }
+                                      }}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                       }}
                                       className="pl-10"
+                                      autoComplete="off"
                                     />
+                                    {filtroTextoModal && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          setFiltroTextoModal('');
+                                        }}
+                                        className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 hover:text-gray-600"
+                                        type="button"
+                                      >
+                                        ×
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
 
                                 <div>
                                   <Label className="text-sm dark:text-gray-200">Status</Label>
                                   <Select
-                                    value={filtroStatus}
-                                    onValueChange={setFiltroStatus}
+                                    value={filtroStatusModal}
+                                    onValueChange={setFiltroStatusModal}
                                   >
                                     <SelectTrigger>
                                       <SelectValue />
@@ -2484,6 +2514,18 @@ NOTAS FISCAIS:`
                                   <span className="text-sm text-gray-600 dark:text-gray-400">Carregando notas...</span>
                                 </div>
                               </div>
+                            ) : notasFiltradas.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center py-8 text-center">
+                                <Search className="h-8 w-8 text-gray-400 mb-2" />
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                                  Nenhuma nota encontrada
+                                </p>
+                                {filtroTextoModal && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-500">
+                                    Tente ajustar os filtros de busca
+                                  </p>
+                                )}
+                              </div>
                             ) : (
                               <ScrollArea className="max-h-96 overflow-y-auto overflow-x-hidden ">
                                 <div className="min-w-max">
@@ -2499,9 +2541,7 @@ NOTAS FISCAIS:`
                                     <div>Ações</div>
                                   </div>
                                 {notasFiltradas.map((nota, index) => {
-                                  if (index === 0) {
-                                    console.log('🔍 Renderizando notas filtradas:', notasFiltradas.length, 'notas');
-                                  }
+                                  // Log removido para evitar spam no console - renderização de notas
                                   
                                   // Determinar a cor de fundo baseada no status da nota
                                   const getRowBackgroundColor = () => {
@@ -2691,6 +2731,9 @@ NOTAS FISCAIS:`
               <RefreshCw className="h-5 w-5 text-red-600" />
               <span>Notas Devolvidas ({notasDevolvidas.length})</span>
             </DialogTitle>
+            <DialogDescription>
+              Lista de notas fiscais que foram devolvidas e precisam ser reprocessadas
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">

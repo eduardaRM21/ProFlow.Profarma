@@ -30,7 +30,7 @@ import BarcodeScanner from "./barcode-scanner"
 import ChatModal from "./chat-modal"
 import { useNotasBipadas } from "@/lib/notas-bipadas-service"
 import { EmbalagemNotasBipadasService, EmbalagemNotaBipada } from '@/lib/embalagem-notas-bipadas-service'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle  } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { config, debugConfig } from '@/lib/config'
 import { getSupabase } from '@/lib/supabase-client'
@@ -1598,6 +1598,9 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
               <Truck className="h-5 w-5 text-blue-600" />
               <span>Criar Novo Carro</span>
             </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -1851,6 +1854,9 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
               <HelpCircle className="h-6 w-6 text-blue-600" />
               <span>Central de Ajuda - Sistema de Bipagem</span>
             </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">

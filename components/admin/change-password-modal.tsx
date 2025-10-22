@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AuthService } from "@/lib/auth-service"
 import { Eye, EyeOff, Lock, CheckCircle, AlertCircle } from "lucide-react"
@@ -134,6 +134,9 @@ export default function ChangePasswordModal({
             <Lock className="h-5 w-5 text-blue-600" />
             <span>Alterar Senha</span>
           </DialogTitle>
+          <DialogDescription>
+            Digite sua nova senha para alterar a senha atual
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

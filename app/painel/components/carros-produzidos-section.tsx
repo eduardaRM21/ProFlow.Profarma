@@ -4,13 +4,12 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
+import { Dialog,
+  DialogContent, DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog";
+ } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -1055,6 +1054,9 @@ export default function CarrosProduzidosSection({
                             NFs do Carro - {carro.colaboradores.join(" + ")}
                           </span>
                         </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
                       </DialogHeader>
 
                       <div className="space-y-4">
@@ -1232,6 +1234,9 @@ export default function CarrosProduzidosSection({
               <HelpCircle className="h-6 w-6 text-blue-600" />
               <span>Central de Ajuda - Carros Produzidos</span>
             </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-6">
@@ -1367,6 +1372,9 @@ export default function CarrosProduzidosSection({
                 {modalPallets.nomeCarro}
               </span>
             </DialogTitle>
+            <DialogDescription>
+              Descrição do modal para acessibilidade
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 sm:space-y-6 p-1 sm:p-2">

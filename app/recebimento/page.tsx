@@ -30,7 +30,7 @@ import {
 import BarcodeScanner from "./components/barcode-scanner"
 import ConfirmacaoModal from "./components/confirmacao-modal"
 import DivergenciaModal from "./components/divergencia-modal"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,6 +50,7 @@ import { useNotasBipadas } from "@/lib/notas-bipadas-service"
 import type { SessionData, NotaFiscal, Relatorio } from "@/lib/database-service"
 import { LocalAuthService } from "@/lib/local-auth-service"
 import { getSupabase } from "@/lib/supabase-client"
+import { ErrorHandler } from "@/lib/error-handler"
 import { useIsColetor } from "@/hooks/use-coletor"
 import { useTheme } from "@/contexts/theme-context"
 import ColetorView from "./components/coletor-view"
@@ -230,152 +231,138 @@ export default function RecebimentoPage() {
       return { valido: false, erro: `Volumes deve ser um número válido maior que 0. Recebido: "${volumesStr}"` }
     }
 
-    console.log(`🔍 Validando NF ${numeroNF}...`)
-    console.log(`📊 Notas na sessão atual:`, notas.length)
-    console.log(`📊 Notas bipadas:`, notas.map(n => n.numeroNF))
+    console.log(`🔍 Validando NF ${numeroNF} com destino ${destino} e volume ${volumes}...`)
 
-    // 1. Verificar se a nota já foi bipada na sessão atual
-    const notaNaSessao = notas.find((nota) => nota.numeroNF === numeroNF)
+    // 1. Verificar se a nota já foi bipada na sessão atual com mesmo destino e volume (OTIMIZADO)
+    const notaNaSessao = notas.find((nota) => 
+      nota.numeroNF === numeroNF && 
+      nota.destino === destino && 
+      nota.volumes === volumes
+    )
     if (notaNaSessao) {
-      console.log(`⚠️ NF ${numeroNF} já bipada na sessão atual`)
+      console.log(`⚠️ NF ${numeroNF} já bipada na sessão atual com mesmo destino e volume`)
       return { 
         valido: false, 
-        erro: `NF ${numeroNF} já foi bipada nesta sessão (${notaNaSessao.timestamp ? new Date(notaNaSessao.timestamp).toLocaleString('pt-BR') : 'agora'}).` 
+        erro: `NF ${numeroNF} já foi bipada nesta sessão com o mesmo destino (${destino}) e volume (${volumes}) em ${notaNaSessao.timestamp ? new Date(notaNaSessao.timestamp).toLocaleString('pt-BR') : 'agora'}. Duplicatas com mesmo destino e volume não são permitidas.` 
       }
     }
 
-    // 1.1. Verificar se a nota já foi bipada na tabela notas_bipadas para esta sessão (CRÍTICO)
+    // 1.1. Verificar se a nota já foi bipada na tabela notas_bipadas para esta sessão (OTIMIZADO)
     console.log(`🔍 Verificando se NF ${numeroNF} já foi bipada na tabela notas_bipadas...`)
     try {
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
       
-      const sessionId = `recebimento_${Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0 
-        ? sessionData?.colaboradores.join('_') 
-        : 'sem_colaborador'}_${sessionData?.data}_${sessionData?.turno}`
-      
-      console.log(`🔍 SessionId para verificação: ${sessionId}`)
-      
-      const { data: notaBipadaExistente, error: erroVerificacao } = await supabase
-        .from('notas_bipadas')
-        .select('id, numero_nf, timestamp_bipagem, session_id')
-        .eq('numero_nf', numeroNF)
-        .eq('session_id', sessionId)
-        .eq('area_origem', 'recebimento')
-        .single()
+      // Usar consulta otimizada com timeout reduzido
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout na verificação de duplicatas')), 5000) // 5s timeout
+      })
 
-      if (erroVerificacao && erroVerificacao.code !== 'PGRST116') {
-        console.error('❌ Erro ao verificar duplicata na tabela notas_bipadas:', erroVerificacao)
-        // Em caso de erro, bloquear a bipagem para evitar duplicação
-        return {
-          valido: false,
-          erro: `Erro ao verificar duplicatas. Tente novamente em alguns segundos.`
+      const verificarDuplicataPromise = (async () => {
+        const { data: notasBipadasExistentes, error: erroVerificacao } = await supabase
+          .from('notas_bipadas')
+          .select('id, numero_nf, timestamp_bipagem, session_id, codigo_completo')
+          .eq('numero_nf', numeroNF)
+          .eq('area_origem', 'recebimento')
+          .limit(5) // Reduzido de 10 para 5 para melhor performance
+        
+        if (erroVerificacao && erroVerificacao.code !== 'PGRST116') {
+          throw erroVerificacao
         }
-      } else if (notaBipadaExistente) {
-        const timestampFormatado = notaBipadaExistente.timestamp_bipagem 
-          ? new Date(notaBipadaExistente.timestamp_bipagem as string).toLocaleString('pt-BR')
+        
+        if (notasBipadasExistentes && notasBipadasExistentes.length > 0) {
+          // Verificar se alguma nota tem o mesmo destino e volume
+          const notaDuplicada = notasBipadasExistentes.find(nota => {
+            if (!nota.codigo_completo || typeof nota.codigo_completo !== 'string') return false
+            
+            // Extrair destino e volume do código completo da nota já bipada
+            const partes = nota.codigo_completo.split('|')
+            if (partes.length !== 7) return false
+            
+            const [, , volumesStr, destinoNota, , , ] = partes
+            const volumesNota = parseInt(volumesStr, 10)
+            
+            // Comparar destino e volume
+            return destinoNota === destino && volumesNota === volumes
+          })
+          
+          return notaDuplicada || null
+        }
+        
+        return null
+      })()
+
+      const notaBipadaExistente = await Promise.race([verificarDuplicataPromise, timeoutPromise])
+      
+      if (notaBipadaExistente) {
+        const timestampFormatado = (notaBipadaExistente as any).timestamp_bipagem 
+          ? new Date((notaBipadaExistente as any).timestamp_bipagem as string).toLocaleString('pt-BR')
           : 'agora'
         
-        console.log(`⚠️ NF ${numeroNF} já bipada na tabela notas_bipadas (${timestampFormatado})`)
-        console.log(`🔍 Dados da nota existente:`, notaBipadaExistente)
+        console.log(`⚠️ NF ${numeroNF} já bipada com mesmo destino e volume (${timestampFormatado})`)
         return {
           valido: false,
-          erro: `NF ${numeroNF} já foi bipada nesta sessão (${timestampFormatado}). Duplicatas não são permitidas.`
+          erro: `NF ${numeroNF} já foi bipada com o mesmo destino (${destino}) e volume (${volumes}) em ${timestampFormatado}. Duplicatas com mesmo destino e volume não são permitidas.`
         }
       }
       
-      console.log(`✅ NF ${numeroNF} não encontrada na tabela notas_bipadas para esta sessão`)
+      console.log(`✅ NF ${numeroNF} não encontrada com mesmo destino (${destino}) e volume (${volumes}) na tabela notas_bipadas`)
     } catch (error) {
       console.error(`❌ Erro ao verificar duplicata na tabela notas_bipadas:`, error)
-      // Em caso de erro, bloquear a bipagem para evitar duplicação
-      return {
-        valido: false,
-        erro: `Erro ao verificar duplicatas. Tente novamente em alguns segundos.`
-      }
+      // Em caso de erro, continuar com a validação para não bloquear o usuário
+      console.log(`⚠️ Continuando validação mesmo com erro na verificação de duplicatas`)
     }
 
-    // 2. Verificar se a nota está em algum relatório existente (qualquer setor)
+    // 2. Verificar se a nota está em algum relatório existente (OTIMIZADO)
     console.log(`🔍 Verificando se NF ${numeroNF} está em relatórios existentes...`)
     try {
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
       
-      // Buscar diretamente na tabela notas_fiscais pelo numero_nf (mais seguro)
-      // Evitar problemas com caracteres especiais no codigo_completo
-      console.log(`🔍 Buscando NF ${numeroNF} na tabela notas_fiscais`)
-      
-      const { data: notaFiscalData, error: notaFiscalError } = await supabase
-        .from('notas_fiscais')
-        .select('*')
-        .eq('numero_nf', numeroNF)
-      
-      console.log(`🔍 Resultado busca notas_fiscais:`, { notaFiscalData, notaFiscalError })
-      
-      if (!notaFiscalError && notaFiscalData && notaFiscalData.length > 0) {
-        console.log(`⚠️ NF ${numeroNF} encontrada em ${notaFiscalData.length} registro(s) na tabela notas_fiscais`)
-        
-        // Pegar o primeiro registro encontrado
-        const notaFiscal = notaFiscalData[0]
-        
-        // Buscar o relatório relacionado através da tabela relatorio_notas
-        const { data: relatorioNotaData, error: relatorioNotaError } = await supabase
-          .from('relatorio_notas')
-          .select('relatorio_id')
-          .eq('nota_fiscal_id', notaFiscal.id as string)
+      // Usar timeout para evitar demora excessiva
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout na verificação de relatórios')), 3000) // 3s timeout
+      })
+
+      const verificarRelatorioPromise = (async () => {
+        // Buscar diretamente na tabela notas_fiscais pelo numero_nf
+        const { data: notaFiscalData, error: notaFiscalError } = await supabase
+          .from('notas_fiscais')
+          .select('id')
+          .eq('numero_nf', numeroNF)
           .limit(1)
         
-        if (!relatorioNotaError && relatorioNotaData) {
-          // Buscar detalhes do relatório
-          const { data: relatorioData, error: relatorioError } = await supabase
-            .from('relatorios')
-            .select('id, nome, area, data')
-            .eq('id', relatorioNotaData[0].relatorio_id as string)
+        if (!notaFiscalError && notaFiscalData && notaFiscalData.length > 0) {
+          console.log(`⚠️ NF ${numeroNF} encontrada na tabela notas_fiscais`)
+          
+          // Buscar o relatório relacionado através da tabela relatorio_notas
+          const { data: relatorioNotaData, error: relatorioNotaError } = await supabase
+            .from('relatorio_notas')
+            .select('relatorio_id')
+            .eq('nota_fiscal_id', notaFiscalData[0].id as string)
             .limit(1)
           
-          if (!relatorioError && relatorioData) {
-            console.log(`⚠️ NF ${numeroNF} encontrada no relatório:`, relatorioData[0].nome)
+          if (!relatorioNotaError && relatorioNotaData && relatorioNotaData.length > 0) {
+            // Buscar detalhes do relatório
+            const { data: relatorioData, error: relatorioError } = await supabase
+              .from('relatorios')
+              .select('id, nome, area, data')
+              .eq('id', relatorioNotaData[0].relatorio_id as string)
+              .limit(1)
             
-            // Buscar colaboradores do relatório
-            let colaboradoresTexto = 'Não informado'
-            try {
-              const { data: colaboradoresData, error: colaboradoresError } = await supabase
-                .from('relatorio_colaboradores')
-                .select('user_id')
-                .eq('relatorio_id', (relatorioData[0] as any).id)
+            if (!relatorioError && relatorioData && relatorioData.length > 0) {
+              console.log(`⚠️ NF ${numeroNF} encontrada no relatório:`, relatorioData[0].nome)
               
-              if (!colaboradoresError && colaboradoresData && colaboradoresData.length > 0) {
-                // Buscar nomes dos usuários individualmente
-                const nomesColaboradores = await Promise.all(
-                  colaboradoresData.map(async (col: any) => {
-                    const { data: userData, error: userError } = await supabase
-                      .from('users')
-                      .select('nome')
-                      .eq('id', col.user_id)
-                      .limit(1)
-                    
-                    if (!userError && userData) {
-                      return (userData[0] as any).nome
-                    } else {
-                      return 'Colaborador sem nome'
-                    }
-                  })
-                )
-                
-                colaboradoresTexto = nomesColaboradores.filter((nome): nome is string => typeof nome === 'string').join(', ')
+              const setorRelatorio = (relatorioData[0] as any).area || 'setor não informado'
+              const dataRelatorio = (relatorioData[0] as any).data || 'data não informada'
+              
+              return {
+                valido: false,
+                erro: `NF ${numeroNF} já utilizada no relatório "${(relatorioData[0] as any).nome}" (${setorRelatorio}) em ${dataRelatorio}`,
               }
-            } catch (colabError) {
-              console.error(`❌ Erro ao buscar colaboradores:`, colabError)
-            }
-            
-            const setorRelatorio = (relatorioData[0] as any).area || 'setor não informado'
-            const dataRelatorio = (relatorioData[0] as any).data || 'data não informada'
-      
-      return {
-        valido: false,
-              erro: `NF ${numeroNF} já utilizada no relatório "${(relatorioData[0] as any).nome}" (${setorRelatorio}) por ${colaboradoresTexto} em ${dataRelatorio}`,
             }
           }
-        } else {
+          
           // Se não encontrar o relatório, mas a nota está na tabela notas_fiscais
           console.log(`⚠️ NF ${numeroNF} encontrada na tabela notas_fiscais mas sem relatório associado`)
           return {
@@ -383,6 +370,14 @@ export default function RecebimentoPage() {
             erro: `NF ${numeroNF} já foi processada e está registrada no sistema.`,
           }
         }
+        
+        return null
+      })()
+
+      const resultadoRelatorio = await Promise.race([verificarRelatorioPromise, timeoutPromise])
+      
+      if (resultadoRelatorio && typeof resultadoRelatorio === 'object' && 'valido' in resultadoRelatorio) {
+        return resultadoRelatorio as { valido: boolean; nota?: NotaFiscal; erro?: string }
       }
 
       console.log(`✅ NF ${numeroNF} não encontrada em relatórios existentes`)
@@ -391,51 +386,65 @@ export default function RecebimentoPage() {
       // Em caso de erro, continuar com a validação para não bloquear o usuário
     }
 
-    // 3. Verificar se a nota está em alguma sessão ativa de outros setores
+    // 3. Verificar se a nota está em alguma sessão ativa de outros setores (SIMPLIFICADO)
     console.log(`🔍 Verificando sessões ativas de outros setores...`)
     try {
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
       
-      // Buscar sessões ativas de hoje
-      const hoje = new Date().toISOString().split('T')[0]
-      const { data: sessoesAtivas, error: sessoesError } = await supabase
-        .from('sessions')
-        .select('*')
-        .gte('data', hoje)
-        .order('updated_at', { ascending: false })
+      // Usar timeout para evitar demora excessiva
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout na verificação de sessões')), 2000) // 2s timeout
+      })
 
-      if (!sessoesError && sessoesAtivas && sessoesAtivas.length > 0) {
-        console.log(`📊 Sessões ativas encontradas:`, sessoesAtivas.length)
-        
-        // Verificar se alguma sessão tem a nota bipada
-        for (const sessao of sessoesAtivas) {
-          if (sessao.area === 'recebimento') continue // Pular sessões do próprio setor
+      const verificarSessoesPromise = (async () => {
+        // Buscar sessões ativas de hoje (limitado para performance)
+        const hoje = new Date().toISOString().split('T')[0]
+        const { data: sessoesAtivas, error: sessoesError } = await supabase
+          .from('sessions')
+          .select('area, colaboradores, data, turno')
+          .gte('data', hoje)
+          .neq('area', 'recebimento') // Excluir sessões do próprio setor
+          .limit(10) // Limitar para melhor performance
+
+        if (!sessoesError && sessoesAtivas && sessoesAtivas.length > 0) {
+          console.log(`📊 Sessões ativas encontradas:`, sessoesAtivas.length)
           
-          const chaveSessao = `${sessao.area}_${Array.isArray(sessao.colaboradores) && sessao.colaboradores.length > 0 
-            ? sessao.colaboradores.join('_') 
-            : 'sem_colaborador'}_${sessao.data}_${sessao.turno}`
-          
-          // Buscar notas da sessão no localStorage
-          const notasSessao = localStorage.getItem(chaveSessao)
-          if (notasSessao) {
-            try {
-              const notasParsed = JSON.parse(notasSessao)
-              if (Array.isArray(notasParsed)) {
-                const notaNaSessaoOutroSetor = notasParsed.find((n: any) => n.numeroNF === numeroNF)
-                if (notaNaSessaoOutroSetor) {
-                  console.log(`⚠️ NF ${numeroNF} encontrada em sessão ativa de ${sessao.area}`)
-                  return {
-                    valido: false,
-                    erro: `NF ${numeroNF} já foi bipada na sessão ativa de ${sessao.area} por ${Array.isArray(sessao.colaboradores) ? sessao.colaboradores.join(', ') : 'colaborador não informado'}`,
+          // Verificar se alguma sessão tem a nota bipada (simplificado)
+          for (const sessao of sessoesAtivas) {
+            const chaveSessao = `${sessao.area}_${Array.isArray(sessao.colaboradores) && sessao.colaboradores.length > 0 
+              ? sessao.colaboradores.join('_') 
+              : 'sem_colaborador'}_${sessao.data}_${sessao.turno}`
+            
+            // Buscar notas da sessão no localStorage
+            const notasSessao = localStorage.getItem(chaveSessao)
+            if (notasSessao) {
+              try {
+                const notasParsed = JSON.parse(notasSessao)
+                if (Array.isArray(notasParsed)) {
+                  const notaNaSessaoOutroSetor = notasParsed.find((n: any) => n.numeroNF === numeroNF)
+                  if (notaNaSessaoOutroSetor) {
+                    console.log(`⚠️ NF ${numeroNF} encontrada em sessão ativa de ${sessao.area}`)
+                    return {
+                      valido: false,
+                      erro: `NF ${numeroNF} já foi bipada na sessão ativa de ${sessao.area} por ${Array.isArray(sessao.colaboradores) ? sessao.colaboradores.join(', ') : 'colaborador não informado'}`,
+                    }
                   }
                 }
+              } catch (parseError) {
+                console.error(`❌ Erro ao parsear notas da sessão ${chaveSessao}:`, parseError)
               }
-            } catch (parseError) {
-              console.error(`❌ Erro ao parsear notas da sessão ${chaveSessao}:`, parseError)
             }
           }
         }
+        
+        return null
+      })()
+
+      const resultadoSessoes = await Promise.race([verificarSessoesPromise, timeoutPromise])
+      
+      if (resultadoSessoes && typeof resultadoSessoes === 'object' && 'valido' in resultadoSessoes) {
+        return resultadoSessoes as { valido: boolean; nota?: NotaFiscal; erro?: string }
       }
       
       console.log(`✅ NF ${numeroNF} não encontrada em sessões ativas de outros setores`)
@@ -444,34 +453,49 @@ export default function RecebimentoPage() {
       // Em caso de erro, continuar com a validação
     }
 
-    // 4. Verificar se a nota está em alguma tabela de divergências (usando cache)
+    // 4. Verificar se a nota está em alguma tabela de divergências (SIMPLIFICADO)
     console.log(`🔍 Verificando se NF ${numeroNF} está em divergências...`)
     try {
-      // Buscar a nota na tabela notas_fiscais primeiro para obter o ID
       const { getSupabase } = await import('@/lib/supabase-client')
       const supabase = getSupabase()
       
-      const { data: notaFiscalData, error: notaFiscalError } = await supabase
-        .from('notas_fiscais')
-        .select('id')
-        .eq('numero_nf', numeroNF)
-        .limit(1)
-      
-      if (notaFiscalError) {
-        console.log(`⚠️ Erro ao buscar NF ${numeroNF} na tabela notas_fiscais:`, notaFiscalError)
-        // Continuar com a validação mesmo se houver erro na consulta
-      } else if (notaFiscalData && notaFiscalData.length > 0) {
-        // Usar hook de cache para buscar divergências
-        const { getDivergenciasByNota } = useDivergenciasCache()
-        const divergencias = await getDivergenciasByNota(notaFiscalData[0].id as string)
+      // Usar timeout para evitar demora excessiva
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Timeout na verificação de divergências')), 2000) // 2s timeout
+      })
+
+      const verificarDivergenciasPromise = (async () => {
+        // Buscar a nota na tabela notas_fiscais primeiro para obter o ID
+        const { data: notaFiscalData, error: notaFiscalError } = await supabase
+          .from('notas_fiscais')
+          .select('id')
+          .eq('numero_nf', numeroNF)
+          .limit(1)
         
-        if (divergencias && divergencias.length > 0) {
-          console.log(`⚠️ NF ${numeroNF} encontrada em divergências`)
-          return {
-            valido: false,
-            erro: `NF ${numeroNF} possui divergência registrada e não pode ser bipada novamente.`,
+        if (!notaFiscalError && notaFiscalData && notaFiscalData.length > 0) {
+          // Buscar divergências diretamente (sem usar hook de cache para evitar overhead)
+          const { data: divergencias, error: divergenciasError } = await supabase
+            .from('divergencias')
+            .select('id')
+            .eq('nota_fiscal_id', notaFiscalData[0].id as string)
+            .limit(1)
+          
+          if (!divergenciasError && divergencias && divergencias.length > 0) {
+            console.log(`⚠️ NF ${numeroNF} encontrada em divergências`)
+            return {
+              valido: false,
+              erro: `NF ${numeroNF} possui divergência registrada e não pode ser bipada novamente.`,
+            }
           }
         }
+        
+        return null
+      })()
+
+      const resultadoDivergencias = await Promise.race([verificarDivergenciasPromise, timeoutPromise])
+      
+      if (resultadoDivergencias && typeof resultadoDivergencias === 'object' && 'valido' in resultadoDivergencias) {
+        return resultadoDivergencias as { valido: boolean; nota?: NotaFiscal; erro?: string }
       }
       
       console.log(`✅ NF ${numeroNF} não encontrada em divergências`)
@@ -972,14 +996,42 @@ export default function RecebimentoPage() {
             observacoes: `${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`
           }
           
-          const { error: divergenciaError } = await supabase
+          console.log('🔍 Tentando inserir divergência com dados:', divergenciaData)
+          
+          const { data: divergenciaResult, error: divergenciaError } = await supabase
             .from('divergencias')
             .insert(divergenciaData)
+            .select()
           
           if (divergenciaError) {
             console.error('❌ Erro ao salvar divergência na tabela divergencias:', divergenciaError)
+            console.error('❌ Detalhes do erro:', {
+              message: divergenciaError.message,
+              details: divergenciaError.details,
+              hint: divergenciaError.hint,
+              code: divergenciaError.code
+            })
           } else {
-            console.log('✅ Divergência salva na tabela divergencias')
+            console.log('✅ Divergência salva na tabela divergencias com ID:', divergenciaResult?.[0]?.id)
+            
+                // Verificar se a divergência foi realmente salva (aguardar um pouco para garantir commit)
+                const divergenciaId = divergenciaResult?.[0]?.id
+                if (divergenciaId) {
+                  // Aguardar 1 segundo para garantir que a transação foi commitada
+                  await new Promise(resolve => setTimeout(resolve, 1000))
+                  
+                  const { data: verificacao, error: erroVerificacao } = await supabase
+                    .from('divergencias')
+                    .select('id')
+                    .eq('id', divergenciaId)
+                    .single()
+                  
+                  if (erroVerificacao || !verificacao) {
+                    console.error('❌ ERRO CRÍTICO: Divergência não foi encontrada após inserção!', erroVerificacao)
+                  } else {
+                    console.log('✅ CONFIRMADO: Divergência existe na tabela com ID:', verificacao.id)
+                  }
+                }
           }
         } catch (error) {
           console.error('❌ Erro ao salvar divergência:', error)
@@ -1023,14 +1075,42 @@ export default function RecebimentoPage() {
                 observacoes: `${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`
               }
               
-              const { error: divergenciaError } = await supabase
+              console.log('🔍 Tentando inserir divergência (nota nova) com dados:', divergenciaData)
+              
+              const { data: divergenciaResult, error: divergenciaError } = await supabase
                 .from('divergencias')
                 .insert(divergenciaData)
+                .select()
               
               if (divergenciaError) {
                 console.error('❌ Erro ao salvar divergência na tabela divergencias:', divergenciaError)
+                console.error('❌ Detalhes do erro:', {
+                  message: divergenciaError.message,
+                  details: divergenciaError.details,
+                  hint: divergenciaError.hint,
+                  code: divergenciaError.code
+                })
               } else {
-                console.log('✅ Divergência salva na tabela divergencias')
+                console.log('✅ Divergência salva na tabela divergencias com ID:', divergenciaResult?.[0]?.id)
+                
+                // Verificar se a divergência foi realmente salva (aguardar um pouco para garantir commit)
+                const divergenciaId = divergenciaResult?.[0]?.id
+                if (divergenciaId) {
+                  // Aguardar 1 segundo para garantir que a transação foi commitada
+                  await new Promise(resolve => setTimeout(resolve, 1000))
+                  
+                  const { data: verificacao, error: erroVerificacao } = await supabase
+                    .from('divergencias')
+                    .select('id')
+                    .eq('id', divergenciaId)
+                    .single()
+                  
+                  if (erroVerificacao || !verificacao) {
+                    console.error('❌ ERRO CRÍTICO: Divergência não foi encontrada após inserção!', erroVerificacao)
+                  } else {
+                    console.log('✅ CONFIRMADO: Divergência existe na tabela com ID:', verificacao.id)
+                  }
+                }
               }
             } catch (error) {
               console.error('❌ Erro ao salvar divergência:', error)

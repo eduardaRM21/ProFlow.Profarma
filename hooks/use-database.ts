@@ -387,17 +387,10 @@ export const useRecebimento = (chave: string) => {
               if (!notasError && notasFiscais && notasFiscais.length > 0) {
                 const idsNotasFiscais = notasFiscais.map(n => n.id)
                 
-                // Deletar divergências relacionadas
-                const { error: deleteDivergenciasError } = await supabase
-                  .from('divergencias')
-                  .delete()
-                  .in('nota_fiscal_id', idsNotasFiscais)
-                
-                if (deleteDivergenciasError) {
-                  console.warn('⚠️ Erro ao deletar divergências:', deleteDivergenciasError)
-                } else {
-                  console.log('✅ Divergências removidas para a sessão (session_id: ' + chave + ')')
-                }
+                // ✅ CORREÇÃO: NÃO DELETAR DIVERGÊNCIAS!
+                // As divergências são parte do histórico permanente e devem ser preservadas
+                // Elas são associadas às notas fiscais e não à sessão temporária
+                console.log('ℹ️ Divergências preservadas - são parte do histórico permanente das notas fiscais')
               }
             }
           } catch (divergenciasError) {

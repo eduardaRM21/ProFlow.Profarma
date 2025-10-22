@@ -1,13 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Package, Truck, Scan } from "lucide-react"
+import { Truck, Scan } from "lucide-react"
 import { getSupabase } from "@/lib/supabase-client"
 
 interface Transportadora {
@@ -17,6 +17,8 @@ interface Transportadora {
   totalNotas: number
   notasBipadas: number
   progresso: number
+  faltando: number
+  statusCounts: { [key: string]: number }
 }
 
 interface SelecaoTransportadoraModalProps {
@@ -40,13 +42,26 @@ export default function SelecaoTransportadoraModal({
   const [transportadoraSelecionada, setTransportadoraSelecionada] = useState("")
   const [carregando, setCarregando] = useState(false)
   const [bipagemIniciadaLocal, setBipagemIniciadaLocal] = useState(false)
+  const previousActiveElement = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (isOpen) {
+      // Salvar elemento ativo antes de abrir o modal
+      previousActiveElement.current = document.activeElement as HTMLElement
       carregarTransportadoras()
     } else {
       // Resetar estado quando modal for fechado
       setBipagemIniciadaLocal(false)
+      setTransportadoraSelecionada("")
+      
+      // Restaurar foco para o elemento anterior após um pequeno delay
+      // para evitar conflitos com aria-hidden
+      setTimeout(() => {
+        if (previousActiveElement.current && typeof previousActiveElement.current.focus === 'function') {
+          previousActiveElement.current.focus()
+        }
+        previousActiveElement.current = null
+      }, 100)
     }
   }, [isOpen, notasBipadas])
 
@@ -55,14 +70,13 @@ export default function SelecaoTransportadoraModal({
     try {
       const supabase = getSupabase()
       
-      // Buscar transportadoras e suas notas do consolidado
-      // IMPORTANTE: Filtrar apenas notas com status "deu entrada"
+      // Buscar todas as notas do consolidado (não apenas "deu entrada")
+      // para calcular o progresso baseado no status
       const { data: consolidadoData, error } = await supabase
         .from('notas_consolidado')
         .select('transportadora, numero_nf, status')
         .not('transportadora', 'is', null) // Excluir valores nulos
         .neq('transportadora', '') // Excluir valores vazios
-        .eq('status', 'deu entrada') // FILTRO CRÍTICO: Apenas notas com status "deu entrada"
         .order('data_entrada', { ascending: false })
 
       if (error) {
@@ -70,30 +84,22 @@ export default function SelecaoTransportadoraModal({
         return
       }
 
-      console.log(`📋 Notas com status "deu entrada" encontradas: ${consolidadoData?.length || 0}`)
+      console.log(`📋 Total de notas encontradas: ${consolidadoData?.length || 0}`)
 
-      // Buscar notas bipadas
-      const { data: notasBipadasData, error: bipadasError } = await supabase
-        .from('notas_bipadas')
-        .select('numero_nf')
-        .eq('area_origem', 'recebimento')
-
-      if (bipadasError) {
-        console.warn('⚠️ Erro ao carregar notas bipadas:', bipadasError)
-      }
-
-      // Criar Set com números das notas bipadas
-      const notasBipadasSet = new Set(
-        notasBipadasData?.map((item: any) => item.numero_nf) || []
-      )
-
-      // Agrupar por transportadora e calcular progresso
-      const transportadorasMap = new Map<string, { total: number, bipadas: number, nomeOriginal: string, data: string }>()
+      // Agrupar por transportadora e calcular progresso baseado no status
+      const transportadorasMap = new Map<string, { 
+        total: number, 
+        processadas: number, 
+        nomeOriginal: string, 
+        data: string,
+        statusCounts: { [key: string]: number }
+      }>()
       
       if (consolidadoData) {
         consolidadoData.forEach((item: any) => {
           const transportadora = item.transportadora
           const numeroNF = item.numero_nf
+          const status = item.status
           
           if (transportadora && transportadora.trim() !== '') {
             // Extrair data e nome original da transportadora (formato: "DD/MM/YYYY - Nome")
@@ -108,11 +114,26 @@ export default function SelecaoTransportadoraModal({
               }
             }
             
-            const atual = transportadorasMap.get(transportadora) || { total: 0, bipadas: 0, nomeOriginal, data }
+            const atual = transportadorasMap.get(transportadora) || { 
+              total: 0, 
+              processadas: 0, 
+              nomeOriginal, 
+              data,
+              statusCounts: {} as { [key: string]: number }
+            }
+            
             atual.total += 1
             
-            if (notasBipadasSet.has(numeroNF)) {
-              atual.bipadas += 1
+            // Contar status
+            const statusStr = status as string
+            if (!atual.statusCounts[statusStr]) {
+              atual.statusCounts[statusStr] = 0
+            }
+            atual.statusCounts[statusStr] += 1
+            
+            // Considerar como processada apenas se status for "recebida"
+            if (status === 'recebida') {
+              atual.processadas += 1
             }
             
             transportadorasMap.set(transportadora, atual)
@@ -120,21 +141,69 @@ export default function SelecaoTransportadoraModal({
         })
       }
 
-      // Calcular progresso e filtrar transportadoras 100% bipadas
+      // Buscar relatórios liberados parcialmente e adicionar à lista
+      const { data: relatoriosData, error: relatoriosError } = await supabase
+        .from('relatorios')
+        .select('id, nome, area, data, status, total_divergencias')
+        .eq('area', 'recebimento')
+        .eq('status', 'liberado_parcialmente')
+        .order('data', { ascending: false })
+        .limit(10)
+
+      if (!relatoriosError && relatoriosData && relatoriosData.length > 0) {
+        for (const relatorio of relatoriosData) {
+          // Buscar total de notas do relatório
+          const { data: relatorioNotasData, error: notasError } = await supabase
+            .from('relatorio_notas')
+            .select('nota_fiscal_id')
+            .eq('relatorio_id', String(relatorio.id))
+
+          if (notasError) continue
+
+          const totalNotas = relatorioNotasData?.length || 0
+
+          // Buscar notas processadas (com status ok, devolvida ou divergencia)
+          const { data: notasFiscaisData, error: fiscaisError } = await supabase
+            .from('notas_fiscais')
+            .select('id, status')
+            .in('id', relatorioNotasData?.map((rn: any) => rn.nota_fiscal_id) || [])
+
+          if (fiscaisError) continue
+
+          const notasProcessadas = notasFiscaisData?.filter(nota => 
+            nota.status === 'ok' || nota.status === 'devolvida' || nota.status === 'divergencia'
+          ).length || 0
+
+          // Adicionar relatório como transportadora especial
+          const nomeRelatorio = `📋 ${relatorio.nome as string}`
+          transportadorasMap.set(nomeRelatorio, {
+            total: totalNotas,
+            processadas: notasProcessadas,
+            nomeOriginal: relatorio.nome as string,
+            data: relatorio.data as string,
+            statusCounts: {} as { [key: string]: number }
+          })
+        }
+      }
+
+      // Calcular progresso e filtrar transportadoras 100% processadas
       const transportadorasComProgresso = Array.from(transportadorasMap.entries())
         .map(([nome, dados]) => {
-          const progresso = dados.total > 0 ? Math.round((dados.bipadas / dados.total) * 100) : 0
+          const progresso = dados.total > 0 ? Math.round((dados.processadas / dados.total) * 100) : 0
+          const faltando = dados.total - dados.processadas
 
           return {
             nome,
             nomeOriginal: dados.nomeOriginal,
             data: dados.data,
             totalNotas: dados.total,
-            notasBipadas: dados.bipadas,
-            progresso: progresso
+            notasBipadas: dados.processadas,
+            progresso: progresso,
+            faltando: faltando,
+            statusCounts: dados.statusCounts
           }
         })
-        .filter(transportadora => transportadora.progresso < 100) // Filtrar transportadoras 100% bipadas
+        .filter(transportadora => transportadora.faltando > 0) // Filtrar apenas transportadoras que ainda têm notas para processar
 
       // Ordenar por total de notas (maior primeiro) e depois por nome original
       transportadorasComProgresso.sort((a, b) => {
@@ -144,7 +213,7 @@ export default function SelecaoTransportadoraModal({
         return a.nomeOriginal.localeCompare(b.nomeOriginal)
       })
 
-      console.log('📋 Transportadoras carregadas (apenas com notas "deu entrada" e progresso < 100%):', transportadorasComProgresso)
+      console.log('📋 Transportadoras carregadas (baseado no status das notas e progresso < 100%):', transportadorasComProgresso)
       setTransportadoras(transportadorasComProgresso)
     } catch (error) {
       console.error('❌ Erro ao carregar transportadoras:', error)
@@ -152,6 +221,7 @@ export default function SelecaoTransportadoraModal({
       setCarregando(false)
     }
   }
+
 
   const handleConfirmar = () => {
     if (!transportadoraSelecionada) {
@@ -163,15 +233,38 @@ export default function SelecaoTransportadoraModal({
     onConfirmar(transportadoraSelecionada)
   }
 
+  const handleClose = () => {
+    if (podeFechar) {
+      // Remover foco de qualquer elemento dentro do modal antes de fechar
+      const activeElement = document.activeElement as HTMLElement
+      if (activeElement && activeElement.blur) {
+        activeElement.blur()
+      }
+      onClose()
+    }
+  }
+
 
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
-      if (!open && podeFechar) {
-        onClose()
+      if (!open) {
+        handleClose()
       }
     }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto dark:bg-gray-950">
+      <DialogContent 
+        className="max-w-4xl max-h-[90vh] overflow-y-auto dark:bg-gray-950"
+        onEscapeKeyDown={(e) => {
+          if (!podeFechar) {
+            e.preventDefault()
+          }
+        }}
+        onPointerDownOutside={(e) => {
+          if (!podeFechar) {
+            e.preventDefault()
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center space-x-2">
             <Truck className="h-5 w-5 text-blue-600" />
@@ -202,13 +295,7 @@ export default function SelecaoTransportadoraModal({
                       </div>
                       <div className="flex items-center space-x-2 ml-4">
                         <Badge variant="outline" className="text-xs">
-                          {transportadora.notasBipadas}/{transportadora.totalNotas}
-                        </Badge>
-                        <Badge 
-                          variant={transportadora.progresso === 100 ? "default" : "secondary"}
-                          className="text-xs"
-                        >
-                          {transportadora.progresso}%
+                          {transportadora.notasBipadas}/{transportadora.totalNotas} - {transportadora.progresso}%
                         </Badge>
                       </div>
                     </div>
@@ -218,6 +305,7 @@ export default function SelecaoTransportadoraModal({
             </Select>
           </div>
         </div>
+
 
         {/* Botões */}
         <div className="flex space-x-4">
@@ -239,7 +327,7 @@ export default function SelecaoTransportadoraModal({
             )}
           </Button>
           <Button
-            onClick={onClose}
+            onClick={handleClose}
             variant="outline"
             className="flex-1"
             disabled={!podeFechar}

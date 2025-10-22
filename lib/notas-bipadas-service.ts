@@ -52,13 +52,15 @@ export class NotasBipadasService {
       // Verificar se a nota já foi bipada na mesma sessão (VALIDAÇÃO CRÍTICA)
       console.log(`🔍 Verificando duplicata no serviço para NF ${nota.numero_nf}, session_id: ${nota.session_id}`);
       
-      const { data: notaExistente, error: erroVerificacao } = await supabase
+      const { data: notasExistentes, error: erroVerificacao } = await supabase
         .from('notas_bipadas')
         .select('id, numero_nf, timestamp_bipagem, session_id, area_origem')
         .eq('numero_nf', nota.numero_nf)
         .eq('session_id', nota.session_id)
         .eq('area_origem', nota.area_origem)
-        .single();
+        .limit(1);
+
+      const notaExistente = notasExistentes?.[0] || null;
 
       if (erroVerificacao && erroVerificacao.code !== 'PGRST116') {
         console.error('❌ Erro ao verificar duplicata no serviço:', erroVerificacao);
@@ -86,7 +88,7 @@ export class NotasBipadasService {
         .from('notas_bipadas')
         .insert(notaCompleta as any)
         .select('id')
-        .single() as { data: { id: string } | null; error: any };
+        .limit(1) as { data: { id: string }[] | null; error: any };
 
       if (error) {
         console.error('❌ Erro ao salvar nota bipada:', error);
@@ -100,12 +102,13 @@ export class NotasBipadasService {
         throw error;
       }
 
-      if (!data) {
+      if (!data || data.length === 0) {
         throw new Error('Dados não retornados ao salvar nota bipada');
       }
 
-      console.log('✅ Nota bipada salva com sucesso:', data.id);
-      return data.id;
+      const notaSalva = data[0];
+      console.log('✅ Nota bipada salva com sucesso:', notaSalva.id);
+      return notaSalva.id;
     }, {
       retryCondition: (error) => ErrorHandler.isRetryableError(error)
     });

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { getSupabase } from '@/lib/supabase-client'
+import { useAudioPermission } from './use-audio-permission'
 
 // Cache em memória para relatórios
 interface RelatorioCache {
@@ -13,6 +14,10 @@ interface RelatorioCache {
 const relatoriosCache: RelatorioCache = {}
 const CACHE_TTL = 2 * 60 * 1000 // 2 minutos
 const MAX_CACHE_SIZE = 50 // Máximo de 50 entradas no cache
+
+// Cache para notas não encontradas (evita logs repetidos)
+const notasNaoEncontradasCache = new Set<string>()
+const NOTAS_CACHE_TTL = 10 * 60 * 1000 // 10 minutos
 
 // Hook para gerenciar cache de relatórios otimizado
 export const useRelatoriosOptimized = () => {
@@ -531,11 +536,20 @@ export const useRelatoriosOptimized = () => {
             const divergencia = todasDivergencias?.find(d => d.nota_fiscal_id === nota?.id)
 
             if (!nota) {
-              // Log mais detalhado para debug
-              console.warn(`⚠️ Nota fiscal ${tn.nota_fiscal_id} não encontrada nos dados carregados`)
-              console.warn(`   - Relatório: ${relatorio.nome} (${relatorio.id})`)
-              console.warn(`   - Total de notas carregadas: ${Object.keys(dadosNotas).length}`)
-              console.warn(`   - IDs disponíveis (primeiros 5): ${Object.keys(dadosNotas).slice(0, 5)}`)
+              // Verificar se já logamos esta nota para evitar spam
+              if (!notasNaoEncontradasCache.has(tn.nota_fiscal_id)) {
+                notasNaoEncontradasCache.add(tn.nota_fiscal_id)
+                
+                // Log apenas uma vez por nota
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn(`⚠️ Nota fiscal ${tn.nota_fiscal_id} não encontrada no relatório ${relatorio.nome}`)
+                }
+                
+                // Limpar cache após TTL
+                setTimeout(() => {
+                  notasNaoEncontradasCache.delete(tn.nota_fiscal_id)
+                }, NOTAS_CACHE_TTL)
+              }
               
               // Retornar uma nota "fantasma" com dados básicos para manter a integridade do relatório
               return {
@@ -584,8 +598,14 @@ export const useRelatoriosOptimized = () => {
           if (notasNaoEncontradas.length > 0) {
             console.warn(`⚠️ Relatório ${relatorio.nome}: ${notasNaoEncontradas.length} notas não encontradas de ${notasProcessadas.length} total`)
             
-            // Opcional: Limpar referências órfãs (comentado para não executar automaticamente)
-            // await limparReferenciasOrfas(notasNaoEncontradas.map(n => n.id))
+            // Limpar referências órfãs automaticamente (apenas em desenvolvimento)
+            if (process.env.NODE_ENV === 'development' && notasNaoEncontradas.length > 0) {
+              console.log(`🧹 Limpando ${notasNaoEncontradas.length} referências órfãs automaticamente...`)
+              // Executar limpeza de forma assíncrona sem bloquear o processamento
+              limparReferenciasOrfas(notasNaoEncontradas.map(n => n.id)).catch(error => {
+                console.error('❌ Erro ao limpar referências órfãs:', error)
+              })
+            }
           }
           
           const notas = notasValidas // Usar apenas notas válidas
@@ -819,26 +839,24 @@ export const useRelatorios = (
   
   // Referência para controlar IDs de relatórios já notificados
   const relatoriosNotificadosRef = useRef<Set<string>>(new Set())
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  
+  // Hook para gerenciar permissões de áudio
+  const { playAudio, requestPermission, isGranted } = useAudioPermission()
 
   // Função para reproduzir áudio de notificação para custos
-  const reproduzirNotificacaoCustos = useCallback(() => {
-    try {
-      // Criar elemento de áudio se não existir
-      if (!audioRef.current) {
-        audioRef.current = new Audio('/new-notification-Custos.mp3')
-        audioRef.current.preload = 'auto'
-      }
-      
-      // Reproduzir o áudio
-      audioRef.current.play().catch(error => {
-        console.warn('⚠️ Erro ao reproduzir áudio de notificação de custos:', error)
-      })
-      
-    } catch (error) {
-      console.warn('⚠️ Erro ao configurar áudio de notificação de custos:', error)
+  const reproduzirNotificacaoCustos = useCallback(async () => {
+    const sucesso = await playAudio('/new-notification-Custos.mp3', 0.7)
+    if (sucesso) {
+      console.log('🔊 Notificação de áudio reproduzida com sucesso')
+    } else {
+      console.log('🔇 Áudio não reproduzido - permissão não concedida')
     }
-  }, [])
+  }, [playAudio])
+
+  // Função para solicitar permissão de áudio (alias para compatibilidade)
+  const solicitarPermissaoAudio = useCallback(async () => {
+    return await requestPermission()
+  }, [requestPermission])
 
 
   const {
@@ -931,7 +949,9 @@ export const useRelatorios = (
     lastFetch,
     refresh: () => fetchData(true),
     invalidateCache,
-    reproduzirNotificacaoCustos
+    reproduzirNotificacaoCustos,
+    solicitarPermissaoAudio,
+    audioPermissionGranted: isGranted
   }
 }
 
@@ -955,5 +975,52 @@ export const limparReferenciasOrfas = async (notaIds: string[]) => {
     }
   } catch (error) {
     console.error('❌ Erro ao limpar referências órfãs:', error)
+  }
+}
+
+// Função para detectar e limpar automaticamente notas órfãs
+export const detectarELimparNotasOrfas = async (relatorioId: string) => {
+  try {
+    const { getSupabase } = await import('@/lib/supabase-client')
+    const supabase = getSupabase()
+    
+    // Buscar todas as notas do relatório
+    const { data: relatorioNotas, error: relatorioError } = await supabase
+      .from('relatorio_notas')
+      .select('nota_fiscal_id')
+      .eq('relatorio_id', relatorioId)
+    
+    if (relatorioError) {
+      console.error('❌ Erro ao buscar notas do relatório:', relatorioError)
+      return
+    }
+    
+    if (!relatorioNotas || relatorioNotas.length === 0) {
+      return
+    }
+    
+    const notaIds = relatorioNotas.map(rn => rn.nota_fiscal_id)
+    
+    // Verificar quais notas existem na tabela notas_fiscais
+    const { data: notasExistentes, error: notasError } = await supabase
+      .from('notas_fiscais')
+      .select('id')
+      .in('id', notaIds)
+    
+    if (notasError) {
+      console.error('❌ Erro ao verificar notas existentes:', notasError)
+      return
+    }
+    
+    const idsExistentes = new Set(notasExistentes?.map(n => n.id) || [])
+    const idsOrfas = notaIds.filter(id => !idsExistentes.has(id))
+    
+    if (idsOrfas.length > 0) {
+      console.log(`🔍 Detectadas ${idsOrfas.length} notas órfãs no relatório ${relatorioId}`)
+      await limparReferenciasOrfas(idsOrfas)
+    }
+    
+  } catch (error) {
+    console.error('❌ Erro ao detectar notas órfãs:', error)
   }
 }

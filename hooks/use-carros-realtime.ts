@@ -236,9 +236,10 @@ export function useCarrosRealtime() {
       })
 
     // Configurar heartbeat para verificar conectividade e sincronizar
+    // Reduzido para 2 minutos para diminuir egress do banco
     const heartbeat = setInterval(() => {
       carregarCarros()
-    }, 30000) // Verificar a cada 30 segundos para melhor performance
+    }, 120000) // Verificar a cada 2 minutos para reduzir egress
 
     // Cleanup da subscription e heartbeat
     return () => {
@@ -295,11 +296,11 @@ export function useCarrosRealtime() {
         console.log('✅ Estado local atualizado com sucesso')
         
         // Recarregar carros do banco para sincronizar com outros usuários
-        // Aumentar o delay para dar tempo do banco processar a atualização
+        // Reduzir frequência de sincronização para diminuir egress
         setTimeout(() => {
           console.log('🔄 Recarregando carros do banco para sincronização...')
           carregarCarros()
-        }, 5000) // Aumentado para 5 segundos para melhor performance
+        }, 10000) // Aumentado para 10 segundos para reduzir egress
         
         return { success: true }
       } else {
@@ -413,11 +414,11 @@ export function useCarrosRealtime() {
         console.log('✅ Estado local atualizado com sucesso')
         
         // Recarregar carros do banco para sincronizar com outros usuários
-        // Reduzir o delay para sincronização mais rápida entre usuários
+        // Aumentar delay para reduzir egress do banco
         setTimeout(() => {
           console.log('🔄 Recarregando carros do banco para sincronização global...')
           carregarCarros()
-        }, 1000) // Reduzido para 1 segundo para sincronização mais rápida
+        }, 5000) // Aumentado para 5 segundos para reduzir egress
         
         return { success: true, numeroCarro: result.numeroCarro }
       } else {
