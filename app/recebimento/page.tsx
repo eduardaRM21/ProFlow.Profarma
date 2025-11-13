@@ -30,6 +30,8 @@ import {
 import BarcodeScanner from "./components/barcode-scanner"
 import ConfirmacaoModal from "./components/confirmacao-modal"
 import DivergenciaModal from "./components/divergencia-modal"
+import AlterarStatusModal from "./components/alterar-status-modal"
+import { useLongPress } from "@/hooks/use-long-press"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -53,23 +55,81 @@ import { getSupabase } from "@/lib/supabase-client"
 import { ErrorHandler } from "@/lib/error-handler"
 import { useIsColetor } from "@/hooks/use-coletor"
 import { useTheme } from "@/contexts/theme-context"
+import { useToast } from "@/hooks/use-toast"
 import ColetorView from "./components/coletor-view"
 import DarEntrada from "./components/dar-entrada"
 import VerConsolidado from "./components/ver-consolidado"
 import { Loader } from "@/components/ui/loader"
 
+// Componente para nota com long press
+function NotaItemComLongPress({ nota, onLongPress }: { nota: NotaFiscal; onLongPress: () => void }) {
+  const longPress = useLongPress({
+    onLongPress,
+    delay: 800, // 800ms para long press
+  })
+
+  return (
+    <div
+      {...longPress}
+      className={`p-4 border-l-4 rounded-r-lg cursor-pointer transition-all hover:shadow-md ${
+        nota.status === "ok" 
+          ? "border-l-green-500 bg-green-50 dark:bg-green-900/20 dark:border-l-green-400" 
+          : "border-l-orange-500 bg-orange-50 dark:bg-orange-900/20 dark:border-l-orange-400"
+      }`}
+      title="Segure para alterar o status da nota"
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-start space-x-3 flex-1">
+          {nota.status === "ok" ? (
+            <CheckCircle className="h-5 w-5 text-green-600 mt-1" />
+          ) : (
+            <AlertTriangle className="h-5 w-5 text-orange-600 mt-1" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center space-x-4 mb-2">
+              <div className="font-semibold text-gray-900 dark:text-gray-200">NF: {nota.numeroNF}</div>
+              <Badge variant="outline" className="bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
+                Vol: {nota.divergencia?.volumesInformados || nota.volumes}
+              </Badge>
+              <Badge variant="outline" className="bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
+                {nota.destino}
+              </Badge>
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
+              <div>
+                <strong>Fornecedor:</strong> {nota.fornecedor} | <strong>Cliente:</strong>{" "}
+                {nota.clienteDestino}
+              </div>
+              <div>
+                <strong>Tipo:</strong> {nota.tipoCarga} | <strong>Data:</strong> {nota.data}
+              </div>
+              {nota.divergencia && (
+                <div className="text-orange-600 dark:text-orange-400 font-medium">
+                  🔸 {nota.divergencia.observacoes}
+                  {nota.divergencia.volumesInformados !== nota.volumes && (
+                    <span>
+                      {" "}
+                      (Volumes alterados: {nota.volumes} → {nota.divergencia.volumesInformados})
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+              {new Date(nota.timestamp).toLocaleString("pt-BR")}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const TIPOS_DIVERGENCIA = [
   { codigo: "0063", descricao: "Avaria transportadora" },
-  { codigo: "0065", descricao: "Defeito de fabricação" },
   { codigo: "0068", descricao: "Falta transportadora" },
   { codigo: "0083", descricao: "Falta fornecedor" },
-  { codigo: "0084", descricao: "Valid. próxima/venc." },
-  { codigo: "A84", descricao: "Vencidos filial" },
-  { codigo: "M80", descricao: "Devolução fornecedor" },
-  { codigo: "M90", descricao: "Bloqueio controlados" },
-  { codigo: "M84", descricao: "Vencidos filial" },
   { codigo: "0000", descricao: "Sem divergência" },
-  { codigo: "M86", descricao: "Avaria / falta transferência" },
   { codigo: "0001", descricao: "Sobra" },
   { codigo: "L062", descricao: "Falta/Avaria" },
   { codigo: "L063", descricao: "Avaria Locafarma" },
@@ -98,6 +158,7 @@ export default function RecebimentoPage() {
   const { isFullyConnected } = useConnectivity()
   const { addRealtimeEvent } = useRealtimeMonitoring()
   const notasBipadasService = useNotasBipadas()
+  const { toast } = useToast()
   
   // Hook otimizado para relatórios com cache
   const { data: relatorios, refresh: refreshRelatorios } = useRelatorios('recebimento', {
@@ -113,6 +174,8 @@ export default function RecebimentoPage() {
   const [modalSelecaoTransportadora, setModalSelecaoTransportadora] = useState(false)
   const [modalRelatorios, setModalRelatorios] = useState(false)
   const [modalConsultarNfsFaltantes, setModalConsultarNfsFaltantes] = useState(false)
+  const [modalAlterarStatus, setModalAlterarStatus] = useState(false)
+  const [notaParaAlterarStatus, setNotaParaAlterarStatus] = useState<NotaFiscal | null>(null)
   const [finalizando, setFinalizando] = useState(false)
   const [telaAtiva, setTelaAtiva] = useState("bipagem")
   const [transportadoraSelecionada, setTransportadoraSelecionada] = useState("")
@@ -797,6 +860,20 @@ export default function RecebimentoPage() {
   const confirmarNota = async () => {
     if (!notaAtual) return
     
+    // Validação inicial: verificar se a nota não foi adicionada enquanto processávamos
+    const notaJaExiste = notas.find(n => n.numeroNF === notaAtual.numeroNF)
+    if (notaJaExiste) {
+      console.log(`⚠️ NF ${notaAtual.numeroNF} já foi adicionada durante o processamento - evitando duplicação`)
+      setModalConfirmacao(false)
+      setNotaAtual(null)
+      toast({
+        title: "Nota já processada",
+        description: `NF ${notaAtual.numeroNF} já foi processada. Duplicação evitada.`,
+        variant: "destructive",
+      })
+      return
+    }
+    
     // Garantir que a nota tenha status "ok"
     const notaComStatus: NotaFiscal = {
       ...notaAtual,
@@ -897,16 +974,6 @@ export default function RecebimentoPage() {
       (notaComStatus as any).observacoes = `NF processada localmente - Erro ao salvar na tabela centralizada: ${errorMessage}`;
     }
     
-    // Validação final: verificar se a nota não foi adicionada enquanto processávamos
-    const notaJaExiste = notas.find(n => n.numeroNF === notaAtual.numeroNF)
-    if (notaJaExiste) {
-      console.log(`⚠️ NF ${notaAtual.numeroNF} já foi adicionada durante o processamento - evitando duplicação`)
-      setModalConfirmacao(false)
-      setNotaAtual(null)
-      alert(`NF ${notaAtual.numeroNF} já foi processada. Duplicação evitada.`)
-      return
-    }
-    
     const notasAtualizadas = [notaComStatus, ...notas]
     await saveNotas(chaveNotas, notasAtualizadas)
     
@@ -947,9 +1014,223 @@ export default function RecebimentoPage() {
     setModalDivergencia(true)
   }
 
+  const alterarStatusNota = async (nota: NotaFiscal, novoStatus: "ok" | "divergencia") => {
+    try {
+      // Atualizar status da nota na tabela notas_fiscais se conectado
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      // Buscar a nota na tabela notas_fiscais
+      const { data: notaExistente, error: buscaError } = await supabase
+        .from('notas_fiscais')
+        .select('id')
+        .eq('numero_nf', nota.numeroNF)
+        .limit(1)
+      
+      if (!buscaError && notaExistente && notaExistente.length > 0) {
+        const notaFiscalId = notaExistente[0].id as string
+        
+        // Atualizar o status da nota
+        const { error: updateError } = await supabase
+          .from('notas_fiscais')
+          .update({ status: novoStatus })
+          .eq('id', notaFiscalId)
+        
+        if (updateError) {
+          console.error('❌ Erro ao atualizar status da nota:', updateError)
+        } else {
+          console.log(`✅ Status da nota atualizado para "${novoStatus}" na tabela notas_fiscais`)
+        }
+        
+        // Se estiver alterando para "ok", excluir a divergência da tabela divergencias
+        if (novoStatus === "ok") {
+          try {
+            // Buscar divergências relacionadas a esta nota fiscal
+            const { data: divergencias, error: divergenciasError } = await supabase
+              .from('divergencias')
+              .select('id')
+              .eq('nota_fiscal_id', notaFiscalId)
+            
+            if (!divergenciasError && divergencias && divergencias.length > 0) {
+              // Excluir todas as divergências relacionadas
+              const idsDivergencias = divergencias.map(d => d.id as string)
+              const { error: deleteError } = await supabase
+                .from('divergencias')
+                .delete()
+                .in('id', idsDivergencias)
+              
+              if (deleteError) {
+                console.error('❌ Erro ao excluir divergência da tabela divergencias:', deleteError)
+              } else {
+                console.log(`✅ ${divergencias.length} divergência(s) excluída(s) da tabela divergencias`)
+              }
+            } else {
+              console.log('ℹ️ Nenhuma divergência encontrada para excluir')
+            }
+          } catch (error) {
+            console.error('❌ Erro ao excluir divergência:', error)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status da nota:', error)
+    }
+
+    // Atualizar status na tabela notas_bipadas (apenas a mais recente da sessão atual)
+    try {
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      // Buscar a nota mais recente da sessão atual
+      const sessionId = sessionData
+        ? `recebimento_${Array.isArray(sessionData.colaboradores) && sessionData.colaboradores.length > 0 
+            ? sessionData.colaboradores.join('_') 
+            : 'sem_colaborador'}_${sessionData.data}_${sessionData.turno}`
+        : ''
+      
+      if (sessionId) {
+        // Buscar todas as notas bipadas desta sessão com este número de NF
+        const { data: notasBipadas, error: buscaError } = await supabase
+          .from('notas_bipadas')
+          .select('id')
+          .eq('numero_nf', nota.numeroNF)
+          .eq('area_origem', 'recebimento')
+          .eq('session_id', sessionId)
+          .order('timestamp_bipagem', { ascending: false })
+
+        if (!buscaError && notasBipadas && notasBipadas.length > 0) {
+          // Atualizar todas as ocorrências desta nota na sessão (normalmente será apenas uma)
+          const ids = notasBipadas.map(nb => nb.id as string)
+          const { error: updateError } = await supabase
+            .from('notas_bipadas')
+            .update({ status: novoStatus })
+            .in('id', ids)
+
+          if (updateError) {
+            console.error('❌ Erro ao atualizar status na tabela notas_bipadas:', updateError)
+          } else {
+            console.log(`✅ Status atualizado na tabela notas_bipadas para ${notasBipadas.length} registro(s)`)
+          }
+        } else {
+          console.warn(`⚠️ Nota ${nota.numeroNF} não encontrada na tabela notas_bipadas para atualização de status`)
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status na tabela notas_bipadas:', error)
+    }
+
+    // Atualizar nota localmente
+    console.log('🔄 Iniciando atualização local...', { 
+      notaId: nota.id, 
+      numeroNF: nota.numeroNF,
+      novoStatus, 
+      totalNotasAtuais: notas.length,
+      notaEncontrada: notas.find(n => n.id === nota.id || n.numeroNF === nota.numeroNF)
+    })
+    
+    const notasAtualizadas = notas.map((n) => {
+      // Comparar por ID ou número da NF para garantir que encontramos a nota correta
+      if (n.id === nota.id || n.numeroNF === nota.numeroNF) {
+        console.log('✅ Nota encontrada para atualização:', { 
+          id: n.id, 
+          numeroNF: n.numeroNF, 
+          statusAtual: n.status, 
+          novoStatus 
+        })
+        
+        if (novoStatus === "ok") {
+          // Remover divergência se mudar para OK
+          const { divergencia, ...notaSemDivergencia } = n
+          const notaAtualizada = { ...notaSemDivergencia, status: "ok" as const }
+          console.log('✅ Nota atualizada para OK:', notaAtualizada)
+          return notaAtualizada
+        } else {
+          // Se mudar para divergência, manter a divergência existente ou criar uma padrão
+          const notaAtualizada = {
+            ...n,
+            status: "divergencia" as const,
+            divergencia: n.divergencia || {
+              observacoes: "0000 - Sem divergência (alterado posteriormente)",
+              volumesInformados: n.volumes,
+            },
+          }
+          console.log('✅ Nota atualizada para Divergência:', notaAtualizada)
+          return notaAtualizada
+        }
+      }
+      return n
+    })
+
+    console.log('🔄 Salvando notas atualizadas...', { 
+      totalNotas: notasAtualizadas.length,
+      notasComNovoStatus: notasAtualizadas.filter(n => 
+        (n.id === nota.id || n.numeroNF === nota.numeroNF) && n.status === novoStatus
+      )
+    })
+    await saveNotas(chaveNotas, notasAtualizadas)
+    console.log('✅ Notas salvas com sucesso')
+    
+    // Mostrar toast de confirmação
+    toast({
+      title: "Status alterado",
+      description: `NF ${nota.numeroNF} alterada para ${novoStatus === "ok" ? "OK" : "Divergência"}.`,
+      variant: novoStatus === "ok" ? "default" : "destructive",
+    })
+    
+    setModalAlterarStatus(false)
+    setNotaParaAlterarStatus(null)
+    
+    // Recalcular progresso se houver transportadora selecionada
+    if (transportadoraSelecionada) {
+      await calcularProgressoTransportadoraComNotas(transportadoraSelecionada, notasAtualizadas)
+    }
+  }
+
+  const handleAlterarParaDivergencia = () => {
+    if (!notaParaAlterarStatus) return
+    // Se a nota já tem divergência, apenas atualizar o status
+    if (notaParaAlterarStatus.status === "divergencia") {
+      toast({
+        title: "Status já é divergência",
+        description: "Esta nota já está marcada como divergência.",
+        variant: "destructive",
+      })
+      setModalAlterarStatus(false)
+      setNotaParaAlterarStatus(null)
+      return
+    }
+    // Abrir modal de divergência para registrar os detalhes
+    setModalAlterarStatus(false)
+    setNotaAtual(notaParaAlterarStatus)
+    setModalDivergencia(true)
+    setNotaParaAlterarStatus(null)
+  }
+
+  const handleAlterarParaOk = async () => {
+    if (!notaParaAlterarStatus) return
+    await alterarStatusNota(notaParaAlterarStatus, "ok")
+  }
+
+  const handleLongPressNota = (nota: NotaFiscal) => {
+    setNotaParaAlterarStatus(nota)
+    setModalAlterarStatus(true)
+  }
+
   const confirmarDivergencia = async (tipoDivergencia: string, volumesInformados: number) => {
     if (!notaAtual) return
+    
     const tipoObj = TIPOS_DIVERGENCIA.find((t) => t.codigo === tipoDivergencia)
+    
+    // Verificar se a nota já existe (pode ser uma atualização de status via long press)
+    const notaExistente = notas.find(n => n.numeroNF === notaAtual.numeroNF)
+    const isAtualizacao = !!notaExistente
+    
+    if (isAtualizacao) {
+      console.log(`🔄 Atualizando status da nota ${notaAtual.numeroNF} para divergência`)
+    } else {
+      console.log(`➕ Adicionando nova nota ${notaAtual.numeroNF} com divergência`)
+    }
+    
     const notaComDivergencia: NotaFiscal = {
       ...notaAtual,
       status: "divergencia",
@@ -1144,34 +1425,68 @@ export default function RecebimentoPage() {
       console.error('❌ Erro ao atualizar status da nota no consolidado:', error)
     }
     
-    // Salvar nota bipada na tabela centralizada
+    // Atualizar ou salvar nota bipada na tabela centralizada
     let salvamentoCentralizadoSucesso = false;
     try {
-      const notaBipada = {
-        numero_nf: notaAtual.numeroNF,
-        codigo_completo: notaAtual.codigoCompleto,
-        area_origem: 'recebimento' as const,
-        session_id: `recebimento_${Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0 
-          ? sessionData?.colaboradores.join('_') 
-          : 'sem_colaborador'}_${sessionData?.data}_${sessionData?.turno}`,
-        colaboradores: Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0
-          ? sessionData.colaboradores
-          : ['Não informado'],
-        data: sessionData?.data || new Date().toISOString().split('T')[0],
-        turno: sessionData?.turno || '',
-        volumes: notaAtual.volumes,
-        destino: notaAtual.destino,
-        fornecedor: notaAtual.fornecedor,
-        cliente_destino: notaAtual.clienteDestino,
-        tipo_carga: notaAtual.tipoCarga,
-        status: 'divergencia',
-        observacoes: `NF recebida com divergência: ${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`,
-        timestamp_bipagem: new Date().toISOString()
-      };
+      const sessionId = `recebimento_${Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0 
+        ? sessionData?.colaboradores.join('_') 
+        : 'sem_colaborador'}_${sessionData?.data}_${sessionData?.turno}`
+      
+      // Verificar se a nota já existe na tabela notas_bipadas
+      const { getSupabase } = await import('@/lib/supabase-client')
+      const supabase = getSupabase()
+      
+      const { data: notaBipadaExistente, error: buscaError } = await supabase
+        .from('notas_bipadas')
+        .select('id')
+        .eq('numero_nf', notaAtual.numeroNF)
+        .eq('area_origem', 'recebimento')
+        .eq('session_id', sessionId)
+        .order('timestamp_bipagem', { ascending: false })
+        .limit(1)
 
-      await notasBipadasService.salvarNotaBipada(notaBipada);
-      console.log('✅ Nota bipada com divergência salva na tabela centralizada');
-      salvamentoCentralizadoSucesso = true;
+      if (!buscaError && notaBipadaExistente && notaBipadaExistente.length > 0) {
+        // Atualizar a nota existente
+        const { error: updateError } = await supabase
+          .from('notas_bipadas')
+          .update({ 
+            status: 'divergencia',
+            observacoes: `NF recebida com divergência: ${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`
+          })
+          .eq('id', notaBipadaExistente[0].id as string)
+
+        if (updateError) {
+          console.error('❌ Erro ao atualizar nota bipada na tabela centralizada:', updateError)
+        } else {
+          console.log('✅ Nota bipada atualizada para divergência na tabela centralizada')
+          salvamentoCentralizadoSucesso = true
+        }
+      } else {
+        // Inserir nova nota
+        const notaBipada = {
+          numero_nf: notaAtual.numeroNF,
+          codigo_completo: notaAtual.codigoCompleto,
+          area_origem: 'recebimento' as const,
+          session_id: sessionId,
+          colaboradores: Array.isArray(sessionData?.colaboradores) && sessionData?.colaboradores.length > 0
+            ? sessionData.colaboradores
+            : ['Não informado'],
+          data: sessionData?.data || new Date().toISOString().split('T')[0],
+          turno: sessionData?.turno || '',
+          volumes: notaAtual.volumes,
+          destino: notaAtual.destino,
+          fornecedor: notaAtual.fornecedor,
+          cliente_destino: notaAtual.clienteDestino,
+          tipo_carga: notaAtual.tipoCarga,
+          status: 'divergencia',
+          observacoes: `NF recebida com divergência: ${tipoDivergencia} - ${tipoObj?.descricao || "Divergência não identificada"}`,
+          timestamp_bipagem: new Date().toISOString()
+        };
+
+        await notasBipadasService.salvarNotaBipada(notaBipada);
+        console.log('✅ Nota bipada com divergência salva na tabela centralizada');
+        salvamentoCentralizadoSucesso = true;
+      }
     } catch (error) {
       console.error('❌ Erro ao salvar nota bipada com divergência na tabela centralizada:', error);
       // Mostrar alerta para o usuário sobre o problema
@@ -1185,18 +1500,18 @@ export default function RecebimentoPage() {
       (notaComDivergencia as any).observacoes = `NF processada localmente com divergência - Erro ao salvar na tabela centralizada: ${errorMessage}`;
     }
     
-    // Validação final: verificar se a nota não foi adicionada enquanto processávamos
-    const notaJaExiste = notas.find(n => n.numeroNF === notaAtual.numeroNF)
-    if (notaJaExiste) {
-      console.log(`⚠️ NF ${notaAtual.numeroNF} já foi adicionada durante o processamento de divergência - evitando duplicação`)
-      setModalDivergencia(false)
-      setNotaAtual(null)
-      alert(`NF ${notaAtual.numeroNF} já foi processada. Duplicação evitada.`)
-      return
-    }
+    // Se for atualização, substituir a nota existente; se for nova, adicionar
+    const notasAtualizadas = isAtualizacao
+      ? notas.map(n => n.numeroNF === notaAtual.numeroNF ? notaComDivergencia : n)
+      : [notaComDivergencia, ...notas]
     
-    const notasAtualizadas = [notaComDivergencia, ...notas]
+    console.log('🔄 Salvando notas atualizadas...', { 
+      isAtualizacao, 
+      totalNotas: notasAtualizadas.length,
+      notaAtualizada: notasAtualizadas.find(n => n.numeroNF === notaAtual.numeroNF)
+    })
     await saveNotas(chaveNotas, notasAtualizadas)
+    console.log('✅ Notas salvas com sucesso')
     
     // Disparar evento em tempo real
     addRealtimeEvent({
@@ -2054,58 +2369,11 @@ export default function RecebimentoPage() {
             ) : (
               <div className="space-y-3">
                 {notas.map((nota) => (
-                  <div
+                  <NotaItemComLongPress
                     key={nota.id}
-                    className={`p-4 border-l-4 rounded-r-lg ${
-                      nota.status === "ok" 
-                        ? "border-l-green-500 bg-green-50 dark:bg-green-900/20 dark:border-l-green-400" 
-                        : "border-l-orange-500 bg-orange-50 dark:bg-orange-900/20 dark:border-l-orange-400"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-3 flex-1">
-                        {nota.status === "ok" ? (
-                          <CheckCircle className="h-5 w-5 text-green-600 mt-1" />
-                        ) : (
-                          <AlertTriangle className="h-5 w-5 text-orange-600 mt-1" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center space-x-4 mb-2">
-                            <div className="font-semibold text-gray-900 dark:text-gray-200">NF: {nota.numeroNF}</div>
-                            <Badge variant="outline" className="bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
-                              Vol: {nota.divergencia?.volumesInformados || nota.volumes}
-                            </Badge>
-                            <Badge variant="outline" className="bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
-                              {nota.destino}
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-300 space-y-1">
-                            <div>
-                              <strong>Fornecedor:</strong> {nota.fornecedor} | <strong>Cliente:</strong>{" "}
-                              {nota.clienteDestino}
-                            </div>
-                            <div>
-                              <strong>Tipo:</strong> {nota.tipoCarga} | <strong>Data:</strong> {nota.data}
-                            </div>
-                            {nota.divergencia && (
-                              <div className="text-orange-600 dark:text-orange-400 font-medium">
-                                🔸 {nota.divergencia.observacoes}
-                                {nota.divergencia.volumesInformados !== nota.volumes && (
-                                  <span>
-                                    {" "}
-                                    (Volumes alterados: {nota.volumes} → {nota.divergencia.volumesInformados})
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          <div className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-                            {new Date(nota.timestamp).toLocaleString("pt-BR")}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                    nota={nota}
+                    onLongPress={() => handleLongPressNota(nota)}
+                  />
                 ))}
               </div>
             )}
@@ -2140,6 +2408,7 @@ export default function RecebimentoPage() {
           iniciarBipagem={iniciarBipagem}
           finalizando={finalizando}
           setModalConsultarNfsFaltantes={setModalConsultarNfsFaltantes}
+          onAlterarStatusNota={handleLongPressNota}
         />
       )}
 
@@ -2207,6 +2476,20 @@ export default function RecebimentoPage() {
         onClose={() => setModalConsultarNfsFaltantes(false)}
         transportadoraSelecionada={transportadoraSelecionada}
       />
+
+      {/* Modal de Alterar Status */}
+      {notaParaAlterarStatus && (
+        <AlterarStatusModal
+          isOpen={modalAlterarStatus}
+          nota={notaParaAlterarStatus}
+          onAlterarParaDivergencia={handleAlterarParaDivergencia}
+          onAlterarParaOk={handleAlterarParaOk}
+          onClose={() => {
+            setModalAlterarStatus(false)
+            setNotaParaAlterarStatus(null)
+          }}
+        />
+      )}
       </div>
     </>
   )

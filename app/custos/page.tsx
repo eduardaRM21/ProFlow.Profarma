@@ -1770,7 +1770,7 @@ NOTAS FISCAIS:`
               <ConnectionStatus />
               
               {/* Botão de Refresh Manual */}
-              
+               
               
               {/* Menu Dropdown do Usuário */}
               <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
@@ -1961,7 +1961,7 @@ NOTAS FISCAIS:`
               <span className="font-medium text-gray-700 dark:text-gray-400">Filtros</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-5 ">
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-5">
               {/* Filtro de texto geral */}
               <div>
                 <Label className="text-sm dark:text-gray-200">Buscar por texto</Label>
@@ -2080,22 +2080,22 @@ NOTAS FISCAIS:`
               </CardContent>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
               {relatoriosFiltrados.map((relatorio) => (
                 <Card
                   key={relatorio.id}
                   className="border-orange-200 hover:shadow-md transition-shadow dark:bg-gray-900/20 dark:border-orange-500/50"
                 >
                   <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <FileText className="h-5 w-5 text-orange-600" />
-                        <span className="font-semibold text-gray-900 dark:text-gray-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="flex items-center space-x-2 min-w-0">
+                        <FileText className="h-5 w-5 text-orange-600 flex-shrink-0" />
+                        <span className="font-semibold text-sm sm:text-base text-gray-900 dark:text-gray-200 truncate">
                           {formatarNomeRelatorio(relatorio)}
                         </span>
                       </div>
                       <Badge
-                        className={`text-xs ${relatorio.status === "lancado"
+                        className={`text-xs w-fit ${relatorio.status === "lancado"
                           ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200"
                           : relatorio.status === "em_lancamento"
                             ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200"
@@ -2116,61 +2116,62 @@ NOTAS FISCAIS:`
                   </CardHeader>
 
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                       <div>
-                        <div className="text-gray-600 dark:text-gray-400">Colaborador</div>
-                        <div className="font-medium">
+                        <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">Colaborador</div>
+                        <div className="font-medium text-sm sm:text-base break-words">
                           {Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
                             ? relatorio.colaboradores.join(', ')
                             : 'Não informado'}
                         </div>
                       </div>
                       <div>
-                        <div className="text-gray-600 dark:text-gray-400">Data</div>
-                        <div className="font-medium">
+                        <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">Data</div>
+                        <div className="font-medium text-sm sm:text-base">
                           {relatorio.data} - {relatorio.turno}
                         </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 py-2">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-4 py-2">
                       <div className="text-center">
-                        <div className="text-lg font-bold text-orange-600">
+                        <div className="text-base sm:text-lg lg:text-xl font-bold text-orange-600">
                           {relatorio.quantidadeNotas}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">Notas</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Notas</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-blue-600">
+                        <div className="text-base sm:text-lg lg:text-xl font-bold text-blue-600">
                           {relatorio.somaVolumes}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">Volumes</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Volumes</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-lg font-bold text-red-600">
+                        <div className="text-base sm:text-lg lg:text-xl font-bold text-red-600">
                           {relatorio.totalDivergencias || 0}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                           Divergências
                         </div>
                       </div>
                     </div>
 
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      Liberado em:{" "}
-                      {new Date(relatorio.dataFinalizacao).toLocaleString(
-                        "pt-BR"
-                      )}
-                       <br />
+                    <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                      <div className="mb-1">
+                        Liberado em:{" "}
+                        {new Date(relatorio.dataFinalizacao).toLocaleString(
+                          "pt-BR"
+                        )}
+                      </div>
                        {calcularTempoBipagem(relatorio) && (
-                         <> 
-                         <Clock className="h-3 w-3 inline mr-1" />
-                         Tempo de bipagem: {calcularTempoBipagem(relatorio)}
-                         </>
+                         <div className="flex items-center">
+                           <Clock className="h-3 w-3 mr-1 flex-shrink-0" />
+                           <span>Tempo de bipagem: {calcularTempoBipagem(relatorio)}</span>
+                         </div>
                       )}
                     </div>
 
-                    <div className="flex justify-center items-center space-x-2">
+                    <div className="flex flex-col sm:flex-row justify-center items-stretch sm:items-center gap-2 sm:gap-2">
                       <Dialog open={!!relatorioSelecionado && relatorioSelecionado.id === relatorio.id} onOpenChange={(open) => {
                         if (!open) {
                           setRelatorioSelecionado(null);
@@ -2179,7 +2180,7 @@ NOTAS FISCAIS:`
                         <DialogTrigger asChild>
                           <Button
                             variant="outline"
-                            className="flex-1 w-full sm:w-auto bg-transparent text-xs sm:text-sm dark:bg-gray-900/50 dark:hover:bg-gray-900/20 dark:border-gray-900/20 dark:text-gray-200"
+                            className="w-full sm:flex-1 bg-transparent text-xs sm:text-sm dark:bg-gray-900/50 dark:hover:bg-gray-900/20 dark:border-gray-900/20 dark:text-gray-200"
                             size="sm"
                             onClick={() => {
                               console.log('🔍 Abrindo modal para relatório:', relatorio.nome);
@@ -2201,12 +2202,12 @@ NOTAS FISCAIS:`
                               console.log('🔍 Notas definidas no estado:', (relatorio.notas || []).length);
                             }}
                           >
-                            <Eye className="h-3 w-3 dark:text-gray-400" />
+                            <Eye className="h-3 w-3 sm:h-4 sm:w-4 dark:text-gray-400" />
                             <span className="hidden sm:inline">Ver Detalhes</span>
                             <span className="sm:hidden">Detalhes</span>
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
                           <DialogHeader>
                             <DialogTitle className="flex items-center space-x-2">
                               <Package className="h-4 w-4 text-orange-600" />
@@ -2219,7 +2220,7 @@ NOTAS FISCAIS:`
 
                           <div className="space-y-4 ">
                             {/* Resumo do Relatório */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-orange-50 rounded-lg dark:bg-gray-900/50">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4 bg-orange-50 rounded-lg dark:bg-gray-900/50">
                               <div>
                                 <div className="text-sm text-gray-600 dark:text-gray-400">
                                   Transportadora
@@ -2259,7 +2260,7 @@ NOTAS FISCAIS:`
                             </div>
 
                             {/* Botões de Cópia e Exportar */}
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                               <Button
                                 onClick={() => copiarNFs(notasFiltradas)}
                                 variant="outline"
@@ -2530,124 +2531,244 @@ NOTAS FISCAIS:`
                                 )}
                               </div>
                             ) : (
-                              <ScrollArea className="max-h-96 overflow-y-auto overflow-x-hidden ">
-                                <div className="min-w-max">
-                                  {/* Cabeçalho fixo */}
-                                  <div className="grid grid-cols-8 gap-4 bg-gray-100 px-4 py-2 sticky top-0 z-10 text-sm font-semibold text-gray-700 border-b border-gray-300 dark:bg-gray-900/50 dark:border-gray-900/20 dark:text-gray-200 dark:text-gray-300">
-                                    <div>NF</div>
-                                    <div>Volumes</div>
-                                    <div>Destino</div>
-                                    <div>Fornecedor</div>
-                                    <div>Cliente</div>
-                                    <div>Status</div>
-                                    <div>Divergência</div>
-                                    <div>Ações</div>
-                                  </div>
-                                {notasFiltradas.map((nota, index) => {
-                                  // Log removido para evitar spam no console - renderização de notas
-                                  
-                                  // Determinar a cor de fundo baseada no status da nota
-                                  const getRowBackgroundColor = () => {
-                                    if (nota.status === "devolvida") {
-                                      return "bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500";
-                                    }
-                                    return index % 2 === 0
-                                      ? "bg-white dark:bg-gray-900/20"
-                                      : "bg-gray-50 dark:bg-gray-900/50";
-                                  };
-                                  
-                                  return (
-                                  <div
-                                    key={nota.id}
-                                    className={`px-4 py-2 grid grid-cols-8 gap-4 text-sm ${getRowBackgroundColor()}`}
-                                  >
-                                    <div className="font-medium">
-                                      {nota.numeroNF}
-                                    </div>
-                                    <div className="text-center">
-                                      {nota.divergencia?.volumesInformados ||
-                                        nota.volumes}
-                                      {nota.divergencia?.volumesInformados !==
-                                        nota.volumes && (
-                                          <span className="text-orange-600 text-xs ml-1">
-                                            (era {nota.volumes})
+                              <>
+                                {/* Versão Mobile - Cards */}
+                                <div className="block md:hidden space-y-3 max-h-96 overflow-y-auto">
+                                  {notasFiltradas.map((nota, index) => {
+                                    const getCardBackgroundColor = () => {
+                                      if (nota.status === "devolvida") {
+                                        return "bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500";
+                                      }
+                                      return "bg-white dark:bg-gray-900/20 border border-gray-200 dark:border-gray-700";
+                                    };
+                                    
+                                    return (
+                                      <div
+                                        key={nota.id}
+                                        className={`p-3 rounded-lg ${getCardBackgroundColor()}`}
+                                      >
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+                                            NF: {nota.numeroNF}
+                                          </div>
+                                          <div className="flex items-center">
+                                            {nota.status === "ok" ? (
+                                              <div className="flex items-center text-green-600">
+                                                <CheckCircle className="h-4 w-4 mr-1" />
+                                                <span className="text-xs font-medium">OK</span>
+                                              </div>
+                                            ) : nota.status === "devolvida" ? (
+                                              <div className="flex items-center text-red-600">
+                                                <RefreshCw className="h-4 w-4 mr-1" />
+                                                <span className="text-xs font-medium">Devolvida</span>
+                                              </div>
+                                            ) : (
+                                              <div className="flex items-center text-orange-600">
+                                                <AlertTriangle className="h-4 w-4 mr-1" />
+                                                <span className="text-xs font-medium">Divergência</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                                          <div>
+                                            <span className="text-gray-500 dark:text-gray-400">Volumes:</span>
+                                            <span className="ml-1 font-medium text-gray-900 dark:text-gray-100">
+                                              {nota.divergencia?.volumesInformados || nota.volumes}
+                                              {nota.divergencia?.volumesInformados !== nota.volumes && (
+                                                <span className="text-orange-600 ml-1">
+                                                  (era {nota.volumes})
+                                                </span>
+                                              )}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-500 dark:text-gray-400">Destino:</span>
+                                            <span className="ml-1 font-medium text-gray-900 dark:text-gray-100 truncate block">
+                                              {nota.destino}
+                                            </span>
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="text-xs mb-2">
+                                          <span className="text-gray-500 dark:text-gray-400">Fornecedor:</span>
+                                          <span className="ml-1 font-medium text-gray-900 dark:text-gray-100 truncate block">
+                                            {nota.fornecedor}
                                           </span>
+                                        </div>
+                                        
+                                        <div className="text-xs mb-2">
+                                          <span className="text-gray-500 dark:text-gray-400">Cliente:</span>
+                                          <span className="ml-1 font-medium text-gray-900 dark:text-gray-100 truncate block">
+                                            {nota.clienteDestino}
+                                          </span>
+                                        </div>
+                                        
+                                        {nota.divergencia && (
+                                          <div className="text-xs mb-2 p-2 bg-orange-50 dark:bg-orange-900/20 rounded">
+                                            <span className="text-gray-500 dark:text-gray-400">Divergência:</span>
+                                            <span className="ml-1 text-orange-600 dark:text-orange-400 block">
+                                              {nota.divergencia.observacoes}
+                                            </span>
+                                          </div>
                                         )}
-                                    </div>
-                                    <div className="text-xs">
-                                      {nota.destino}
-                                    </div>
-                                    <div
-                                      className="text-xs truncate"
-                                      title={nota.fornecedor}
-                                    >
-                                      {nota.fornecedor}
-                                    </div>
-                                    <div
-                                      className="text-xs truncate"
-                                      title={nota.clienteDestino}
-                                    >
-                                      {nota.clienteDestino}
-                                    </div>
-                                    <div className="flex items-center">
-                                      {nota.status === "ok" ? (
-                                        <div className="flex items-center text-green-600">
-                                          <CheckCircle className="h-3 w-3 mr-1" />
-                                          <span className="text-xs">OK</span>
-                                        </div>
-                                      ) : nota.status === "devolvida" ? (
-                                        <div className="flex items-center text-red-600">
-                                          <RefreshCw className="h-3 w-3 mr-1" />
-                                          <span className="text-xs">Devolvida</span>
-                                        </div>
-                                      ) : (
-                                        <div className="flex items-center text-orange-600">
-                                          <AlertTriangle className="h-3 w-3 mr-1" />
-                                          <span className="text-xs">Div.</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="text-xs">
-                                      {nota.divergencia && (
-                                        <span
-                                          className="text-orange-600"
-                                          title={nota.divergencia.observacoes}
-                                        >
-                                          {nota.divergencia.observacoes}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center justify-center">
-                                      {nota.status !== "devolvida" && (
-                                        <Button
-                                          onClick={() => marcarNotaComoDevolvida(nota.id)}
-                                          variant="outline"
-                                          size="sm"
-                                          className="h-6 px-2 text-xs bg-red-50 hover:bg-red-100 border-red-200 text-red-700 dark:bg-red-900/50 dark:hover:bg-red-900 dark:border-red-900/20 dark:text-red-200"
-                                        >
-                                          <RefreshCw className="h-3 w-3 mr-1" />
-                                          Devolver
-                                        </Button>
-                                      )}
+                                        
+                                        {nota.status !== "devolvida" && (
+                                          <div className="mt-2">
+                                            <Button
+                                              onClick={() => marcarNotaComoDevolvida(nota.id)}
+                                              variant="outline"
+                                              size="sm"
+                                              className="w-full text-xs bg-red-50 hover:bg-red-100 border-red-200 text-red-700 dark:bg-red-900/50 dark:hover:bg-red-900 dark:border-red-900/20 dark:text-red-200"
+                                            >
+                                              <RefreshCw className="h-3 w-3 mr-1" />
+                                              Devolver
+                                            </Button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                  
+                                  {/* Total Mobile */}
+                                  <div className="bg-orange-50 dark:bg-gray-900/100 p-3 rounded-lg border border-orange-200 dark:border-orange-900/50">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-sm font-bold text-orange-800 dark:text-orange-400">Total Volumes:</span>
+                                      <span className="text-sm font-bold text-orange-800 dark:text-orange-400">
+                                        {notasFiltradas.reduce(
+                                          (sum, nota) =>
+                                            sum +
+                                            (nota.divergencia?.volumesInformados ||
+                                              nota.volumes),
+                                          0
+                                        )}
+                                      </span>
                                     </div>
                                   </div>
-                                  );
-                                })}
-                                <div className="bg-orange-50 px-4 py-2 grid grid-cols-8 gap-4 text-sm font-bold text-orange-800 dark:bg-gray-900/100 dark:text-orange-400">
-                                  <div className="col-span-1">Total:</div>
-                                  <div className="text-center">
-                                    {notasFiltradas.reduce(
-                                      (sum, nota) =>
-                                        sum +
-                                        (nota.divergencia?.volumesInformados ||
-                                          nota.volumes),
-                                      0
-                                    )}
-                                  </div>
-                                  <div className="col-span-6"></div>
                                 </div>
+
+                                {/* Versão Desktop - Tabela */}
+                                <div className="hidden md:block">
+                                  <ScrollArea className="max-h-96 overflow-y-auto">
+                                    <div className="min-w-max">
+                                      {/* Cabeçalho fixo */}
+                                      <div className="grid grid-cols-8 gap-2 sm:gap-4 bg-gray-100 px-2 sm:px-4 py-2 sticky top-0 z-10 text-xs sm:text-sm font-semibold text-gray-700 border-b border-gray-300 dark:bg-gray-900/50 dark:border-gray-900/20 dark:text-gray-200 dark:text-gray-300">
+                                        <div className="min-w-[80px]">NF</div>
+                                        <div className="min-w-[70px] text-center">Volumes</div>
+                                        <div className="min-w-[100px]">Destino</div>
+                                        <div className="min-w-[120px]">Fornecedor</div>
+                                        <div className="min-w-[120px]">Cliente</div>
+                                        <div className="min-w-[80px]">Status</div>
+                                        <div className="min-w-[150px]">Divergência</div>
+                                        <div className="min-w-[90px] text-center">Ações</div>
+                                      </div>
+                                    {notasFiltradas.map((nota, index) => {
+                                      // Determinar a cor de fundo baseada no status da nota
+                                      const getRowBackgroundColor = () => {
+                                        if (nota.status === "devolvida") {
+                                          return "bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500";
+                                        }
+                                        return index % 2 === 0
+                                          ? "bg-white dark:bg-gray-900/20"
+                                          : "bg-gray-50 dark:bg-gray-900/50";
+                                      };
+                                      
+                                      return (
+                                      <div
+                                        key={nota.id}
+                                        className={`px-2 sm:px-4 py-2 grid grid-cols-8 gap-2 sm:gap-4 text-xs sm:text-sm ${getRowBackgroundColor()}`}
+                                      >
+                                        <div className="font-medium min-w-[80px]">
+                                          {nota.numeroNF}
+                                        </div>
+                                        <div className="text-center min-w-[70px]">
+                                          {nota.divergencia?.volumesInformados ||
+                                            nota.volumes}
+                                          {nota.divergencia?.volumesInformados !==
+                                            nota.volumes && (
+                                              <span className="text-orange-600 text-[10px] sm:text-xs ml-1 block sm:inline">
+                                                (era {nota.volumes})
+                                              </span>
+                                            )}
+                                        </div>
+                                        <div className="text-[10px] sm:text-xs min-w-[100px] truncate" title={nota.destino}>
+                                          {nota.destino}
+                                        </div>
+                                        <div
+                                          className="text-[10px] sm:text-xs truncate min-w-[120px]"
+                                          title={nota.fornecedor}
+                                        >
+                                          {nota.fornecedor}
+                                        </div>
+                                        <div
+                                          className="text-[10px] sm:text-xs truncate min-w-[120px]"
+                                          title={nota.clienteDestino}
+                                        >
+                                          {nota.clienteDestino}
+                                        </div>
+                                        <div className="flex items-center min-w-[80px]">
+                                          {nota.status === "ok" ? (
+                                            <div className="flex items-center text-green-600">
+                                              <CheckCircle className="h-3 w-3 mr-1 flex-shrink-0" />
+                                              <span className="text-[10px] sm:text-xs">OK</span>
+                                            </div>
+                                          ) : nota.status === "devolvida" ? (
+                                            <div className="flex items-center text-red-600">
+                                              <RefreshCw className="h-3 w-3 mr-1 flex-shrink-0" />
+                                              <span className="text-[10px] sm:text-xs">Devolvida</span>
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center text-orange-600">
+                                              <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0" />
+                                              <span className="text-[10px] sm:text-xs">Div.</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="text-[10px] sm:text-xs min-w-[150px] truncate">
+                                          {nota.divergencia && (
+                                            <span
+                                              className="text-orange-600"
+                                              title={nota.divergencia.observacoes}
+                                            >
+                                              {nota.divergencia.observacoes}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center justify-center min-w-[90px]">
+                                          {nota.status !== "devolvida" && (
+                                            <Button
+                                              onClick={() => marcarNotaComoDevolvida(nota.id)}
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-6 px-1 sm:px-2 text-[10px] sm:text-xs bg-red-50 hover:bg-red-100 border-red-200 text-red-700 dark:bg-red-900/50 dark:hover:bg-red-900 dark:border-red-900/20 dark:text-red-200"
+                                            >
+                                              <RefreshCw className="h-2.5 w-2.5 sm:h-3 sm:w-3 mr-0.5 sm:mr-1" />
+                                              <span className="hidden sm:inline">Devolver</span>
+                                              <span className="sm:hidden">Dev.</span>
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
+                                      );
+                                    })}
+                                    <div className="bg-orange-50 px-2 sm:px-4 py-2 grid grid-cols-8 gap-2 sm:gap-4 text-xs sm:text-sm font-bold text-orange-800 dark:bg-gray-900/100 dark:text-orange-400">
+                                      <div className="col-span-1 min-w-[80px]">Total:</div>
+                                      <div className="text-center min-w-[70px]">
+                                        {notasFiltradas.reduce(
+                                          (sum, nota) =>
+                                            sum +
+                                            (nota.divergencia?.volumesInformados ||
+                                              nota.volumes),
+                                          0
+                                        )}
+                                      </div>
+                                      <div className="col-span-6"></div>
+                                    </div>
+                                  </div>
+                                </ScrollArea>
                               </div>
-                            </ScrollArea>
+                              </>
                             )}
                           </div>
                         </DialogContent>
@@ -2665,13 +2786,13 @@ NOTAS FISCAIS:`
                           loadingStatusButtons[`${relatorio.id}-em_lancamento`]
                         }
                         variant="outline"
-                        className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-900/50 dark:hover:bg-blue-900/20 dark:border-blue-900/20 dark:text-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full sm:flex-1 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-900/50 dark:hover:bg-blue-900/20 dark:border-blue-900/20 dark:text-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         size="sm"
                       >
                         {loadingStatusButtons[`${relatorio.id}-em_lancamento`] ? (
-                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-2 animate-spin" />
                         ) : (
-                          <Clock className="h-4 w-4 mr-2" />
+                          <Clock className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                         )}
                         <span className="hidden sm:inline">
                           {loadingStatusButtons[`${relatorio.id}-em_lancamento`] ? "Processando..." : "Em Lançamento"}
@@ -2691,13 +2812,13 @@ NOTAS FISCAIS:`
                           loadingStatusButtons[`${relatorio.id}-lancado`]
                         }
                         variant="outline"
-                        className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700 dark:bg-green-900/50 dark:hover:bg-green-900/20 dark:border-green-900/20 dark:text-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full sm:flex-1 bg-green-50 hover:bg-green-100 border-green-200 text-green-700 dark:bg-green-900/50 dark:hover:bg-green-900/20 dark:border-green-900/20 dark:text-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         size="sm"
                       >
                         {loadingStatusButtons[`${relatorio.id}-lancado`] ? (
-                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          <RefreshCw className="h-3 w-3 sm:h-4 sm:w-4 mr-2 animate-spin" />
                         ) : (
-                          <CheckCircle className="h-4 w-4 mr-2" />
+                          <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-2" />
                         )}
                         <span className="hidden sm:inline">
                           {loadingStatusButtons[`${relatorio.id}-lancado`] ? "Processando..." : "Lançado"}

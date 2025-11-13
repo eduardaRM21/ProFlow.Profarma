@@ -72,17 +72,36 @@ export default function SelecaoTransportadoraModal({
       
       // Buscar todas as notas do consolidado (não apenas "deu entrada")
       // para calcular o progresso baseado no status
-      const { data: consolidadoData, error } = await supabase
-        .from('notas_consolidado')
-        .select('transportadora, numero_nf, status')
-        .not('transportadora', 'is', null) // Excluir valores nulos
-        .neq('transportadora', '') // Excluir valores vazios
-        .order('data_entrada', { ascending: false })
+      // IMPORTANTE: Remover limite para buscar TODAS as transportadoras, incluindo as mais antigas
+      let allConsolidadoData: any[] = []
+      let offset = 0
+      const limit = 1000 // Limite por página
+      let hasMore = true
 
-      if (error) {
-        console.error('❌ Erro ao carregar transportadoras:', error)
-        return
+      while (hasMore) {
+        const { data: consolidadoData, error } = await supabase
+          .from('notas_consolidado')
+          .select('transportadora, numero_nf, status, data_entrada')
+          .not('transportadora', 'is', null) // Excluir valores nulos
+          .neq('transportadora', '') // Excluir valores vazios
+          .order('data_entrada', { ascending: false })
+          .range(offset, offset + limit - 1)
+
+        if (error) {
+          console.error('❌ Erro ao carregar transportadoras:', error)
+          break
+        }
+
+        if (consolidadoData && consolidadoData.length > 0) {
+          allConsolidadoData = [...allConsolidadoData, ...consolidadoData]
+          offset += limit
+          hasMore = consolidadoData.length === limit // Se retornou menos que o limite, não há mais dados
+        } else {
+          hasMore = false
+        }
       }
+
+      const consolidadoData = allConsolidadoData
 
       console.log(`📋 Total de notas encontradas: ${consolidadoData?.length || 0}`)
 
@@ -142,15 +161,38 @@ export default function SelecaoTransportadoraModal({
       }
 
       // Buscar relatórios liberados parcialmente e adicionar à lista
-      const { data: relatoriosData, error: relatoriosError } = await supabase
-        .from('relatorios')
-        .select('id, nome, area, data, status, total_divergencias')
-        .eq('area', 'recebimento')
-        .eq('status', 'liberado_parcialmente')
-        .order('data', { ascending: false })
-        .limit(10)
+      // IMPORTANTE: Buscar TODOS os relatórios, incluindo os mais antigos
+      let allRelatoriosData: any[] = []
+      let relatoriosOffset = 0
+      const relatoriosLimit = 1000
+      let hasMoreRelatorios = true
 
-      if (!relatoriosError && relatoriosData && relatoriosData.length > 0) {
+      while (hasMoreRelatorios) {
+        const { data: relatoriosData, error: relatoriosError } = await supabase
+          .from('relatorios')
+          .select('id, nome, area, data, status, total_divergencias')
+          .eq('area', 'recebimento')
+          .eq('status', 'liberado_parcialmente')
+          .order('data', { ascending: false })
+          .range(relatoriosOffset, relatoriosOffset + relatoriosLimit - 1)
+
+        if (relatoriosError) {
+          console.error('❌ Erro ao carregar relatórios:', relatoriosError)
+          break
+        }
+
+        if (relatoriosData && relatoriosData.length > 0) {
+          allRelatoriosData = [...allRelatoriosData, ...relatoriosData]
+          relatoriosOffset += relatoriosLimit
+          hasMoreRelatorios = relatoriosData.length === relatoriosLimit
+        } else {
+          hasMoreRelatorios = false
+        }
+      }
+
+      const relatoriosData = allRelatoriosData
+
+      if (relatoriosData && relatoriosData.length > 0) {
         for (const relatorio of relatoriosData) {
           // Buscar total de notas do relatório
           const { data: relatorioNotasData, error: notasError } = await supabase

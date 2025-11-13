@@ -22,6 +22,11 @@
     "recuperar-dados": "node scripts/recuperar-dados-relatorios.js",
     "recuperar-dados:historico": "node scripts/recuperar-dados-relatorios.js historico",
     "recuperar-dados:completo": "node scripts/recuperar-dados-relatorios.js completo",
+    "investigar-misturadas": "node scripts/investigar-notas-misturadas.js",
+    "corrigir-misturadas": "node scripts/corrigir-notas-misturadas.js",
+    "corrigir-misturadas:fornecedor": "node scripts/corrigir-notas-misturadas.js fornecedor",
+    "analisar-transportadoras": "node scripts/recuperar-notas-transportadoras-especificas.js",
+    "recuperar-transportadoras": "node scripts/recuperar-notas-transportadoras-especificas.js recuperar",
     "fix-dialog-accessibility": "node scripts/fix-dialog-accessibility.js",
     "test-406-fix": "node scripts/test-406-fix.js"
   },
@@ -54,6 +59,8 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.18.0",
     "@supabase/supabase-js": "^2.53.0",
     "@tanstack/react-query": "^5.90.5",
     "@zxing/library": "latest",
@@ -81,6 +88,7 @@
     "swr": "^2.3.6",
     "tailwind-merge": "^2.5.5",
     "tailwindcss-animate": "^1.0.7",
+    "three": "^0.160.1",
     "vaul": "^0.9.6",
     "zod": "^3.24.1"
   },

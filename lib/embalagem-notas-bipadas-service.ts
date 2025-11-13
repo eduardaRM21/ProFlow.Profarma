@@ -757,16 +757,142 @@ export class EmbalagemNotasBipadasService {
     try {
       console.log('🔍 Verificando se nota já foi bipada:', codigoCompleto)
 
-      // Primeiro, buscar a nota na tabela embalagem_notas_bipadas
-      const { data: notaData, error: notaError } = await retryWithBackoff(async () => {
+      // Extrair numero_nf do código completo para busca alternativa
+      const partes = codigoCompleto.split('|')
+      const numeroNF = partes.length >= 2 ? partes[1] : null
+      console.log('🔍 Número NF extraído:', numeroNF)
+
+      // 1. Primeiro tentar buscar por codigo_completo (comparação exata) - SEM filtro de status
+      // Buscar independente do status, pois se a nota foi bipada, não pode ser bipada novamente
+      let { data: notaData, error: notaError } = await retryWithBackoff(async () => {
         return await getSupabase()
           .from('embalagem_notas_bipadas')
-          .select('carro_id, timestamp_bipagem')
-          .eq('codigo_completo', codigoCompleto)
-          .eq('status', 'bipada')
+          .select('carro_id, timestamp_bipagem, codigo_completo, numero_nf, status')
+          .eq('codigo_completo', codigoCompleto.trim())
           .order('timestamp_bipagem', { ascending: false })
           .limit(1)
       })
+
+      if (notaError) {
+        console.error('❌ Erro ao verificar se nota já foi bipada (por codigo_completo):', notaError)
+      } else {
+        console.log('📊 Resultado busca por codigo_completo:', {
+          encontradas: notaData?.length || 0,
+          codigo_buscado: codigoCompleto.trim(),
+          notas: notaData?.map(n => ({ 
+            codigo_completo: n.codigo_completo, 
+            status: n.status, 
+            carro_id: n.carro_id 
+          }))
+        })
+      }
+
+      // 2. Se não encontrou por codigo_completo e temos numero_nf, buscar por numero_nf - SEM filtro de status
+      if ((!notaData || notaData.length === 0) && numeroNF) {
+        console.log('🔍 Não encontrado por codigo_completo, tentando buscar por numero_nf:', numeroNF)
+        
+        const resultadoNumeroNF = await retryWithBackoff(async () => {
+          return await getSupabase()
+            .from('embalagem_notas_bipadas')
+            .select('carro_id, timestamp_bipagem, codigo_completo, numero_nf, status')
+            .eq('numero_nf', numeroNF.trim())
+            .order('timestamp_bipagem', { ascending: false })
+            .limit(1)
+        })
+
+        if (resultadoNumeroNF.error) {
+          console.error('❌ Erro ao verificar por numero_nf:', resultadoNumeroNF.error)
+        } else {
+          console.log('📊 Resultado busca por numero_nf:', {
+            encontradas: resultadoNumeroNF.data?.length || 0,
+            numero_nf_buscado: numeroNF.trim(),
+            notas: resultadoNumeroNF.data?.map(n => ({ 
+              codigo_completo: n.codigo_completo, 
+              numero_nf: n.numero_nf,
+              status: n.status, 
+              carro_id: n.carro_id 
+            }))
+          })
+          
+          if (resultadoNumeroNF.data && resultadoNumeroNF.data.length > 0) {
+            notaData = resultadoNumeroNF.data
+            notaError = null
+            console.log('✅ Nota encontrada por numero_nf:', {
+              numero_nf: resultadoNumeroNF.data[0].numero_nf,
+              codigo_completo_salvo: resultadoNumeroNF.data[0].codigo_completo,
+              codigo_completo_buscado: codigoCompleto,
+              status: resultadoNumeroNF.data[0].status
+            })
+          }
+        }
+      }
+
+      // 3. Se ainda não encontrou, tentar busca case-insensitive e com trim - SEM filtro de status
+      if (!notaData || notaData.length === 0) {
+        console.log('🔍 Tentando busca case-insensitive nas últimas 100 notas...')
+        
+        const todasNotas = await retryWithBackoff(async () => {
+          return await getSupabase()
+            .from('embalagem_notas_bipadas')
+            .select('carro_id, timestamp_bipagem, codigo_completo, numero_nf, status')
+            .order('timestamp_bipagem', { ascending: false })
+            .limit(100)
+        })
+
+        if (todasNotas.data && todasNotas.data.length > 0) {
+          console.log(`📊 Total de notas carregadas para busca: ${todasNotas.data.length}`)
+          const codigoCompletoNormalizado = codigoCompleto.trim().toUpperCase()
+          const numeroNFNormalizado = numeroNF ? numeroNF.trim() : null
+          
+          const notaEncontrada = todasNotas.data.find((nota: any) => {
+            const codigoSalvo = (nota.codigo_completo || '').trim().toUpperCase()
+            const numeroNFSalvo = (nota.numero_nf || '').trim()
+            
+            const matchCodigo = codigoSalvo === codigoCompletoNormalizado
+            const matchNumero = numeroNFNormalizado && numeroNFSalvo === numeroNFNormalizado
+            
+            if (matchCodigo || matchNumero) {
+              console.log('🎯 Match encontrado:', {
+                matchCodigo,
+                matchNumero,
+                codigo_salvo: nota.codigo_completo,
+                codigo_buscado: codigoCompleto,
+                numero_nf_salvo: nota.numero_nf,
+                numero_nf_buscado: numeroNF,
+                status: nota.status
+              })
+            }
+            
+            return matchCodigo || matchNumero
+          })
+
+          if (notaEncontrada) {
+            notaData = [notaEncontrada]
+            console.log('✅ Nota encontrada após normalização:', {
+              codigo_salvo: notaEncontrada.codigo_completo,
+              codigo_buscado: codigoCompleto,
+              numero_nf_salvo: notaEncontrada.numero_nf,
+              status: notaEncontrada.status
+            })
+          } else {
+            console.log('⚠️ Nota não encontrada nem após normalização. Verificando se número NF existe na lista...')
+            if (numeroNFNormalizado) {
+              const notaComMesmoNumero = todasNotas.data.find((n: any) => (n.numero_nf || '').trim() === numeroNFNormalizado)
+              if (notaComMesmoNumero) {
+                console.log('🔍 Encontrada nota com mesmo número NF mas código diferente:', {
+                  codigo_completo_salvo: notaComMesmoNumero.codigo_completo,
+                  codigo_completo_buscado: codigoCompleto,
+                  numero_nf: notaComMesmoNumero.numero_nf,
+                  status: notaComMesmoNumero.status
+                })
+                notaData = [notaComMesmoNumero]
+              }
+            }
+          }
+        } else {
+          console.log('⚠️ Nenhuma nota encontrada na busca ampliada')
+        }
+      }
 
       if (notaError) {
         console.error('❌ Erro ao verificar se nota já foi bipada:', notaError)
@@ -778,28 +904,30 @@ export class EmbalagemNotasBipadasService {
       } 
 
       if (notaData && notaData.length > 0) {
-        const nota = notaData[0] as { carro_id: string; timestamp_bipagem: string }
+        const nota = notaData[0] as { carro_id: string; timestamp_bipagem: string; codigo_completo?: string; numero_nf?: string }
 
-        // Buscar informações do carro
+        // Buscar informações do carro na tabela carros_status
         const { data: carroData, error: carroError } = await retryWithBackoff(async () => {
           return await getSupabase()
-            .from('embalagem_notas_bipadas')
-            .select('carro_id, numero_nf, fornecedor')
+            .from('carros_status')
+            .select('carro_id, nome_carro')
             .eq('carro_id', nota.carro_id)
             .limit(1)
-            .single()
+            .maybeSingle()
         })
 
         if (carroError) {
           console.error('❌ Erro ao buscar informações do carro:', carroError)
         }
 
-        const carroNome = (carroData?.carro_id as string) || 'Carro não encontrado'
+        const carroNome = (carroData?.nome_carro as string) || (carroData?.carro_id as string) || 'Carro não encontrado'
 
         console.log('⚠️ Nota já foi bipada em outro carro:', {
           carro_id: nota.carro_id,
           carro_nome: carroNome,
-          timestamp: nota.timestamp_bipagem
+          timestamp: nota.timestamp_bipagem,
+          codigo_completo_encontrado: nota.codigo_completo,
+          numero_nf_encontrado: nota.numero_nf
         })
 
         return {
@@ -813,7 +941,7 @@ export class EmbalagemNotasBipadasService {
         }
       }
 
-      console.log('✅ Nota não foi bipada em nenhum carro')
+      console.log('✅ Nota não foi bipada em nenhum carro (verificação completa realizada)')
       return {
         success: true,
         jaBipada: false

@@ -174,6 +174,80 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
     return () => clearInterval(interval)
   }, [conversaId])
 
+  // Função para verificar se uma nota já foi bipada em qualquer carro (local e banco)
+  const verificarNotaEmTodosCarros = (codigoCompleto: string): { 
+    jaBipada: boolean; 
+    carroNome?: string; 
+    timestamp?: string 
+  } => {
+    // 1. Verificar nos carros do estado local atual (exceto o carro atual)
+    for (const carro of carros) {
+      // Pular o carro ativo - duplicidade no mesmo carro é verificada em validarCodigo
+      if (carro.id === carroAtivo?.id) {
+        continue
+      }
+      const notaEncontrada = carro.nfs.find((nf) => nf.codigoCompleto === codigoCompleto)
+      if (notaEncontrada) {
+        console.log(`⚠️ Nota já encontrada no carro local: ${carro.nome}`)
+        return {
+          jaBipada: true,
+          carroNome: carro.nome,
+          timestamp: notaEncontrada.timestamp
+        }
+      }
+    }
+
+    // 2. Verificar no localStorage (outras sessões)
+    const chaveStorage = `profarma_carros_${sessionData.colaboradores.join("_")}_${sessionData.data}_${sessionData.turno}`
+    const dadosSalvos = localStorage.getItem(chaveStorage)
+    if (dadosSalvos) {
+      try {
+        const dados = JSON.parse(dadosSalvos)
+        const carrosSalvos = dados.carros || []
+        for (const carro of carrosSalvos) {
+          if (carro.nfs && Array.isArray(carro.nfs)) {
+            const notaEncontrada = carro.nfs.find((nf: any) => nf.codigoCompleto === codigoCompleto)
+            if (notaEncontrada) {
+              console.log(`⚠️ Nota já encontrada no localStorage: ${carro.nome}`)
+              return {
+                jaBipada: true,
+                carroNome: carro.nome,
+                timestamp: notaEncontrada.timestamp
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao verificar localStorage:", error)
+      }
+    }
+
+    // 3. Verificar em carros de embalagem salvos
+    const carrosEmbalagem = localStorage.getItem("profarma_carros_embalagem")
+    if (carrosEmbalagem) {
+      try {
+        const carros = JSON.parse(carrosEmbalagem)
+        for (const carro of carros) {
+          if (carro.nfs && Array.isArray(carro.nfs)) {
+            const notaEncontrada = carro.nfs.find((nf: any) => nf.codigoCompleto === codigoCompleto)
+            if (notaEncontrada) {
+              console.log(`⚠️ Nota já encontrada em carro de embalagem: ${carro.nomeCarro || carro.nome}`)
+              return {
+                jaBipada: true,
+                carroNome: carro.nomeCarro || carro.nome,
+                timestamp: notaEncontrada.timestamp
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao verificar carros de embalagem:", error)
+      }
+    }
+
+    return { jaBipada: false }
+  }
+
   const verificarNotasDuplicadas = () => {
     const todasNotas: {[key: string]: string[]} = {}
     
@@ -517,6 +591,15 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
       }
     }
 
+    // Verificar se o destino é ES99, SP99 ou RJ99 - cargas que devem ser segregadas
+    const destinosSegregacao = ['ES99', 'SP99', 'RJ99']
+    if (destinosSegregacao.includes(codigoDestino)) {
+      return {
+        valido: false,
+        erro: "Alerta, carga deve ser segregada, por favor bipar carga no ambiente WMS",
+      }
+    }
+
     // Verificar duplicidade no carro ativo
     const jaBipada = carroAtivo.nfs.find((nf) => nf.codigoCompleto === codigo)
     if (jaBipada) {
@@ -599,16 +682,73 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
       return
     }
 
-    // Verificar se a nota já foi bipada em algum carro
-    const verificarNota = await EmbalagemNotasBipadasService.verificarNotaJaBipada(codigoInput.trim())
+    const codigoParaVerificar = codigoInput.trim()
+    console.log('🚀 [handleBipagem] Iniciando validação de nota:', codigoParaVerificar)
+    console.log('🚀 [handleBipagem] Carro ativo:', carroAtivo.id, carroAtivo.nome)
+
+    // 1. Primeiro verificar no banco de dados (tabela embalagem_notas_bipadas)
+    console.log('🔍 [handleBipagem] Verificando no banco de dados...')
+    const verificarNota = await EmbalagemNotasBipadasService.verificarNotaJaBipada(codigoParaVerificar)
+    
+    console.log('📊 [handleBipagem] Resultado verificação banco:', {
+      success: verificarNota.success,
+      jaBipada: verificarNota.jaBipada,
+      carroInfo: verificarNota.carroInfo,
+      error: verificarNota.error
+    })
     
     if (verificarNota.success && verificarNota.jaBipada) {
-      alert(`⚠️ Esta nota já foi bipada no carro de "${verificarNota.carroInfo?.carro_nome}" em ${new Date(verificarNota.carroInfo?.timestamp_bipagem || '').toLocaleString()}. Não é possível bipar a mesma nota em outro carro.`)
+      console.log('🛑 [handleBipagem] BLOQUEANDO: Nota já bipada no banco')
+      console.log('🛑 [handleBipagem] Detalhes do bloqueio:', {
+        carroNome: verificarNota.carroInfo?.carro_nome,
+        carroId: verificarNota.carroInfo?.carro_id,
+        timestamp: verificarNota.carroInfo?.timestamp_bipagem
+      })
+      
+      const mensagemErro = `⚠️ Esta nota já foi bipada no carro "${verificarNota.carroInfo?.carro_nome}" em ${new Date(verificarNota.carroInfo?.timestamp_bipagem || '').toLocaleString()}. Não é possível bipar a mesma nota em outro carro.`
+      
+      alert(mensagemErro)
+      toast({
+        title: "Nota já bipada",
+        description: mensagemErro,
+        variant: "destructive",
+      })
+      
       setCodigoInput("")
+      console.log('🛑 [handleBipagem] RETURN executado - função finalizada')
+      return // Bloqueio final - não deve continuar além deste ponto
+    }
+
+    // 2. Depois verificar localmente (estado local e localStorage)
+    console.log('🔍 [handleBipagem] Verificando localmente...')
+    const verificarLocal = verificarNotaEmTodosCarros(codigoParaVerificar)
+    console.log('📊 [handleBipagem] Resultado verificação local:', verificarLocal)
+    
+    if (verificarLocal.jaBipada) {
+      console.log('🛑 [handleBipagem] BLOQUEANDO: Nota já bipada localmente')
+      const timestamp = verificarLocal.timestamp ? new Date(verificarLocal.timestamp).toLocaleString("pt-BR") : "horário desconhecido"
+      const mensagemErro = `⚠️ Esta nota já foi bipada no carro "${verificarLocal.carroNome}" em ${timestamp}. Não é possível bipar a mesma nota em outro carro.`
+      
+      alert(mensagemErro)
+      toast({
+        title: "Nota já bipada",
+        description: mensagemErro,
+        variant: "destructive",
+      })
+      
+      setCodigoInput("")
+      console.log('🛑 [handleBipagem] RETURN executado (local) - função finalizada')
+      return // Bloqueio final - não deve continuar além deste ponto
+    }
+
+    // Verificação final de segurança antes de prosseguir
+    if (verificarNota.success && verificarNota.jaBipada) {
+      console.error('❌ [handleBipagem] ERRO CRÍTICO: Validação falhou mas código continuou!')
       return
     }
 
-    const resultado = await validarCodigo(codigoInput.trim())
+    console.log('✅ [handleBipagem] Validações passaram, prosseguindo com validarCodigo...')
+    const resultado = await validarCodigo(codigoParaVerificar)
 
     if (resultado.valido && resultado.nf) {
       // NOTA: As notas só serão salvas no banco quando o carro for marcado como "embalar carro"
@@ -725,8 +865,76 @@ Para embalar uma nota fiscal, ela deve ter sido processada anteriormente no seto
       setCodigoInput("")
       return
     }
+
+    const codigoParaVerificar = codigo.trim()
+    console.log('🚀 [handleCodigoEscaneado] Iniciando validação de nota:', codigoParaVerificar)
+    console.log('🚀 [handleCodigoEscaneado] Carro ativo:', carroAtivo?.id, carroAtivo?.nome)
+
+    // 1. Primeiro verificar no banco de dados (tabela embalagem_notas_bipadas)
+    console.log('🔍 [handleCodigoEscaneado] Verificando no banco de dados...')
+    const verificarNota = await EmbalagemNotasBipadasService.verificarNotaJaBipada(codigoParaVerificar)
     
-    const resultado = await validarCodigo(codigo.trim())
+    console.log('📊 [handleCodigoEscaneado] Resultado verificação banco:', {
+      success: verificarNota.success,
+      jaBipada: verificarNota.jaBipada,
+      carroInfo: verificarNota.carroInfo,
+      error: verificarNota.error
+    })
+    
+    if (verificarNota.success && verificarNota.jaBipada) {
+      console.log('🛑 [handleCodigoEscaneado] BLOQUEANDO: Nota já bipada no banco')
+      console.log('🛑 [handleCodigoEscaneado] Detalhes do bloqueio:', {
+        carroNome: verificarNota.carroInfo?.carro_nome,
+        carroId: verificarNota.carroInfo?.carro_id,
+        timestamp: verificarNota.carroInfo?.timestamp_bipagem
+      })
+      
+      const mensagemErro = `⚠️ Esta nota já foi bipada no carro "${verificarNota.carroInfo?.carro_nome}" em ${new Date(verificarNota.carroInfo?.timestamp_bipagem || '').toLocaleString()}. Não é possível bipar a mesma nota em outro carro.`
+      
+      alert(mensagemErro)
+      toast({
+        title: "Nota já bipada",
+        description: mensagemErro,
+        variant: "destructive",
+      })
+      
+      setCodigoInput("")
+      setTimeout(() => inputRef.current?.focus(), 100)
+      console.log('🛑 [handleCodigoEscaneado] RETURN executado - função finalizada')
+      return // Bloqueio final - não deve continuar além deste ponto
+    }
+
+    // 2. Depois verificar localmente (estado local e localStorage)
+    console.log('🔍 [handleCodigoEscaneado] Verificando localmente...')
+    const verificarLocal = verificarNotaEmTodosCarros(codigoParaVerificar)
+    console.log('📊 [handleCodigoEscaneado] Resultado verificação local:', verificarLocal)
+    
+    if (verificarLocal.jaBipada) {
+      console.log('🛑 [handleCodigoEscaneado] BLOQUEANDO: Nota já bipada localmente')
+      const timestamp = verificarLocal.timestamp ? new Date(verificarLocal.timestamp).toLocaleString("pt-BR") : "horário desconhecido"
+      const mensagemErro = `⚠️ Esta nota já foi bipada no carro "${verificarLocal.carroNome}" em ${timestamp}. Não é possível bipar a mesma nota em outro carro.`
+      
+      alert(mensagemErro)
+      toast({
+        title: "Nota já bipada",
+        description: mensagemErro,
+        variant: "destructive",
+      })
+      
+      setCodigoInput("")
+      setTimeout(() => inputRef.current?.focus(), 100)
+      console.log('🛑 [handleCodigoEscaneado] RETURN executado (local) - função finalizada')
+      return // Bloqueio final - não deve continuar além deste ponto
+    }
+    
+    // Verificação final de segurança antes de prosseguir
+    if (verificarNota.success && verificarNota.jaBipada) {
+      console.error('❌ [handleCodigoEscaneado] ERRO CRÍTICO: Validação falhou mas código continuou!')
+      return
+    }
+
+    console.log('✅ [handleCodigoEscaneado] Validações passaram, prosseguindo com validarCodigo...')
+    const resultado = await validarCodigo(codigoParaVerificar)
 
     if (resultado.valido && resultado.nf && carroAtivo) {
       // Salvar nota bipada na tabela centralizada

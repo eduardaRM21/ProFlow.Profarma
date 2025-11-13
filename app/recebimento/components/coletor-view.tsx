@@ -25,6 +25,7 @@ import {
 import BarcodeScanner from "./barcode-scanner"
 import type { NotaFiscal } from "@/lib/database-service"
 import { useTheme } from "@/contexts/theme-context"
+import { useLongPress } from "@/hooks/use-long-press"
 import "../coletor-styles.css"
 
 interface ColetorViewProps {
@@ -53,10 +54,11 @@ interface ColetorViewProps {
   iniciarBipagem?: () => void
   finalizando?: boolean
   setModalConsultarNfsFaltantes?: (value: boolean) => void
+  onAlterarStatusNota?: (nota: NotaFiscal) => void
 }
 
 // Componente memoizado para notas individuais para melhorar performance
-const NotaItem = memo(({ nota }: { nota: NotaFiscal }) => {
+const NotaItem = memo(({ nota, onLongPress }: { nota: NotaFiscal; onLongPress?: () => void }) => {
   const timestamp = useMemo(() => {
     return new Date(nota.timestamp).toLocaleTimeString("pt-BR", {
       hour: "2-digit",
@@ -71,15 +73,22 @@ const NotaItem = memo(({ nota }: { nota: NotaFiscal }) => {
   )
 
   const statusText = nota.status === "ok" ? "Nota processada com sucesso" : "Nota com divergência"
+  
+  const longPress = useLongPress({
+    onLongPress: onLongPress || (() => {}),
+    delay: 800, // 800ms para long press
+  })
 
   return (
     <div
-      className={`p-3 border-l-4 rounded-lg coletor-nota-item ${nota.status === "ok"
+      {...longPress}
+      className={`p-3 border-l-4 rounded-lg coletor-nota-item cursor-pointer transition-all hover:shadow-md ${nota.status === "ok"
           ? "coletor-nota-ok"
           : "coletor-nota-divergencia"
         }`}
       role="listitem"
       aria-label={`Nota fiscal ${nota.numeroNF}, status: ${statusText}`}
+      title={onLongPress ? "Segure para alterar o status da nota" : undefined}
     >
       <div className="flex items-start space-x-2">
         <div aria-hidden="true">
@@ -168,7 +177,8 @@ export default function ColetorView({
   sessaoIniciada,
   iniciarBipagem,
   finalizando = false,
-  setModalConsultarNfsFaltantes
+  setModalConsultarNfsFaltantes,
+  onAlterarStatusNota
 }: ColetorViewProps) {
   // Hook do tema
   const { theme } = useTheme()
@@ -526,7 +536,11 @@ export default function ColetorView({
           ) : (
             <div className="space-y-2" role="list" aria-label={`Lista de ${notas.length} notas processadas`}>
               {notas.map((nota) => (
-                <NotaItem key={nota.id} nota={nota} />
+                <NotaItem 
+                  key={nota.id} 
+                  nota={nota} 
+                  onLongPress={onAlterarStatusNota ? () => onAlterarStatusNota(nota) : undefined}
+                />
               ))}
             </div>
           )}

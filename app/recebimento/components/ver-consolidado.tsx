@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { CalendarIcon, BarChart3, ArrowLeft, LogOut, Download, Filter, Search, Package, Trash2, RefreshCw, User, Sun, Moon, Monitor, ChevronDown } from "lucide-react"
+import { CalendarIcon, BarChart3, ArrowLeft, LogOut, Download, Filter, Search, Package, Trash2, RefreshCw, User, Sun, Moon, Monitor, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { getSupabase } from "@/lib/supabase-client"
@@ -69,6 +69,10 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
   const [busca, setBusca] = useState("")
   const [carregando, setCarregando] = useState(false)
   const [fonteDados, setFonteDados] = useState<'local' | 'banco'>('local')
+  
+  // Paginação
+  const [paginaAtual, setPaginaAtual] = useState(1)
+  const [itensPorPagina, setItensPorPagina] = useState(50)
 
   useEffect(() => {
     carregarNotas()
@@ -119,6 +123,8 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
 
   useEffect(() => {
     aplicarFiltros()
+    // Resetar para primeira página quando os filtros mudarem
+    setPaginaAtual(1)
   }, [
     notas,
     dataInicio,
@@ -137,19 +143,48 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
     try {
       // Tentar carregar do banco de dados primeiro
       const supabase = getSupabase()
-      const { data: notasBanco, error } = await supabase
-        .from('notas_consolidado')
-        .select('*')
-        .order('data_entrada', { ascending: false })
+      
+      // Buscar todas as notas usando paginação automática
+      // O Supabase tem limite padrão de 1000 registros, então precisamos buscar em lotes
+      let todasNotasBanco: any[] = []
+      let offset = 0
+      const pageSize = 1000
+      let hasMore = true
 
-      if (error) {
-        console.warn('⚠️ Erro ao carregar do banco, usando localStorage:', error.message)
-        // Fallback para localStorage
-        carregarDoLocalStorage()
-        setFonteDados('local')
-      } else if (notasBanco && notasBanco.length > 0) {
+      console.log('🔄 Iniciando carregamento de notas do banco...')
+
+      while (hasMore) {
+        const { data: notasBanco, error, count } = await supabase
+          .from('notas_consolidado')
+          .select('*', { count: 'exact' })
+          .order('data_entrada', { ascending: false })
+          .range(offset, offset + pageSize - 1)
+
+        if (error) {
+          console.warn('⚠️ Erro ao carregar do banco, usando localStorage:', error.message)
+          // Fallback para localStorage
+          carregarDoLocalStorage()
+          setFonteDados('local')
+          return
+        }
+
+        if (notasBanco && notasBanco.length > 0) {
+          todasNotasBanco = [...todasNotasBanco, ...notasBanco]
+          offset += pageSize
+          
+          // Verificar se há mais registros para buscar
+          const totalRegistros = count || 0
+          hasMore = offset < totalRegistros
+          
+          console.log(`📦 Carregadas ${todasNotasBanco.length} de ${totalRegistros} notas...`)
+        } else {
+          hasMore = false
+        }
+      }
+
+      if (todasNotasBanco.length > 0) {
         // Converter dados do banco para o formato esperado
-        const notasConvertidas = notasBanco.map((nota: any) => ({
+        const notasConvertidas = todasNotasBanco.map((nota: any) => ({
           id: nota.id,
           data: nota.data,
           nota: nota.numero_nf,
@@ -198,18 +233,39 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
   const carregarNotasBipadas = async () => {
     try {
       const supabase = getSupabase()
-      const { data: notasBipadasData, error } = await supabase
-        .from('notas_bipadas')
-        .select('numero_nf')
-        .eq('area_origem', 'recebimento')
+      
+      // Buscar todas as notas bipadas usando paginação automática
+      let todasNotasBipadas: any[] = []
+      let offset = 0
+      const pageSize = 1000
+      let hasMore = true
 
-      if (error) {
-        console.warn('⚠️ Erro ao carregar notas bipadas:', error.message)
-        return
+      while (hasMore) {
+        const { data: notasBipadasData, error, count } = await supabase
+          .from('notas_bipadas')
+          .select('numero_nf', { count: 'exact' })
+          .eq('area_origem', 'recebimento')
+          .range(offset, offset + pageSize - 1)
+
+        if (error) {
+          console.warn('⚠️ Erro ao carregar notas bipadas:', error.message)
+          return
+        }
+
+        if (notasBipadasData && notasBipadasData.length > 0) {
+          todasNotasBipadas = [...todasNotasBipadas, ...notasBipadasData]
+          offset += pageSize
+          
+          // Verificar se há mais registros para buscar
+          const totalRegistros = count || 0
+          hasMore = offset < totalRegistros
+        } else {
+          hasMore = false
+        }
       }
 
-      if (notasBipadasData) {
-        const numerosBipadas = new Set(notasBipadasData.map((nota: any) => nota.numero_nf as string))
+      if (todasNotasBipadas.length > 0) {
+        const numerosBipadas = new Set(todasNotasBipadas.map((nota: any) => nota.numero_nf as string))
         setNotasBipadas(numerosBipadas)
         console.log(`✅ ${numerosBipadas.size} notas bipadas carregadas`)
       }
@@ -426,6 +482,73 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
   const totalNotas = notasFiltradas.length
   const totalVolumes = notasFiltradas.reduce((sum, nota) => sum + nota.volume, 0)
   const notasBipadasFiltradas = notasFiltradas.filter(nota => notasBipadas.has(nota.nota)).length
+
+  // Cálculos de paginação
+  const totalPaginas = Math.ceil(totalNotas / itensPorPagina)
+  const indiceInicio = (paginaAtual - 1) * itensPorPagina
+  const indiceFim = indiceInicio + itensPorPagina
+  const notasPaginadas = notasFiltradas.slice(indiceInicio, indiceFim)
+
+  // Funções de navegação
+  const irParaPagina = (pagina: number) => {
+    if (pagina >= 1 && pagina <= totalPaginas) {
+      setPaginaAtual(pagina)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }
+
+  const irParaProximaPagina = () => {
+    if (paginaAtual < totalPaginas) {
+      irParaPagina(paginaAtual + 1)
+    }
+  }
+
+  const irParaPaginaAnterior = () => {
+    if (paginaAtual > 1) {
+      irParaPagina(paginaAtual - 1)
+    }
+  }
+
+  // Calcular números de páginas para exibir
+  const getPaginasParaExibir = () => {
+    const paginas: (number | string)[] = []
+    const maxPaginas = 7 // Máximo de números de páginas a exibir
+
+    if (totalPaginas <= maxPaginas) {
+      // Se há poucas páginas, mostrar todas
+      for (let i = 1; i <= totalPaginas; i++) {
+        paginas.push(i)
+      }
+    } else {
+      // Sempre mostrar primeira página
+      paginas.push(1)
+
+      if (paginaAtual > 3) {
+        paginas.push('...')
+      }
+
+      // Mostrar páginas ao redor da atual
+      const inicio = Math.max(2, paginaAtual - 1)
+      const fim = Math.min(totalPaginas - 1, paginaAtual + 1)
+
+      for (let i = inicio; i <= fim; i++) {
+        if (!paginas.includes(i)) {
+          paginas.push(i)
+        }
+      }
+
+      if (paginaAtual < totalPaginas - 2) {
+        paginas.push('...')
+      }
+
+      // Sempre mostrar última página
+      if (!paginas.includes(totalPaginas)) {
+        paginas.push(totalPaginas)
+      }
+    }
+
+    return paginas
+  }
 
   return (
     <div className="min-h-screen bg-blue-50 dark:bg-gray-950">
@@ -755,8 +878,28 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                 <Download className="h-4 w-4 mr-2" />
                 Exportar CSV ({notasFiltradas.length} registros)
               </Button>
+              <div className="flex items-center space-x-2">
+                <Label className="text-sm text-gray-600 dark:text-gray-300">Itens por página:</Label>
+                <Select 
+                  value={itensPorPagina.toString()} 
+                  onValueChange={(value) => {
+                    setItensPorPagina(Number(value))
+                    setPaginaAtual(1)
+                  }}
+                >
+                  <SelectTrigger className="w-20 h-8 bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="dark:bg-gray-800 dark:border-gray-600">
+                    <SelectItem value="25">25</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                    <SelectItem value="200">200</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="text-sm text-gray-600 dark:text-gray-300">
-                Mostrando {notasFiltradas.length} de {notas.length} registros
+                Mostrando {notasFiltradas.length > 0 ? indiceInicio + 1 : 0} - {Math.min(indiceFim, notasFiltradas.length)} de {notasFiltradas.length} registros ({notas.length} total)
               </div>
             </div>
           </CardContent>
@@ -783,30 +926,32 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                 <p>Tente ajustar os filtros ou adicionar novos dados.</p>
               </div>
             ) : (
-              <ScrollArea className="h-[600px]">
-                <div className="border rounded-lg overflow-hidden dark:border-gray-600">
-                  <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 grid grid-cols-12 gap-4 text-sm font-medium text-gray-700 dark:text-gray-200">
-                    <div>Data Entrada</div>
-                    <div>Data NF</div>
-                    <div>Transportadora</div>
-                    <div>Nota</div>
-                    <div>Volume</div>
-                    <div>Destino</div>
-                    <div>Fornecedor</div>
-                    <div>Cliente Destino</div>
-                    <div>Tipo</div>
-                    <div>Status</div>
-                    <div>Usuário</div>
-                    <div className="text-center">Ações</div>
-                  </div>
-                  {notasFiltradas.map((nota, index) => {
+              <>
+                <ScrollArea className="h-[600px]">
+                  <div className="border rounded-lg overflow-hidden dark:border-gray-600">
+                    <div className="bg-gray-50 dark:bg-gray-800 px-4 py-2 grid grid-cols-12 gap-4 text-sm font-medium text-gray-700 dark:text-gray-200">
+                      <div>Data Entrada</div>
+                      <div>Data NF</div>
+                      <div>Transportadora</div>
+                      <div>Nota</div>
+                      <div>Volume</div>
+                      <div>Destino</div>
+                      <div>Fornecedor</div>
+                      <div>Cliente Destino</div>
+                      <div>Tipo</div>
+                      <div>Status</div>
+                      <div>Usuário</div>
+                      <div className="text-center">Ações</div>
+                    </div>
+                    {notasPaginadas.map((nota, index) => {
+                      const indexGlobal = indiceInicio + index
                     const foiBipada = notasBipadas.has(nota.nota)
                     return (
                       <div
                         key={nota.id}
                         className={`px-4 py-2 grid grid-cols-12 gap-4 text-sm ${foiBipada
                           ? "bg-green-100 dark:bg-green-900/20 border-l-4 border-green-500 dark:border-green-400"
-                          : index % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"
+                          : indexGlobal % 2 === 0 ? "bg-white dark:bg-gray-900" : "bg-gray-50 dark:bg-gray-800"
                           }`}
                       >
                         <div className="text-xs">{new Date(nota.dataEntrada).toLocaleString("pt-BR")}</div>
@@ -853,9 +998,76 @@ export default function VerConsolidado({ usuario, onVoltar, onLogout }: VerConso
                     <div className="col-span-4">Total:</div>
                     <div className="text-center">{totalVolumes}</div>
                     <div className="col-span-7"></div>
+                    </div>
                   </div>
-                </div>
-              </ScrollArea>
+                </ScrollArea>
+
+                {/* Controles de Paginação */}
+                {totalPaginas > 1 && (
+                  <div className="flex items-center justify-between mt-4 px-2">
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Página {paginaAtual} de {totalPaginas}
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={irParaPaginaAnterior}
+                        disabled={paginaAtual === 1}
+                        className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Anterior
+                      </Button>
+
+                      <div className="flex items-center space-x-1">
+                        {getPaginasParaExibir().map((pagina, idx) => {
+                          if (pagina === '...') {
+                            return (
+                              <span key={`ellipsis-${idx}`} className="px-2 text-gray-500 dark:text-gray-400">
+                                ...
+                              </span>
+                            )
+                          }
+
+                          const numPagina = pagina as number
+                          return (
+                            <Button
+                              key={numPagina}
+                              variant={paginaAtual === numPagina ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => irParaPagina(numPagina)}
+                              className={
+                                paginaAtual === numPagina
+                                  ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                  : "bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                              }
+                            >
+                              {numPagina}
+                            </Button>
+                          )
+                        })}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={irParaProximaPagina}
+                        disabled={paginaAtual === totalPaginas}
+                        className="bg-transparent dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                      >
+                        Próxima
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      {totalNotas.toLocaleString('pt-BR')} registro{totalNotas !== 1 ? 's' : ''} no total
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>

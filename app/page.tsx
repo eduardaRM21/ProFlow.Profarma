@@ -186,9 +186,9 @@ export default function LoginPage() {
     setIsLoading(true);
 
     // Verificar se é área que usa autenticação local
-    if (LocalAuthService.isLocalAuthArea(area)) {
-      // Recebimento e Embalagem: validação no banco (sem senha)
-      if (area === "embalagem") {
+    if (LocalAuthService.isLocalAuthArea(area) || area === "wms") {
+      // Recebimento, Embalagem e WMS: validação no banco (sem senha)
+      if (area === "embalagem" || area === "wms") {
         if (colaboradoresPreenchidos.length === 0 || !data || !turno) {
           alert("Preencha todos os campos obrigatórios.");
           return;
@@ -242,20 +242,20 @@ export default function LoginPage() {
     }
 
     // Garantir que a data está definida (apenas para áreas operacionais)
-    if (LocalAuthService.isLocalAuthArea(area) && !data) {
+    if ((LocalAuthService.isLocalAuthArea(area) || area === "wms") && !data) {
       alert("Erro: Data não foi inicializada. Recarregue a página e tente novamente.");
       return;
     }
 
     // Verificar turno apenas para áreas operacionais (não para Custos e CRDK)
-    if (LocalAuthService.isLocalAuthArea(area) && !turno.trim()) {
+    if ((LocalAuthService.isLocalAuthArea(area) || area === "wms") && !turno.trim()) {
       alert("Erro: Turno não foi selecionado.");
       return;
     }
 
     const loginData = {
       area,
-      colaboradores: area === "embalagem" ? colaboradoresPreenchidos :
+      colaboradores: (area === "embalagem" || area === "wms") ? colaboradoresPreenchidos :
         (LocalAuthService.isDatabaseAuthArea(area) ? [usuarioCustos] : [colaborador]), // Usuário administrativo para setores administrativos
       data: data ? format(data, "yyyy-MM-dd") : new Date().toISOString().split('T')[0], // Data atual para setores administrativos
       turno: turno || "manhã", // Turno padrão para setores administrativos
@@ -309,6 +309,8 @@ export default function LoginPage() {
         router.push("/admin");
       } else if (area === "inventario") {
         router.push("/inventario");
+      } else if (area === "wms") {
+        router.push("/wms");
       } else {
         router.push("/painel");
       }
@@ -335,8 +337,8 @@ export default function LoginPage() {
   const canProceedWithLogin = () => {
     if (!area) return false;
 
-    if (LocalAuthService.isLocalAuthArea(area)) {
-      if (area === "embalagem") {
+    if (LocalAuthService.isLocalAuthArea(area) || area === "wms") {
+      if (area === "embalagem" || area === "wms") {
         return colaboradoresPreenchidos.length > 0 && data && turno;
       } else {
         return colaborador.trim() && data && turno;
@@ -356,6 +358,7 @@ export default function LoginPage() {
       crdk: <ChartColumnIncreasing className="h-8 w-8 text-yellow-600" />,
       custos: <Calculator className="h-8 w-8 text-orange-600" />,
       inventario: <ClipboardList className="h-8 w-8 text-purple-600" />,
+      wms: <Package className="h-8 w-8 text-green-600" />,
     };
     return icons[areaCode] || <Building2 className="h-8 w-8 text-gray-600" />;
   };
@@ -368,6 +371,7 @@ export default function LoginPage() {
       crdk: "from-yellow-50 to-yellow-100",
       custos: "from-orange-50 to-yellow-100",
       inventario: "from-purple-50 to-purple-100",
+      wms: "from-green-50 to-emerald-100",
     };
     return colors[areaCode] || "from-gray-50 to-gray-100";
   };
@@ -422,6 +426,7 @@ export default function LoginPage() {
             {area === "crdk" && "CRDK e Controle"}
             {area === "inventario" && "Inventário por Rua"}
             {area === "custos" && "Custos e Relatórios"}
+            {area === "wms" && "WMS - Sistema de Gerenciamento de Armazém"}
             {!area && "Selecione sua área de trabalho"}
           </CardDescription>
         </CardHeader>
@@ -440,7 +445,7 @@ export default function LoginPage() {
                 <SelectItem value="admin-embalagem" className="text-base py-3">🛡️ Admin Embalagem</SelectItem>
                 <SelectItem value="inventario" className="text-base py-3">📋 Inventário</SelectItem>
                 <SelectItem value="crdk" className="text-base py-3"> 📊 CRDK </SelectItem>
-
+                <SelectItem value="wms" className="text-base py-3">📦 WMS - Armazém</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -512,8 +517,8 @@ export default function LoginPage() {
             </>
           )}
 
-          {/* Login personalizado para Embalagem */}
-          {area === "embalagem" && (
+          {/* Login personalizado para Embalagem e WMS */}
+          {(area === "embalagem" || area === "wms") && (
             <>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -561,7 +566,7 @@ export default function LoginPage() {
           {/* Áreas comuns (exceto custos, crdk e admin-embalagem) */}
           {area !== "custos" && area !== "crdk" && area !== "admin-embalagem" && (
             <>
-              {area !== "embalagem" && (
+              {area !== "embalagem" && area !== "wms" && (
                 <div className="space-y-2">
                   <Label className="text-base font-medium text-gray-700">Colaborador *</Label>
                   <Input placeholder="Nome do colaborador" value={colaborador} onChange={(e) => setColaborador(e.target.value)} className="text-base h-12 bg-white text-gray-900" onKeyPress={handleKeyPress} />
@@ -604,7 +609,7 @@ export default function LoginPage() {
             disabled={
               area === "custos" || area === "crdk"
                 ? !usuarioCustos.trim() || !senhaCustos.trim()
-                : area === "embalagem"
+                : area === "embalagem" || area === "wms"
                   ? colaboradoresPreenchidos.length === 0 || !data || !turno
                   : area === "admin-embalagem"
                     ? !usuarioCustos.trim() || !senhaCustos.trim()

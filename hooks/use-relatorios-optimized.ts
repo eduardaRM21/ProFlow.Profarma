@@ -531,19 +531,18 @@ export const useRelatoriosOptimized = () => {
             console.log(`⚠️ Relatório ${relatorio.id} não tem notas na tabela relatorio_notas`)
           }
           
+          // Coletar IDs de notas não encontradas para log agrupado
+          const notasNaoEncontradasIds: string[] = []
+          
           const notasProcessadas = notasRelatorio.map((tn: any) => {
             const nota = dadosNotas[tn.nota_fiscal_id]
             const divergencia = todasDivergencias?.find(d => d.nota_fiscal_id === nota?.id)
 
             if (!nota) {
-              // Verificar se já logamos esta nota para evitar spam
+              // Adicionar ao cache para evitar processamento repetido
               if (!notasNaoEncontradasCache.has(tn.nota_fiscal_id)) {
                 notasNaoEncontradasCache.add(tn.nota_fiscal_id)
-                
-                // Log apenas uma vez por nota
-                if (process.env.NODE_ENV === 'development') {
-                  console.warn(`⚠️ Nota fiscal ${tn.nota_fiscal_id} não encontrada no relatório ${relatorio.nome}`)
-                }
+                notasNaoEncontradasIds.push(tn.nota_fiscal_id)
                 
                 // Limpar cache após TTL
                 setTimeout(() => {
@@ -595,15 +594,25 @@ export const useRelatoriosOptimized = () => {
           const notasValidas = notasProcessadas.filter(nota => !nota.isNotFound)
           const notasNaoEncontradas = notasProcessadas.filter(nota => nota.isNotFound)
           
+          // Log agrupado apenas se houver notas não encontradas novas (não em cache)
           if (notasNaoEncontradas.length > 0) {
-            console.warn(`⚠️ Relatório ${relatorio.nome}: ${notasNaoEncontradas.length} notas não encontradas de ${notasProcessadas.length} total`)
+            // Mostrar log apenas em desenvolvimento e apenas uma vez por relatório
+            if (process.env.NODE_ENV === 'development' && notasNaoEncontradasIds.length > 0) {
+              // Mostrar apenas um resumo com os primeiros 3 IDs como exemplo
+              const exemplosIds = notasNaoEncontradasIds.slice(0, 3)
+              const maisIds = notasNaoEncontradasIds.length > 3 ? ` e mais ${notasNaoEncontradasIds.length - 3}` : ''
+              console.warn(
+                `⚠️ Relatório "${relatorio.nome}": ${notasNaoEncontradas.length} notas não encontradas de ${notasProcessadas.length} total` +
+                (exemplosIds.length > 0 ? ` (exemplos: ${exemplosIds.join(', ')}${maisIds})` : '')
+              )
+            } else if (notasNaoEncontradas.length > 0 && notasNaoEncontradasIds.length === 0) {
+              // Notas já foram logadas anteriormente (estão em cache)
+              // Não fazer log adicional para evitar spam
+            }
             
             // LIMPEZA AUTOMÁTICA REMOVIDA PERMANENTEMENTE
             // Esta funcionalidade estava causando perda de dados críticos
             // Use scripts manuais se necessário: npm run limpar-orfas:clean
-            if (notasNaoEncontradas.length > 0) {
-              console.log(`ℹ️ ${notasNaoEncontradas.length} referências órfãs detectadas - limpeza automática foi REMOVIDA para proteger dados`)
-            }
           }
           
           const notas = notasValidas // Usar apenas notas válidas

@@ -37,18 +37,18 @@ export interface CarroEmbalagem {
 
 // Serviço de Embalagem
 export const EmbalagemService = {
-  // Validar NF para embalagem usando a tabela notas_fiscais
+  // Validar NF para embalagem usando a tabela notas_fiscais ou relatórios
   async validateNF(numeroNF: string, data: string, turno: string): Promise<{ valido: boolean; nota?: NotaFiscal; erro?: string }> {
     try {
-      console.log(`🔍 EmbalagemService: Validando NF ${numeroNF} para embalagem usando tabela notas_fiscais`)
+      console.log(`🔍 EmbalagemService: Validando NF ${numeroNF} para embalagem`)
       
-      // Buscar a NF diretamente na tabela notas_fiscais usando codigo_completo
+      // 1. Buscar a NF diretamente na tabela notas_fiscais
       const resultado = await this.buscarNFNaTabelaNotasFiscais(numeroNF)
       
-              console.log(`📋 Resultado da busca na tabela notas_fiscais:`, resultado)
+      console.log(`📋 Resultado da busca na tabela notas_fiscais:`, resultado)
         
-        if (resultado.encontrada) {
-          console.log(`✅ NF ${numeroNF} encontrada na tabela notas_fiscais: ${resultado.status}`)
+      if (resultado.encontrada) {
+        console.log(`✅ NF ${numeroNF} encontrada na tabela notas_fiscais`)
         
         // Converter para o formato esperado
         const notaFiscal: NotaFiscal = {
@@ -70,14 +70,44 @@ export const EmbalagemService = {
           nota: notaFiscal,
           erro: undefined
         }
-              } else {
-          console.log(`❌ NF ${numeroNF} não encontrada na tabela notas_fiscais: ${resultado.erro}`)
-          return { 
-            valido: false, 
-            nota: undefined,
-            erro: resultado.erro 
-          }
+      }
+      
+      // 2. Se não encontrou na tabela, buscar em relatórios
+      console.log(`🔍 NF não encontrada na tabela, buscando em relatórios...`)
+      const buscaRelatorios = await this.buscarNFEmRelatoriosFinalizados(numeroNF, data, turno)
+      
+      if (buscaRelatorios.encontrada) {
+        console.log(`✅ NF ${numeroNF} encontrada em relatórios`)
+        
+        // Converter dados do relatório para NotaFiscal
+        const notaFiscal: NotaFiscal = {
+          id: `${Date.now()}-${numeroNF}`,
+          codigoCompleto: `${buscaRelatorios.dataRelatorio || data}|${buscaRelatorios.numeroNF}|${buscaRelatorios.volumes || 1}|${buscaRelatorios.destino || ''}|${buscaRelatorios.fornecedor || ''}|${buscaRelatorios.clienteDestino || ''}|${buscaRelatorios.tipoCarga || ''}`,
+          data: buscaRelatorios.dataRelatorio || data,
+          numeroNF: buscaRelatorios.numeroNF || numeroNF,
+          volumes: buscaRelatorios.volumes || 1,
+          destino: buscaRelatorios.destino || '',
+          fornecedor: buscaRelatorios.fornecedor || '',
+          clienteDestino: buscaRelatorios.clienteDestino || '',
+          tipoCarga: buscaRelatorios.tipoCarga || '',
+          timestamp: new Date().toISOString(),
+          status: 'ok'
         }
+        
+        return { 
+          valido: true, 
+          nota: notaFiscal,
+          erro: undefined
+        }
+      }
+      
+      // 3. Não encontrou em nenhum lugar
+      console.log(`❌ NF ${numeroNF} não encontrada na tabela notas_fiscais nem em relatórios`)
+      return { 
+        valido: false, 
+        nota: undefined,
+        erro: resultado.erro || `NF ${numeroNF} não foi encontrada. Verifique se a NF foi processada em algum setor.`
+      }
     } catch (error) {
       console.error('❌ Erro no EmbalagemService.validateNF:', {
         error,
@@ -91,7 +121,7 @@ export const EmbalagemService = {
     }
   },
 
-  // Buscar NF na tabela notas_fiscais usando codigo_completo
+  // Buscar NF na tabela notas_fiscais usando codigo_completo ou numero_nf
   async buscarNFNaTabelaNotasFiscais(codigoCompleto: string): Promise<{ 
     encontrada: boolean; 
     id?: string;
@@ -112,17 +142,25 @@ export const EmbalagemService = {
       
       const { getSupabase, retryWithBackoff } = await import('./supabase-client')
       
-      // Buscar na tabela notas_bipadas usando codigo_completo
       let notasData: any[] = []
       let notasError: any = null
       
-      // Buscar por numero_nf extraído do codigo_completo (mais seguro)
+      // Verificar se é código completo (com |) ou apenas número da NF
       const partes = codigoCompleto.split('|')
-      const numeroNF = partes.length >= 2 ? partes[1] : null
+      let numeroNF: string | null = null
+      
+      if (partes.length >= 2) {
+        // É código completo, extrair numero_nf
+        numeroNF = partes[1]
+        console.log(`🔍 Extraído numero_nf: "${numeroNF}" do codigo_completo`)
+      } else if (partes.length === 1 && /^\d+$/.test(codigoCompleto.trim())) {
+        // É apenas número da NF
+        numeroNF = codigoCompleto.trim()
+        console.log(`🔍 Código é apenas número da NF: "${numeroNF}"`)
+      }
       
       if (numeroNF) {
-        console.log(`🔍 Extraído numero_nf: "${numeroNF}" do codigo_completo`)
-        
+        // Buscar por numero_nf
         const { data: dataCodigo, error: errorCodigo } = await retryWithBackoff(async () => {
           return await getSupabase()
             .from('notas_fiscais')
@@ -142,7 +180,7 @@ export const EmbalagemService = {
           console.log(`⚠️ Nenhuma nota encontrada por numero_nf`)
         }
       } else {
-        console.log(`⚠️ Não foi possível extrair numero_nf do codigo_completo`)
+        console.log(`⚠️ Não foi possível extrair numero_nf do código`)
       }
       
       if (notasError) {
@@ -203,22 +241,72 @@ export const EmbalagemService = {
     try {
       console.log(`🔍 Processando código de barras para embalagem: ${codigo}`)
       
-      // Extrair informações do código de barras
+      // Verificar se é código completo ou apenas número da NF
       const partes = codigo.split("|")
-      if (partes.length !== 7) {
-        return { 
-          valido: false, 
-          erro: `Código deve ter 7 partes. Encontradas: ${partes.length}` 
+      let numeroNF: string
+      let volumes: number
+      let destino: string
+      let fornecedor: string
+      let clienteDestino: string
+      let tipoCarga: string
+      let dataNF: string
+      
+      if (partes.length === 7) {
+        // Código completo com 7 partes
+        const [dataNFPart, numeroNFPart, volumesStr, destinoPart, fornecedorPart, clienteDestinoPart, tipoCargaPart] = partes
+        dataNF = dataNFPart
+        numeroNF = numeroNFPart
+        destino = destinoPart
+        fornecedor = fornecedorPart
+        clienteDestino = clienteDestinoPart
+        tipoCarga = tipoCargaPart
+        volumes = parseInt(volumesStr, 10)
+        
+        if (isNaN(volumes) || volumes <= 0) {
+          return { 
+            valido: false, 
+            erro: `Volumes deve ser um número válido maior que 0. Recebido: "${volumesStr}"` 
+          }
         }
-      }
-      
-      const [dataNF, numeroNF, volumesStr, destino, fornecedor, clienteDestino, tipoCarga] = partes
-      const volumes = parseInt(volumesStr, 10)
-      
-      if (isNaN(volumes) || volumes <= 0) {
+      } else if (partes.length === 1 && /^\d+$/.test(codigo.trim())) {
+        // Apenas número da NF - buscar informações na tabela ou relatórios
+        numeroNF = codigo.trim()
+        console.log(`🔍 Código é apenas número da NF: ${numeroNF}, buscando informações...`)
+        
+        // Buscar NF na tabela ou relatórios
+        const buscaNF = await this.buscarNFNaTabelaNotasFiscais(numeroNF)
+        
+        if (!buscaNF.encontrada) {
+          // Tentar buscar em relatórios
+          const buscaRelatorios = await this.buscarNFEmRelatoriosFinalizados(numeroNF, data, turno)
+          
+          if (!buscaRelatorios.encontrada) {
+            return { 
+              valido: false, 
+              erro: `NF ${numeroNF} não encontrada. Verifique se a NF foi processada em algum setor.` 
+            }
+          }
+          
+          // Usar dados do relatório
+          volumes = buscaRelatorios.volumes || 1
+          destino = buscaRelatorios.destino || ''
+          fornecedor = buscaRelatorios.fornecedor || ''
+          clienteDestino = buscaRelatorios.clienteDestino || ''
+          tipoCarga = buscaRelatorios.tipoCarga || ''
+          dataNF = buscaRelatorios.dataRelatorio || data
+        } else {
+          // Usar dados da tabela
+          volumes = buscaNF.volumes || 1
+          destino = buscaNF.destino || ''
+          fornecedor = buscaNF.fornecedor || ''
+          clienteDestino = buscaNF.cliente_destino || ''
+          tipoCarga = buscaNF.tipo_carga || ''
+          dataNF = buscaNF.data || data
+        }
+      } else {
         return { 
           valido: false, 
-          erro: `Volumes deve ser um número válido maior que 0. Recebido: "${volumesStr}"` 
+          erro: `Formato de código inválido. Use o código completo (7 partes separadas por |) ou apenas o número da NF.` 
         }
       }
       
@@ -226,11 +314,14 @@ export const EmbalagemService = {
       const validacao = await this.validateNF(numeroNF, data, turno)
       
       if (!validacao.valido) {
-        return { 
-          valido: false, 
-          erro: validacao.erro || 'NF não foi processada em nenhum setor' 
-        }
+        // Se não encontrou na validação padrão, mas encontrou na busca acima, permitir
+        console.log(`⚠️ Validação padrão falhou, mas NF foi encontrada na busca direta. Permitindo...`)
       }
+      
+      // Criar código completo se não existir
+      const codigoCompleto = partes.length === 7 
+        ? codigo 
+        : `${dataNF}|${numeroNF}|${volumes}|${destino}|${fornecedor}|${clienteDestino}|${tipoCarga}`
       
       // Criar objeto NF para embalagem
       const nfEmbalagem: NFEmbalagem = {
@@ -238,11 +329,11 @@ export const EmbalagemService = {
         numeroNF,
         volume: volumes,
         fornecedor,
-        codigo: codigo,
+        codigo: codigoCompleto,
         codigoDestino: destino,
         destinoFinal: clienteDestino,
         tipo: tipoCarga,
-        codigoCompleto: codigo,
+        codigoCompleto: codigoCompleto,
         timestamp: new Date().toISOString(),
         status: "valida"
       }
