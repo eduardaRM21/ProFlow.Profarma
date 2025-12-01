@@ -6,7 +6,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { AlertTriangle, CheckCircle } from "lucide-react"
 import type { NotaFiscal } from "@/lib/database-service"
 import { useIsColetor } from "@/hooks/use-coletor"
@@ -142,7 +141,7 @@ export default function DivergenciaModal({
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o tipo de divergência" />
                   </SelectTrigger>
-                  <SelectContent className="max-h-60">
+                  <SelectContent className="max-h-60 z-[110]">
                     {tiposDivergencia.map((tipo) => (
                       <SelectItem key={tipo.codigo} value={tipo.codigo}>
                         <div className="flex items-center space-x-2">

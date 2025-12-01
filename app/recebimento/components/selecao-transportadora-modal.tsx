@@ -325,7 +325,7 @@ export default function SelecaoTransportadoraModal({
               <SelectTrigger>
                 <SelectValue placeholder="Escolha uma transportadora..." />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-[110]">
                 {transportadoras.map((transportadora) => (
                   <SelectItem key={transportadora.nome} value={transportadora.nome}>
                     <div className="flex items-center justify-between w-full">
