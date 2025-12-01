@@ -119,6 +119,8 @@ export default function WMS3DPage() {
                     <SelectItem value="3">Nível 3</SelectItem>
                     <SelectItem value="4">Nível 4</SelectItem>
                     <SelectItem value="5">Nível 5</SelectItem>
+                    <SelectItem value="6">Nível 6</SelectItem>
+                    <SelectItem value="7">Nível 7</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

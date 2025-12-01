@@ -18,6 +18,7 @@ import { getSupabase } from "@/lib/supabase-client"
 import FiltrosAvancados, { FiltrosAvancados as FiltrosAvancadosType } from "./filtros-avancados"
 import SidebarFixa from "./sidebar-fixa"
 import PesquisaNotasSection from "./pesquisa-notas-section"
+import ScrollToTopButton from "@/components/ui/scroll-to-top-button"
 import {
   Truck,
   Calendar,
@@ -2582,6 +2583,9 @@ export default function GerenciarCarrosSection() {
           )}
         </Button>
       </div>
+
+      {/* Botão flutuante para voltar ao topo */}
+      <ScrollToTopButton position="bottom-left" />
         </div>
       </div>
     </div>

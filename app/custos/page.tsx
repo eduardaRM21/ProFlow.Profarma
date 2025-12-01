@@ -56,7 +56,8 @@ import {
   Monitor,
   Clock,
   Loader2,
-  X
+  X,
+  BarChart3
 } from "lucide-react";
 import { useSession, useConnectivity, useDatabase } from "@/hooks/use-database"
 import { useRelatorios } from "@/hooks/use-relatorios-optimized";
@@ -69,6 +70,8 @@ import type { SessionData, NotaFiscal, Relatorio } from "@/lib/database-service"
 import { getSupabase, testSupabaseConnection } from "@/lib/supabase-client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import ChangePasswordModal from "@/components/admin/change-password-modal";
+import ScrollToTopButton from "@/components/ui/scroll-to-top-button";
+import VerConsolidado from "@/app/recebimento/components/ver-consolidado";
 
 const copiarDadosParaSAP = (dados: string, tipo: string) => {
   if (navigator.clipboard) {
@@ -109,10 +112,12 @@ export default function CustosPage() {
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [fonteDados, setFonteDados] = useState<'banco' | 'localStorage' | 'nenhuma'>('banco');
   const [mostrarNotificacao, setMostrarNotificacao] = useState(false);
+  const [telaAtiva, setTelaAtiva] = useState<'custos' | 'consolidado'>('custos');
   const router = useRouter();
 
   // Hooks do banco de dados
-  const { getSession } = useSession();
+  const sessionHook = useSession();
+  const getSession: (sessionId: string) => Promise<any> = sessionHook.getSession;
   const { isFullyConnected } = useConnectivity();
   const { addRealtimeEvent } = useRealtimeMonitoring();
   const { isMigrating, migrationComplete } = useDatabase();
@@ -228,6 +233,11 @@ export default function CustosPage() {
   const [showModalDevolvidas, setShowModalDevolvidas] = useState(false);
   const [notasDevolvidas, setNotasDevolvidas] = useState<NotaFiscal[]>([]);
   const [loadingDevolvidas, setLoadingDevolvidas] = useState(false);
+  
+  // Estados para carregamento por etapas (scroll infinito)
+  const [relatoriosExibidos, setRelatoriosExibidos] = useState(20); // Quantidade inicial de relatórios a exibir
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const ITENS_POR_PAGINA = 20; // Quantidade de relatórios a carregar por vez
   
   // Estado para carregamento de notas no modal
   const [carregandoNotas, setCarregandoNotas] = useState(false);
@@ -479,19 +489,43 @@ export default function CustosPage() {
   useEffect(() => {
     // Debounce para evitar recálculos excessivos (aumentado para 2 segundos)
     const timeoutId = setTimeout(async () => {
-      const calcularEstatisticas = async () => {
-        if (relatorios && relatorios.length > 0) {
-          console.log('📊 Calculando estatísticas usando relatórios filtrados...');
-          
-          // Usar relatórios filtrados em vez de todos os relatórios
-          const relatoriosParaCalcular = relatoriosFiltrados;
-          console.log(`📊 Calculando estatísticas para ${relatoriosParaCalcular.length} relatórios filtrados de ${relatorios.length} totais`);
+      // Sempre calcular notas devolvidas, mesmo sem relatórios
+      let totalDevolvidas = 0;
+      
+      // Buscar total de notas devolvidas do banco de dados
+      try {
+        const { getSupabase } = await import('@/lib/supabase-client');
+        const supabase = getSupabase();
         
+        // Buscar apenas a contagem de notas devolvidas
+        const { count, error: countError } = await supabase
+          .from('notas_fiscais')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'devolvida');
+        
+        if (!countError && count !== null) {
+          totalDevolvidas = count;
+          console.log(`📊 Total de notas devolvidas do banco: ${totalDevolvidas}`);
+        } else {
+          console.warn('⚠️ Erro ao buscar contagem de notas devolvidas:', countError);
+          totalDevolvidas = 0;
+        }
+      } catch (error) {
+        console.warn('⚠️ Erro ao calcular notas devolvidas:', error);
+        totalDevolvidas = 0;
+      }
+      
+      if (relatorios && relatorios.length > 0) {
+        console.log('📊 Calculando estatísticas usando relatórios filtrados...');
+        
+        // Usar relatórios filtrados em vez de todos os relatórios
+        const relatoriosParaCalcular = relatoriosFiltrados;
+        console.log(`📊 Calculando estatísticas para ${relatoriosParaCalcular.length} relatórios filtrados de ${relatorios.length} totais`);
+      
         let totalRelatorios = 0;
         let totalNotas = 0;
         let totalVolumes = 0;
         let totalDivergencias = 0;
-        let totalDevolvidas = 0;
 
         try {
           // Para cada relatório filtrado, buscar dados do cache
@@ -509,27 +543,6 @@ export default function CustosPage() {
               totalDivergencias += 0; // Não buscar divergências adicionais
               console.log(`📊 Relatório ${relatorio.id}: usando dados já carregados`);
             }
-          }
-
-          // Para calcular devolvidas, usar dados dos relatórios filtrados
-          try {
-            // Usar dados dos relatórios filtrados se disponível
-            if (relatoriosParaCalcular.some(r => r.notas && r.notas.length > 0)) {
-              totalDevolvidas = relatoriosParaCalcular.reduce((sum, rel) => {
-                if (rel.notas && Array.isArray(rel.notas)) {
-                  return sum + rel.notas.filter((n: any) => n.status === "devolvida").length;
-                }
-                return sum;
-              }, 0);
-              console.log(`📊 Total de notas devolvidas calculado dos relatórios filtrados: ${totalDevolvidas}`);
-            } else {
-              // Usar dados já disponíveis (evitar busca adicional)
-              totalDevolvidas = 0;
-              console.log(`📊 Usando dados já carregados para notas devolvidas`);
-            }
-          } catch (error) {
-            console.warn('⚠️ Erro ao calcular notas devolvidas:', error);
-            totalDevolvidas = 0;
           }
 
           setEstatisticas({
@@ -553,14 +566,49 @@ export default function CustosPage() {
         } catch (error) {
           console.error('❌ Erro ao calcular estatísticas:', error);
         }
+      } else {
+        // Se não há relatórios, atualizar apenas as notas devolvidas
+        setEstatisticas(prev => ({
+          ...prev,
+          totalDevolvidas
+        }));
       }
-    };
-
-    calcularEstatisticas();
     }, 2000); // Debounce de 2 segundos para evitar recálculos excessivos
 
     return () => clearTimeout(timeoutId);
-  }, [relatoriosFiltrados.length]); // Apenas quando o número de relatórios filtrados muda
+  }, [relatoriosFiltrados.length, relatorios?.length]); // Quando o número de relatórios filtrados ou totais mudar
+
+  // Resetar quantidade exibida quando os filtros mudarem
+  useEffect(() => {
+    setRelatoriosExibidos(20);
+  }, [filtroTexto, filtroColaborador, filtroDataInicio, filtroDataFim, filtroStatus]);
+  
+  // Detectar scroll para carregar mais relatórios automaticamente
+  useEffect(() => {
+    const handleScroll = () => {
+      // Verificar se chegou perto do final da página (100px antes do fim)
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      // Se estiver a 100px do final e ainda houver mais relatórios para carregar
+      if (
+        scrollTop + windowHeight >= documentHeight - 100 &&
+        relatoriosFiltrados.length > relatoriosExibidos &&
+        !isLoadingMore
+      ) {
+        setIsLoadingMore(true);
+        // Pequeno delay para melhorar a experiência do usuário
+        setTimeout(() => {
+          setRelatoriosExibidos(prev => Math.min(prev + ITENS_POR_PAGINA, relatoriosFiltrados.length));
+          setIsLoadingMore(false);
+        }, 300);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [relatoriosFiltrados.length, relatoriosExibidos, isLoadingMore]);
 
   useEffect(() => {
     const verificarSessao = async () => {
@@ -1747,8 +1795,24 @@ NOTAS FISCAIS:`
     }
   }
 
+  // Se a tela ativa for consolidado, renderizar o componente VerConsolidado
+  if (telaAtiva === 'consolidado') {
+    return (
+      <VerConsolidado
+        usuario={{
+          nome: sessionData && Array.isArray(sessionData.colaboradores) 
+            ? sessionData.colaboradores.join(', ') 
+            : sessionData?.colaboradores?.[0] || 'Usuário',
+          loginTime: sessionData?.loginTime || new Date().toISOString()
+        }}
+        onVoltar={() => setTelaAtiva('custos')}
+        onLogout={handleLogout}
+      />
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-orange-50 dark:bg-gray-900/20">
+    <div className="min-h-screen bg-orange-50 dark:bg-gray-950">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-orange-100 dark:bg-gray-900 dark:border-orange-900/20">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-8">
@@ -1810,6 +1874,16 @@ NOTAS FISCAIS:`
                       </p>
                     </div>
                   </DropdownMenuLabel>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuItem
+                    onClick={() => setTelaAtiva('consolidado')}
+                    className="flex items-center space-x-2 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    <BarChart3 className="h-4 w-4" />
+                    <span>Ver Consolidado</span>
+                  </DropdownMenuItem>
 
                   <DropdownMenuSeparator />
 
@@ -1876,56 +1950,56 @@ NOTAS FISCAIS:`
 
         {/* Estatísticas */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-3 mb-4">
-          <Card key="total-relatorios" className="border-orange-200 dark:bg-gray-900 dark:border-orange-500/50">
-            <CardContent className="text-center p-4 ">
-              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600">
+          <Card key="total-relatorios" className="border-orange-200 dark:bg-gray-800/60 dark:border-orange-500/50">
+            <CardContent className="text-center p-4 dark:bg-gray-800/40">
+              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400">
                 {estatisticas.totalRelatorios}
               </div>
-              <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">
+              <div className="text-xs text-gray-600 leading-tight dark:text-gray-300">
                 Total Relatórios
               </div>
             </CardContent>
           </Card>
-          <Card key="total-notas" className="border-blue-200 dark:bg-gray-900 dark:border-blue-500/50">
-            <CardContent className="text-center p-4">
-              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 ">
+          <Card key="total-notas" className="border-blue-200 dark:bg-gray-800/60 dark:border-blue-500/50">
+            <CardContent className="text-center p-4 dark:bg-gray-800/40">
+              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400">
                 {estatisticas.totalNotas}
               </div>
-              <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">
+              <div className="text-xs text-gray-600 leading-tight dark:text-gray-300">
                 Total Notas
               </div>
             </CardContent>
           </Card>
-          <Card key="total-volumes" className="border-green-200 dark:bg-gray-900 dark:border-green-500/50">
-            <CardContent className="text-center p-4">
-              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600">
+          <Card key="total-volumes" className="border-green-200 dark:bg-gray-800/60 dark:border-green-500/50">
+            <CardContent className="text-center p-4 dark:bg-gray-800/40">
+              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400">
                 {estatisticas.totalVolumes}
               </div>
-              <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">
+              <div className="text-xs text-gray-600 leading-tight dark:text-gray-300">
                 Total Volumes
               </div>
             </CardContent>
           </Card>
-          <Card key="total-divergencias" className="border-purple-200 dark:bg-gray-900 dark:border-purple-500/50">
-            <CardContent className="text-center p-4">
-              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600">
+          <Card key="total-divergencias" className="border-purple-200 dark:bg-gray-800/60 dark:border-purple-500/50">
+            <CardContent className="text-center p-4 dark:bg-gray-800/40">
+              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600 dark:text-purple-400">
                 {estatisticas.totalDivergencias}
               </div>
-              <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">
+              <div className="text-xs text-gray-600 leading-tight dark:text-gray-300">
                 Divergências
               </div>
             </CardContent>
           </Card>
           <Card 
             key="total-devolvidas" 
-            className="border-red-200 dark:bg-gray-900 dark:border-red-500/50 cursor-pointer hover:shadow-md transition-shadow hover:bg-red-50 dark:hover:bg-red-900/20"
+            className="border-red-200 dark:bg-gray-800/60 dark:border-red-500/50 cursor-pointer hover:shadow-md transition-shadow hover:bg-red-50 dark:hover:bg-red-900/30"
             onClick={abrirModalDevolvidas}
           >
-            <CardContent className="text-center p-4">
-              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">
+            <CardContent className="text-center p-4 dark:bg-gray-800/40">
+              <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600 dark:text-red-400">
                 {estatisticas.totalDevolvidas}
               </div>
-              <div className="text-xs text-gray-600 leading-tight dark:text-gray-400">
+              <div className="text-xs text-gray-600 leading-tight dark:text-gray-300">
                 Devolvidas
               </div>
             </CardContent>
@@ -1935,7 +2009,7 @@ NOTAS FISCAIS:`
         {/* Lista de Relatórios */}
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-400">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-200">
               Relatórios Liberados
             </h2>
 
@@ -1955,10 +2029,10 @@ NOTAS FISCAIS:`
 
           {/* Filtros */}
 
-          <div className="bg-white p-4 rounded-lg border border-orange-200 space-y-4 dark:bg-gray-900/20 dark:border-orange-500/50">
+          <div className="bg-white p-4 rounded-lg border border-orange-200 space-y-4 dark:bg-gray-800/60 dark:border-orange-500/50">
             <div className="flex items-center space-x-2 mb-3">
-              <Filter className="h-4 w-4 text-gray-500" />
-              <span className="font-medium text-gray-700 dark:text-gray-400">Filtros</span>
+              <Filter className="h-4 w-4 text-gray-500 dark:text-gray-300" />
+              <span className="font-medium text-gray-700 dark:text-gray-200">Filtros</span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-5">
@@ -1969,7 +2043,7 @@ NOTAS FISCAIS:`
                   placeholder="Transportadora, colaborador, Nota Fiscal..."
                   value={filtroTexto}
                   onChange={(e) => setFiltroTexto(e.target.value)}
-                  className="w-full dark:bg-gray-900/50"
+                  className="w-full dark:bg-gray-700/50 dark:text-gray-100 dark:border-gray-600"
                 />
               </div>
               {/* Filtro de data início */}
@@ -1979,7 +2053,7 @@ NOTAS FISCAIS:`
                   type="date"
                   value={filtroDataInicio}
                   onChange={(e) => setFiltroDataInicio(e.target.value)}
-                  className="w-full dark:bg-gray-900/50"
+                  className="w-full dark:bg-gray-700/50 dark:text-gray-100 dark:border-gray-600"
                 />
               </div>
 
@@ -1990,7 +2064,7 @@ NOTAS FISCAIS:`
                   type="date"
                   value={filtroDataFim}
                   onChange={(e) => setFiltroDataFim(e.target.value)}
-                  className="w-full dark:bg-gray-900/50"
+                  className="w-full dark:bg-gray-700/50 dark:text-gray-100 dark:border-gray-600"
                 />
               </div>
               {/* Filtro de status */}
@@ -2000,14 +2074,14 @@ NOTAS FISCAIS:`
                   value={filtroStatus}
                   onValueChange={(value) => setFiltroStatus(value)}
                 >
-                  <SelectTrigger className="w-full dark:bg-gray-900/50">
+                  <SelectTrigger className="w-full dark:bg-gray-700/50 dark:text-gray-100 dark:border-gray-600">
                     <SelectValue placeholder="Todos os status" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos os status</SelectItem>
-                    <SelectItem value="liberado">Liberados</SelectItem>
-                    <SelectItem value="em_lancamento">Em Lançamento</SelectItem>
-                    <SelectItem value="lancado">Lançados</SelectItem>
+                  <SelectContent className="dark:bg-gray-800 dark:border-gray-700">
+                    <SelectItem value="todos" className="dark:text-gray-100">Todos os status</SelectItem>
+                    <SelectItem value="liberado" className="dark:text-gray-100">Liberados</SelectItem>
+                    <SelectItem value="em_lancamento" className="dark:text-gray-100">Em Lançamento</SelectItem>
+                    <SelectItem value="lancado" className="dark:text-gray-100">Lançados</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2024,7 +2098,7 @@ NOTAS FISCAIS:`
                   }}
                   variant="outline"
                   size="sm"
-                  className="w-full dark:bg-gray-900/50"
+                  className="w-full dark:bg-gray-700/50 dark:text-gray-100 dark:border-gray-600"
                 >
                   Limpar Filtros
                 </Button>
@@ -2046,8 +2120,8 @@ NOTAS FISCAIS:`
           </div>
 
           {relatoriosFiltrados.length === 0 ? (
-            <Card className="border-orange-200">
-              <CardContent className="text-center py-12 text-gray-500 dark:text-gray-400">
+            <Card className="border-orange-200 dark:bg-gray-800/60 dark:border-orange-500/50">
+              <CardContent className="text-center py-12 text-gray-500 dark:text-gray-300 dark:bg-gray-800/40">
                 <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
                 <h3 className="text-lg font-medium mb-2">
                   Nenhum relatório encontrado
@@ -2080,18 +2154,36 @@ NOTAS FISCAIS:`
               </CardContent>
             </Card>
           ) : (
+            <div className="space-y-4">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-              {relatoriosFiltrados.map((relatorio) => (
+              {relatoriosFiltrados.slice(0, relatoriosExibidos).map((relatorio) => {
+                // Verificar se o nome do relatório contém "Reter"
+                const nomeRelatorio = formatarNomeRelatorio(relatorio);
+                const contemReter = nomeRelatorio.toLowerCase().includes('rete');
+                
+                return (
                 <Card
                   key={relatorio.id}
-                  className="border-orange-200 hover:shadow-md transition-shadow dark:bg-gray-900/20 dark:border-orange-500/50"
+                  className={`hover:shadow-md transition-shadow ${
+                    contemReter
+                      ? "border-red-400 bg-yellow-200 dark:bg-yellow-900/40 dark:border-yellow-500/70"
+                      : "border-orange-200 dark:bg-gray-800/60 dark:border-orange-500/50"
+                  }`}
                 >
                   <CardHeader className="pb-3">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <div className="flex items-center space-x-2 min-w-0">
-                        <FileText className="h-5 w-5 text-orange-600 flex-shrink-0" />
-                        <span className="font-semibold text-sm sm:text-base text-gray-900 dark:text-gray-200 truncate">
-                          {formatarNomeRelatorio(relatorio)}
+                        <FileText className={`h-5 w-5 flex-shrink-0 ${
+                          contemReter
+                            ? "text-yellow-600 dark:text-yellow-400"
+                            : "text-orange-600"
+                        }`} />
+                        <span className={`font-semibold text-sm sm:text-base truncate ${
+                          contemReter
+                            ? "text-yellow-900 dark:text-yellow-200"
+                            : "text-gray-900 dark:text-gray-200"
+                        }`}>
+                          {nomeRelatorio}
                         </span>
                       </div>
                       <Badge
@@ -2115,19 +2207,19 @@ NOTAS FISCAIS:`
                     </div>
                   </CardHeader>
 
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-4 dark:bg-gray-900/40">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                       <div>
-                        <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">Colaborador</div>
-                        <div className="font-medium text-sm sm:text-base break-words">
+                        <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">Colaborador</div>
+                        <div className="font-medium text-sm sm:text-base break-words text-gray-900 dark:text-gray-100">
                           {Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
                             ? relatorio.colaboradores.join(', ')
                             : 'Não informado'}
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">Data</div>
-                        <div className="font-medium text-sm sm:text-base">
+                        <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-1">Data</div>
+                        <div className="font-medium text-sm sm:text-base text-gray-900 dark:text-gray-100">
                           {relatorio.data} - {relatorio.turno}
                         </div>
                       </div>
@@ -2135,38 +2227,40 @@ NOTAS FISCAIS:`
 
                     <div className="grid grid-cols-3 gap-2 sm:gap-4 py-2">
                       <div className="text-center">
-                        <div className="text-base sm:text-lg lg:text-xl font-bold text-orange-600">
+                        <div className="text-base sm:text-lg lg:text-xl font-bold text-orange-600 dark:text-orange-400">
                           {relatorio.quantidadeNotas}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Notas</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-300 mt-1">Notas</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-base sm:text-lg lg:text-xl font-bold text-blue-600">
+                        <div className="text-base sm:text-lg lg:text-xl font-bold text-blue-600 dark:text-blue-400">
                           {relatorio.somaVolumes}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Volumes</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-300 mt-1">Volumes</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-base sm:text-lg lg:text-xl font-bold text-red-600">
+                        <div className="text-base sm:text-lg lg:text-xl font-bold text-red-600 dark:text-red-400">
                           {relatorio.totalDivergencias || 0}
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        <div className="text-xs text-gray-500 dark:text-gray-300 mt-1">
                           Divergências
                         </div>
                       </div>
                     </div>
 
-                    <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                    <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-300">
                       <div className="mb-1">
                         Liberado em:{" "}
-                        {new Date(relatorio.dataFinalizacao).toLocaleString(
-                          "pt-BR"
-                        )}
+                        <span className="text-gray-900 dark:text-gray-100">
+                          {new Date(relatorio.dataFinalizacao).toLocaleString(
+                            "pt-BR"
+                          )}
+                        </span>
                       </div>
                        {calcularTempoBipagem(relatorio) && (
                          <div className="flex items-center">
-                           <Clock className="h-3 w-3 mr-1 flex-shrink-0" />
-                           <span>Tempo de bipagem: {calcularTempoBipagem(relatorio)}</span>
+                           <Clock className="h-3 w-3 mr-1 flex-shrink-0 text-gray-500 dark:text-gray-300" />
+                           <span>Tempo de bipagem: <span className="text-gray-900 dark:text-gray-100">{calcularTempoBipagem(relatorio)}</span></span>
                          </div>
                       )}
                     </div>
@@ -2180,7 +2274,7 @@ NOTAS FISCAIS:`
                         <DialogTrigger asChild>
                           <Button
                             variant="outline"
-                            className="w-full sm:flex-1 bg-transparent text-xs sm:text-sm dark:bg-gray-900/50 dark:hover:bg-gray-900/20 dark:border-gray-900/20 dark:text-gray-200"
+                            className="w-full sm:flex-1 bg-transparent text-xs sm:text-sm dark:bg-gray-700/50 dark:hover:bg-gray-700/70 dark:border-gray-600 dark:text-gray-100"
                             size="sm"
                             onClick={() => {
                               console.log('🔍 Abrindo modal para relatório:', relatorio.nome);
@@ -2220,38 +2314,38 @@ NOTAS FISCAIS:`
 
                           <div className="space-y-4 ">
                             {/* Resumo do Relatório */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4 bg-orange-50 rounded-lg dark:bg-gray-900/50">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-4 bg-orange-50 rounded-lg dark:bg-gray-800/60">
                               <div>
-                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                <div className="text-sm text-gray-600 dark:text-gray-300">
                                   Transportadora
                                 </div>
-                                <div className="font-medium text-sm dark:text-gray-200">
+                                <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
                                   {formatarNomeRelatorio(relatorio)}
                                 </div>
                               </div>
                               <div>
-                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                <div className="text-sm text-gray-600 dark:text-gray-300">
                                   Colaborador
                                 </div>
-                                <div className="font-medium text-sm dark:text-gray-200">
+                                <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
                                   {Array.isArray(relatorio.colaboradores) && relatorio.colaboradores.length > 0
                                     ? relatorio.colaboradores.join(', ')
                                     : 'Não informado'}
                                 </div>
                               </div>
                               <div>
-                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                <div className="text-sm text-gray-600 dark:text-gray-300">
                                   Data
                                 </div>
-                                <div className="font-medium text-sm dark:text-gray-200">
+                                <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
                                   {relatorio.data} - {relatorio.turno}
                                 </div>
                               </div>
                               <div>
-                                <div className="text-sm text-gray-600 dark:text-gray-400">
+                                <div className="text-sm text-gray-600 dark:text-gray-300">
                                   Liberado em
                                 </div>
-                                <div className="font-medium text-sm dark:text-gray-200">
+                                <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
                                   {new Date(
                                     relatorio.dataFinalizacao
                                   ).toLocaleString("pt-BR")}
@@ -2264,7 +2358,7 @@ NOTAS FISCAIS:`
                               <Button
                                 onClick={() => copiarNFs(notasFiltradas)}
                                 variant="outline"
-                                className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-900/50 dark:hover:bg-blue-900/20 dark:border-blue-900/20 dark:text-blue-200"
+                                className="bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-800/60 dark:hover:bg-blue-800/80 dark:border-blue-600 dark:text-blue-100"
                                 size="sm"
                               >
                                 <Copy className="h-4 w-4 mr-2" />
@@ -2276,7 +2370,7 @@ NOTAS FISCAIS:`
                               <Button
                                 onClick={() => copiarVolumes(notasFiltradas)}
                                 variant="outline"
-                                className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700 dark:bg-green-900/50 dark:hover:bg-green-900/20 dark:border-green-900/20 dark:text-green-200"
+                                className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700 dark:bg-green-800/60 dark:hover:bg-green-800/80 dark:border-green-600 dark:text-green-100"
                                 size="sm"
                               >
                                 <Copy className="h-4 w-4 mr-2" />
@@ -2606,9 +2700,9 @@ NOTAS FISCAIS:`
                                         </div>
                                         
                                         {nota.divergencia && (
-                                          <div className="text-xs mb-2 p-2 bg-orange-50 dark:bg-orange-900/20 rounded">
-                                            <span className="text-gray-500 dark:text-gray-400">Divergência:</span>
-                                            <span className="ml-1 text-orange-600 dark:text-orange-400 block">
+                                          <div className="text-xs mb-2 p-2 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-200 rounded">
+                                            <span className="text-gray-500 dark:text-gray-300">Divergência:</span>
+                                            <span className="ml-1 text-orange-600 dark:text-orange-300 block">
                                               {nota.divergencia.observacoes}
                                             </span>
                                           </div>
@@ -2632,10 +2726,10 @@ NOTAS FISCAIS:`
                                   })}
                                   
                                   {/* Total Mobile */}
-                                  <div className="bg-orange-50 dark:bg-gray-900/100 p-3 rounded-lg border border-orange-200 dark:border-orange-900/50">
+                                  <div className="bg-orange-50 dark:bg-gray-800/80 dark:text-gray-200 p-3 rounded-lg border border-orange-200 dark:border-orange-700/50">
                                     <div className="flex justify-between items-center">
-                                      <span className="text-sm font-bold text-orange-800 dark:text-orange-400">Total Volumes:</span>
-                                      <span className="text-sm font-bold text-orange-800 dark:text-orange-400">
+                                      <span className="text-sm font-bold text-orange-800 dark:text-orange-300">Total Volumes:</span>
+                                      <span className="text-sm font-bold text-orange-800 dark:text-orange-300">
                                         {notasFiltradas.reduce(
                                           (sum, nota) =>
                                             sum +
@@ -2653,7 +2747,7 @@ NOTAS FISCAIS:`
                                   <ScrollArea className="max-h-96 overflow-y-auto">
                                     <div className="min-w-max">
                                       {/* Cabeçalho fixo */}
-                                      <div className="grid grid-cols-8 gap-2 sm:gap-4 bg-gray-100 px-2 sm:px-4 py-2 sticky top-0 z-10 text-xs sm:text-sm font-semibold text-gray-700 border-b border-gray-300 dark:bg-gray-900/50 dark:border-gray-900/20 dark:text-gray-200 dark:text-gray-300">
+                                      <div className="grid grid-cols-8 gap-2 sm:gap-4 bg-gray-100 px-2 sm:px-4 py-2 sticky top-0 z-10 text-xs sm:text-sm font-semibold text-gray-700 border-b border-gray-300 dark:bg-gray-800/80 dark:border-gray-700 dark:text-gray-200">
                                         <div className="min-w-[80px]">NF</div>
                                         <div className="min-w-[70px] text-center">Volumes</div>
                                         <div className="min-w-[100px]">Destino</div>
@@ -2670,8 +2764,8 @@ NOTAS FISCAIS:`
                                           return "bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500";
                                         }
                                         return index % 2 === 0
-                                          ? "bg-white dark:bg-gray-900/20"
-                                          : "bg-gray-50 dark:bg-gray-900/50";
+                                          ? "bg-white dark:bg-gray-800/40 dark:text-gray-100"
+                                          : "bg-gray-50 dark:bg-gray-800/60 dark:text-gray-100";
                                       };
                                       
                                       return (
@@ -2679,47 +2773,47 @@ NOTAS FISCAIS:`
                                         key={nota.id}
                                         className={`px-2 sm:px-4 py-2 grid grid-cols-8 gap-2 sm:gap-4 text-xs sm:text-sm ${getRowBackgroundColor()}`}
                                       >
-                                        <div className="font-medium min-w-[80px]">
+                                        <div className="font-medium min-w-[80px] text-gray-900 dark:text-gray-100">
                                           {nota.numeroNF}
                                         </div>
-                                        <div className="text-center min-w-[70px]">
+                                        <div className="text-center min-w-[70px] text-gray-900 dark:text-gray-100">
                                           {nota.divergencia?.volumesInformados ||
                                             nota.volumes}
                                           {nota.divergencia?.volumesInformados !==
                                             nota.volumes && (
-                                              <span className="text-orange-600 text-[10px] sm:text-xs ml-1 block sm:inline">
+                                              <span className="text-orange-600 dark:text-orange-400 text-[10px] sm:text-xs ml-1 block sm:inline">
                                                 (era {nota.volumes})
                                               </span>
                                             )}
                                         </div>
-                                        <div className="text-[10px] sm:text-xs min-w-[100px] truncate" title={nota.destino}>
+                                        <div className="text-[10px] sm:text-xs min-w-[100px] truncate text-gray-900 dark:text-gray-100" title={nota.destino}>
                                           {nota.destino}
                                         </div>
                                         <div
-                                          className="text-[10px] sm:text-xs truncate min-w-[120px]"
+                                          className="text-[10px] sm:text-xs truncate min-w-[120px] text-gray-900 dark:text-gray-100"
                                           title={nota.fornecedor}
                                         >
                                           {nota.fornecedor}
                                         </div>
                                         <div
-                                          className="text-[10px] sm:text-xs truncate min-w-[120px]"
+                                          className="text-[10px] sm:text-xs truncate min-w-[120px] text-gray-900 dark:text-gray-100"
                                           title={nota.clienteDestino}
                                         >
                                           {nota.clienteDestino}
                                         </div>
                                         <div className="flex items-center min-w-[80px]">
                                           {nota.status === "ok" ? (
-                                            <div className="flex items-center text-green-600">
+                                            <div className="flex items-center text-green-600 dark:text-green-400">
                                               <CheckCircle className="h-3 w-3 mr-1 flex-shrink-0" />
                                               <span className="text-[10px] sm:text-xs">OK</span>
                                             </div>
                                           ) : nota.status === "devolvida" ? (
-                                            <div className="flex items-center text-red-600">
+                                            <div className="flex items-center text-red-600 dark:text-red-400">
                                               <RefreshCw className="h-3 w-3 mr-1 flex-shrink-0" />
                                               <span className="text-[10px] sm:text-xs">Devolvida</span>
                                             </div>
                                           ) : (
-                                            <div className="flex items-center text-orange-600">
+                                            <div className="flex items-center text-orange-600 dark:text-orange-400">
                                               <AlertTriangle className="h-3 w-3 mr-1 flex-shrink-0" />
                                               <span className="text-[10px] sm:text-xs">Div.</span>
                                             </div>
@@ -2728,7 +2822,7 @@ NOTAS FISCAIS:`
                                         <div className="text-[10px] sm:text-xs min-w-[150px] truncate">
                                           {nota.divergencia && (
                                             <span
-                                              className="text-orange-600"
+                                              className="text-orange-600 dark:text-orange-400"
                                               title={nota.divergencia.observacoes}
                                             >
                                               {nota.divergencia.observacoes}
@@ -2752,7 +2846,7 @@ NOTAS FISCAIS:`
                                       </div>
                                       );
                                     })}
-                                    <div className="bg-orange-50 px-2 sm:px-4 py-2 grid grid-cols-8 gap-2 sm:gap-4 text-xs sm:text-sm font-bold text-orange-800 dark:bg-gray-900/100 dark:text-orange-400">
+                                    <div className="bg-orange-50 px-2 sm:px-4 py-2 grid grid-cols-8 gap-2 sm:gap-4 text-xs sm:text-sm font-bold text-orange-800 dark:bg-gray-800/80 dark:text-orange-300">
                                       <div className="col-span-1 min-w-[80px]">Total:</div>
                                       <div className="text-center min-w-[70px]">
                                         {notasFiltradas.reduce(
@@ -2786,7 +2880,7 @@ NOTAS FISCAIS:`
                           loadingStatusButtons[`${relatorio.id}-em_lancamento`]
                         }
                         variant="outline"
-                        className="w-full sm:flex-1 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-900/50 dark:hover:bg-blue-900/20 dark:border-blue-900/20 dark:text-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full sm:flex-1 bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-700 dark:bg-blue-800/60 dark:hover:bg-blue-800/80 dark:border-blue-600 dark:text-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
                         size="sm"
                       >
                         {loadingStatusButtons[`${relatorio.id}-em_lancamento`] ? (
@@ -2812,7 +2906,7 @@ NOTAS FISCAIS:`
                           loadingStatusButtons[`${relatorio.id}-lancado`]
                         }
                         variant="outline"
-                        className="w-full sm:flex-1 bg-green-50 hover:bg-green-100 border-green-200 text-green-700 dark:bg-green-900/50 dark:hover:bg-green-900/20 dark:border-green-900/20 dark:text-green-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full sm:flex-1 bg-green-50 hover:bg-green-100 border-green-200 text-green-700 dark:bg-green-800/60 dark:hover:bg-green-800/80 dark:border-green-600 dark:text-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
                         size="sm"
                       >
                         {loadingStatusButtons[`${relatorio.id}-lancado`] ? (
@@ -2830,7 +2924,38 @@ NOTAS FISCAIS:`
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
+            </div>
+            
+            {/* Indicador de carregamento e botão para carregar mais */}
+            {relatoriosFiltrados.length > relatoriosExibidos && (
+              <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                {isLoadingMore ? (
+                  <div className="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span>Carregando mais relatórios...</span>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={() => {
+                      setIsLoadingMore(true);
+                      setTimeout(() => {
+                        setRelatoriosExibidos(prev => prev + ITENS_POR_PAGINA);
+                        setIsLoadingMore(false);
+                      }, 300);
+                    }}
+                    variant="outline"
+                    className="bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700 dark:bg-orange-900/50 dark:hover:bg-orange-900/20 dark:border-orange-900/20 dark:text-orange-200"
+                  >
+                    Carregar Mais ({relatoriosFiltrados.length - relatoriosExibidos} restantes)
+                  </Button>
+                )}
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Mostrando {relatoriosExibidos} de {relatoriosFiltrados.length} relatórios
+                </p>
+              </div>
+            )}
             </div>
           )}
         </div>
@@ -3044,6 +3169,9 @@ NOTAS FISCAIS:`
           }}
         />
       )}
+
+      {/* Botão flutuante para voltar ao topo */}
+      <ScrollToTopButton />
     </div>
   );
 }

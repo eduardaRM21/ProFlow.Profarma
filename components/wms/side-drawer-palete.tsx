@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { Package, MapPin, FileText, Calendar, X, ArrowRightLeft } from "lucide-react"
 import type { WMSPalete, WMSPosicao, WMSCarga } from "@/lib/wms-service"
 import type { NotaFiscal } from "@/lib/database-service"
+import { obterSiglaRua } from "@/lib/wms-utils"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
@@ -72,8 +73,7 @@ export function SideDrawerPalete({
               <div className="space-y-2">
                 <p className="text-lg font-mono font-semibold">{posicao.codigo_posicao}</p>
                 <div className="flex gap-4 text-sm text-gray-600">
-                  <span>Corredor: {posicao.corredor}</span>
-                  <span>Rua: {posicao.rua}</span>
+                  <span>Rua: {obterSiglaRua(posicao.rua)}</span>
                   <span>Nível: {posicao.nivel}</span>
                 </div>
               </div>
@@ -120,17 +120,23 @@ export function SideDrawerPalete({
               Notas Fiscais ({notas.length})
             </h3>
             <div className="space-y-2 max-h-64 overflow-y-auto">
-              {notas.map((nota, index) => (
-                <div key={index} className="bg-gray-50 p-3 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <p className="font-semibold">NF: {nota.numeroNF}</p>
-                    <Badge variant="outline">{nota.volumes} vol.</Badge>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-1">
-                    {nota.fornecedor} → {nota.clienteDestino}
-                  </p>
+              {notas.length === 0 ? (
+                <div className="bg-gray-50 p-3 rounded-lg text-center text-gray-500 text-sm">
+                  Nenhuma nota fiscal associada a este palete
                 </div>
-              ))}
+              ) : (
+                notas.map((nota, index) => (
+                  <div key={nota.id || index} className="bg-gray-50 p-3 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold">NF: {nota.numeroNF || 'N/A'}</p>
+                      <Badge variant="outline">{nota.volumes || 0} vol.</Badge>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {nota.fornecedor || 'N/A'} → {nota.clienteDestino || 'N/A'}
+                    </p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 

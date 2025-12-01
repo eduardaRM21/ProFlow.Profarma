@@ -37,6 +37,11 @@ NEXT_PUBLIC_ENABLE_HTTPS=false
 # Performance Configuration
 NEXT_PUBLIC_ENABLE_CACHE=true
 NEXT_PUBLIC_CACHE_DURATION=3600
+
+# Printer Service Configuration (Opcional)
+# Configure esta variável se estiver usando o serviço intermediário de impressão
+# Exemplo: http://localhost:3001 ou http://192.168.1.100:3001
+# NEXT_PUBLIC_PRINTER_SERVICE_URL=http://localhost:3001
 `;
 
 const envPath = path.join(process.cwd(), '.env.local');
@@ -59,7 +64,8 @@ try {
   console.log('   • Configurações do scanner');
   console.log('   • Feature flags');
   console.log('   • Configurações de logging');
-  console.log('   • Configurações de desenvolvimento\n');
+  console.log('   • Configurações de desenvolvimento');
+  console.log('   • Serviço de impressão (opcional)\n');
 
   console.log('🚀 Próximos passos:');
   console.log('   1. Verifique se as credenciais do Supabase estão corretas');

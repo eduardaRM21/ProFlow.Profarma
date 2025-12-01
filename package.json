@@ -28,7 +28,9 @@
     "analisar-transportadoras": "node scripts/recuperar-notas-transportadoras-especificas.js",
     "recuperar-transportadoras": "node scripts/recuperar-notas-transportadoras-especificas.js recuperar",
     "fix-dialog-accessibility": "node scripts/fix-dialog-accessibility.js",
-    "test-406-fix": "node scripts/test-406-fix.js"
+    "test-406-fix": "node scripts/test-406-fix.js",
+    "printer-service": "node scripts/printer-service.js",
+    "verificar-impressao": "node scripts/verificar-impressao.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -63,6 +65,7 @@
     "@react-three/fiber": "^8.18.0",
     "@supabase/supabase-js": "^2.53.0",
     "@tanstack/react-query": "^5.90.5",
+    "@types/qrcode": "^1.5.6",
     "@zxing/library": "latest",
     "autoprefixer": "^10.4.20",
     "bcryptjs": "^3.0.2",
@@ -78,6 +81,7 @@
     "lucide-react": "^0.454.0",
     "next": "^14.2.31",
     "next-themes": "^0.4.4",
+    "qrcode": "^1.5.4",
     "react": "^18",
     "react-day-picker": "9.8.0",
     "react-dom": "^18",

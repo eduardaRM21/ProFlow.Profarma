@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS wms_cargas (
   codigo_carga TEXT UNIQUE NOT NULL,
   cliente_destino TEXT NOT NULL,
   destino TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('montada', 'aguardando_agendamento', 'armazenada', 'liberada_para_expedicao')),
+  status TEXT NOT NULL CHECK (status IN ('montada', 'aguardando_armazenagem', 'armazenada', 'liberada_para_expedicao')),
   quantidade_paletes INTEGER DEFAULT 0,
   quantidade_gaiolas INTEGER DEFAULT 0,
   quantidade_caixas_mangas INTEGER DEFAULT 0,
@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS wms_posicoes (
   corredor INTEGER NOT NULL CHECK (corredor >= 1 AND corredor <= 28),
   rua INTEGER NOT NULL CHECK (rua >= 1 AND rua <= 21),
   nivel INTEGER NOT NULL CHECK (nivel >= 1 AND nivel <= 5),
+  posicao INTEGER, -- Número da posição (ex: 001, 020) - extraído do código
   status TEXT NOT NULL CHECK (status IN ('disponivel', 'ocupada', 'bloqueada')) DEFAULT 'disponivel',
   palete_id UUID, -- Será referenciado após criar wms_paletes
   capacidade_peso DECIMAL(10, 2) DEFAULT 1000.00, -- Peso máximo em kg
@@ -50,7 +51,7 @@ CREATE TABLE IF NOT EXISTS wms_paletes (
   codigo_palete TEXT UNIQUE NOT NULL,
   carga_id UUID REFERENCES wms_cargas(id) ON DELETE CASCADE,
   posicao_id UUID REFERENCES wms_posicoes(id) ON DELETE SET NULL,
-  status TEXT NOT NULL CHECK (status IN ('em_montagem', 'aguardando_agendamento', 'armazenado', 'em_movimento', 'expedido')),
+  status TEXT NOT NULL, -- Constraint será adicionado após corrigir dados inválidos
   quantidade_volumes INTEGER DEFAULT 0,
   quantidade_nfs INTEGER DEFAULT 0,
   peso_estimado DECIMAL(10, 2),
@@ -66,19 +67,17 @@ ALTER TABLE wms_posicoes
   ADD CONSTRAINT fk_wms_posicoes_palete 
   FOREIGN KEY (palete_id) REFERENCES wms_paletes(id) ON DELETE SET NULL;
 
--- Tabela de associação NFs com Paletes
+-- Tabela de associação NFs com Paletes (uma linha por palete com array de notas)
 CREATE TABLE IF NOT EXISTS wms_palete_notas (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  palete_id UUID REFERENCES wms_paletes(id) ON DELETE CASCADE NOT NULL,
-  numero_nf TEXT NOT NULL,
-  codigo_completo TEXT NOT NULL,
-  fornecedor TEXT,
+  palete_id UUID REFERENCES wms_paletes(id) ON DELETE CASCADE NOT NULL UNIQUE,
   cliente_destino TEXT,
   destino TEXT,
-  volumes INTEGER DEFAULT 0,
+  total_volumes INTEGER DEFAULT 0,
+  notas JSONB DEFAULT '[]'::jsonb NOT NULL,
   data_associacao TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(palete_id, numero_nf)
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Tabela de histórico de movimentações
@@ -104,7 +103,9 @@ CREATE INDEX IF NOT EXISTS idx_wms_posicoes_codigo ON wms_posicoes(codigo_posica
 CREATE INDEX IF NOT EXISTS idx_wms_posicoes_status ON wms_posicoes(status);
 CREATE INDEX IF NOT EXISTS idx_wms_posicoes_corredor_rua_nivel ON wms_posicoes(corredor, rua, nivel);
 CREATE INDEX IF NOT EXISTS idx_wms_palete_notas_palete ON wms_palete_notas(palete_id);
-CREATE INDEX IF NOT EXISTS idx_wms_palete_notas_nf ON wms_palete_notas(numero_nf);
+CREATE INDEX IF NOT EXISTS idx_wms_palete_notas_destino ON wms_palete_notas(destino);
+CREATE INDEX IF NOT EXISTS idx_wms_palete_notas_cliente ON wms_palete_notas(cliente_destino);
+CREATE INDEX IF NOT EXISTS idx_wms_palete_notas_notas ON wms_palete_notas USING GIN (notas);
 CREATE INDEX IF NOT EXISTS idx_wms_movimentacoes_palete ON wms_movimentacoes(palete_id);
 CREATE INDEX IF NOT EXISTS idx_wms_movimentacoes_data ON wms_movimentacoes(data_movimentacao);
 
@@ -125,6 +126,9 @@ CREATE TRIGGER update_wms_paletes_updated_at BEFORE UPDATE ON wms_paletes
   FOR EACH ROW EXECUTE FUNCTION update_wms_updated_at();
 
 CREATE TRIGGER update_wms_posicoes_updated_at BEFORE UPDATE ON wms_posicoes
+  FOR EACH ROW EXECUTE FUNCTION update_wms_updated_at();
+
+CREATE TRIGGER update_wms_palete_notas_updated_at BEFORE UPDATE ON wms_palete_notas
   FOR EACH ROW EXECUTE FUNCTION update_wms_updated_at();
 
 -- Função para gerar código de posição automaticamente
@@ -183,8 +187,16 @@ CREATE POLICY "Allow all operations on wms_movimentacoes" ON wms_movimentacoes
 COMMENT ON TABLE wms_cargas IS 'Tabela para armazenar cargas (agrupamento de NFs)';
 COMMENT ON TABLE wms_paletes IS 'Tabela para armazenar paletes (unidade de armazenamento)';
 COMMENT ON TABLE wms_posicoes IS 'Tabela para armazenar posições do porta-paletes (2.940 posições)';
-COMMENT ON TABLE wms_palete_notas IS 'Tabela de associação entre paletes e notas fiscais';
+COMMENT ON TABLE wms_palete_notas IS 'Tabela de associação entre paletes e notas fiscais (uma linha por palete com array de notas)';
+COMMENT ON COLUMN wms_palete_notas.palete_id IS 'ID do palete (UNIQUE - apenas uma linha por palete)';
+COMMENT ON COLUMN wms_palete_notas.notas IS 'Array JSONB com todas as notas fiscais do palete';
+COMMENT ON COLUMN wms_palete_notas.total_volumes IS 'Total de volumes de todas as notas do palete';
+COMMENT ON COLUMN wms_palete_notas.cliente_destino IS 'Cliente destino do palete';
+COMMENT ON COLUMN wms_palete_notas.destino IS 'Destino do palete';
 COMMENT ON TABLE wms_movimentacoes IS 'Tabela de histórico de movimentações de paletes';
+
+-- IMPORTANTE: Execute o script fix-wms-paletes-status-constraint.sql
+-- para corrigir dados inválidos e adicionar o constraint de status
 
 -- Verificar se as tabelas foram criadas corretamente
 SELECT 

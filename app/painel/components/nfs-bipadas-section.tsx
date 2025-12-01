@@ -609,6 +609,25 @@ export default function NFsBipadasSection({ sessionData }: NFsBipadasSectionProp
       }
     }
 
+    // Validação: ROD e CON não podem estar no mesmo carro
+    const tipoNormalizado = tipo.trim().toUpperCase()
+    const nfsValidasCarro = carroAtivo.nfs.filter((nf) => nf.status === "valida")
+    const tiposExistentes = [...new Set(nfsValidasCarro.map((nf) => nf.tipo.trim().toUpperCase()))]
+    
+    if (tiposExistentes.length > 0) {
+      const temROD = tiposExistentes.includes("ROD")
+      const temCON = tiposExistentes.includes("CON")
+      const ehROD = tipoNormalizado === "ROD"
+      const ehCON = tipoNormalizado === "CON"
+      
+      if ((ehROD && temCON) || (ehCON && temROD)) {
+        return {
+          valido: false,
+          erro: `Cargas ROD (Rodoviária) não podem ser embaladas com CON (Controlado) no mesmo carro. Esta nota é ${tipoNormalizado} e o carro já possui notas ${temROD ? "ROD" : "CON"}. Use um carro diferente.`,
+        }
+      }
+    }
+
     // Verificar se a NF está em algum relatório finalizado (OBRIGATÓRIO)
     const nfEmRelatorio = await verificarNFEmRelatorios(numeroNF)
     

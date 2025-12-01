@@ -29,16 +29,6 @@ export function SlotRecommendationCard({ sugestao, onConfirmar, onReservar }: Sl
               <MapPin className="h-5 w-5 text-green-600" />
               {posicao.codigo_posicao}
             </CardTitle>
-            <Badge 
-              variant="outline" 
-              className={`${
-                score >= 70 ? "bg-green-50 text-green-700 border-green-300" :
-                score >= 50 ? "bg-yellow-50 text-yellow-700 border-yellow-300" :
-                "bg-gray-50 text-gray-700 border-gray-300"
-              }`}
-            >
-              Score: {score}
-            </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

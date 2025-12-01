@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, MapPin, Package, TrendingUp } from "lucide-react"
 import type { WMSSugestaoConjuntoPosicoes } from "@/lib/wms-service"
+import { obterSiglaRua } from "@/lib/wms-utils"
 import { motion } from "framer-motion"
 
 interface SlotConjuntoRecommendationCardProps {
@@ -29,16 +30,6 @@ export function SlotConjuntoRecommendationCard({ sugestao, onConfirmar, onReserv
               <MapPin className="h-5 w-5 text-green-600" />
               {posicoes.length} Posições
             </CardTitle>
-            <Badge 
-              variant="outline" 
-              className={`${
-                score >= 70 ? "bg-green-50 text-green-700 border-green-300" :
-                score >= 50 ? "bg-yellow-50 text-yellow-700 border-yellow-300" :
-                "bg-gray-50 text-gray-700 border-gray-300"
-              }`}
-            >
-              Score: {score}
-            </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -52,12 +43,8 @@ export function SlotConjuntoRecommendationCard({ sugestao, onConfirmar, onReserv
               <Badge variant="outline">{posicao_inicial.nivel}</Badge>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">Corredor:</span>
-              <span className="font-medium">{posicao_inicial.corredor}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
               <span className="text-gray-600">Rua:</span>
-              <span className="font-medium">{posicao_inicial.rua}</span>
+              <span className="font-medium">{obterSiglaRua(posicao_inicial.rua)}</span>
             </div>
           </div>
 

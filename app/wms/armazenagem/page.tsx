@@ -23,6 +23,7 @@ import { NFSearchBar } from "@/components/wms/nf-search-bar"
 import { PositionBadge } from "@/components/wms/position-badge"
 import { SideDrawerPalete } from "@/components/wms/side-drawer-palete"
 import { useToast } from "@/hooks/use-toast"
+import { obterSiglaRua } from "@/lib/wms-utils"
 import {
   Table,
   TableBody,
@@ -131,6 +132,25 @@ export default function WMSArmazenagemPage() {
     }
   }
 
+  // Função para converter notas do formato WMSPaleteNotaItem para NotaFiscal
+  const converterNotasParaFormatoComponente = (notas: any[]): any[] => {
+    if (!notas || !Array.isArray(notas)) return []
+    
+    return notas.map((nota: any) => ({
+      id: nota.id || nota.codigo_completo || '',
+      codigoCompleto: nota.codigo_completo || '',
+      numeroNF: nota.numero_nf || nota.numeroNF || '',
+      volumes: nota.volumes || 0,
+      fornecedor: nota.fornecedor || '',
+      clienteDestino: nota.cliente_destino || nota.clienteDestino || '',
+      destino: nota.destino || '',
+      tipoCarga: nota.tipo_carga || nota.tipoCarga || '',
+      data: nota.data_associacao || nota.data || new Date().toISOString(),
+      timestamp: nota.data_associacao || nota.timestamp || new Date().toISOString(),
+      status: nota.status || 'ok' as const
+    }))
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-gray-50 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -233,6 +253,8 @@ export default function WMSArmazenagemPage() {
                     <SelectItem value="3">Nível 3</SelectItem>
                     <SelectItem value="4">Nível 4</SelectItem>
                     <SelectItem value="5">Nível 5</SelectItem>
+                    <SelectItem value="6">Nível 6</SelectItem>
+                    <SelectItem value="7">Nível 7</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -273,7 +295,7 @@ export default function WMSArmazenagemPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Código</TableHead>
-                      <TableHead>Corredor</TableHead>
+                      <TableHead>Posição</TableHead>
                       <TableHead>Rua</TableHead>
                       <TableHead>Nível</TableHead>
                       <TableHead>Status</TableHead>
@@ -287,8 +309,10 @@ export default function WMSArmazenagemPage() {
                         <TableCell className="font-mono font-semibold">
                           {posicao.codigo_posicao}
                         </TableCell>
-                        <TableCell>{posicao.corredor}</TableCell>
-                        <TableCell>{posicao.rua}</TableCell>
+                        <TableCell className="font-mono">
+                          {posicao.posicao ? String(posicao.posicao).padStart(3, '0') : '-'}
+                        </TableCell>
+                        <TableCell>{obterSiglaRua(posicao.rua)}</TableCell>
                         <TableCell>{posicao.nivel}</TableCell>
                         <TableCell>
                           <PositionBadge status={posicao.status} />
@@ -354,9 +378,15 @@ export default function WMSArmazenagemPage() {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           palete={paleteSelecionado}
-          posicao={resultadoBusca?.posicao || null}
+          posicao={resultadoBusca?.posicao || paleteSelecionado?.posicao || null}
           carga={resultadoBusca?.carga || null}
-          notas={resultadoBusca?.notas_palete || []}
+          notas={
+            resultadoBusca?.notas_palete?.length 
+              ? converterNotasParaFormatoComponente(resultadoBusca.notas_palete)
+              : paleteSelecionado?.notas?.length
+              ? converterNotasParaFormatoComponente(paleteSelecionado.notas)
+              : []
+          }
           onTransferir={handleTransferir}
         />
       </div>

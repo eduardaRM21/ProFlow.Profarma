@@ -182,41 +182,86 @@ function RackSection({
 
 // Componente principal da cena 3D
 function WarehouseScene({ posicoes, nivelSelecionado, onPositionClick }: Warehouse3DProps) {
-  // Organizar posições por corredor e rua
+  // Organizar posições por rua e número da posição (extraído do código)
+  // Filtrar apenas posições do nível selecionado
+  const posicoesFiltradas = useMemo(() => {
+    return posicoes.filter(pos => pos.nivel === nivelSelecionado)
+  }, [posicoes, nivelSelecionado])
+  
   const posicoesMap = useMemo(() => {
-    const map = new Map()
-    posicoes.forEach(pos => {
-      const key = `${pos.corredor}-${pos.rua}`
-      map.set(key, pos)
+    const map = new Map<string, any>()
+    posicoesFiltradas.forEach(pos => {
+      // Extrair número da posição do código (ex: CA-001-01 -> 1, PD-097-03 -> 97)
+      const match = pos.codigo_posicao?.match(/^[A-Z]+-(\d+)-/)
+      if (match) {
+        const numeroPosicao = parseInt(match[1], 10)
+        const key = `${pos.rua}-${numeroPosicao}`
+        map.set(key, pos)
+      }
     })
     return map
+  }, [posicoesFiltradas])
+  
+  // Organizar posições por rua para determinar limites (usar todas as posições, não apenas filtradas)
+  const posicoesPorRua = useMemo(() => {
+    const porRua: Record<number, { min: number; max: number; posicoes: any[] }> = {}
+    
+    // Usar todas as posições para determinar os limites (min/max), não apenas as filtradas
+    posicoes.forEach(pos => {
+      const match = pos.codigo_posicao?.match(/^[A-Z]+-(\d+)-/)
+      if (match) {
+        const numeroPosicao = parseInt(match[1], 10)
+        if (!porRua[pos.rua]) {
+          porRua[pos.rua] = { min: numeroPosicao, max: numeroPosicao, posicoes: [] }
+        }
+        porRua[pos.rua].min = Math.min(porRua[pos.rua].min, numeroPosicao)
+        porRua[pos.rua].max = Math.max(porRua[pos.rua].max, numeroPosicao)
+        porRua[pos.rua].posicoes.push(pos)
+      }
+    })
+    
+    return porRua
   }, [posicoes])
   
-  // Criar grade de racks (28 corredores x 21 ruas)
+  // Criar grade de racks baseada na estrutura real: 3 ruas (CA, CB, PD) com múltiplas posições
   const rackSections = useMemo(() => {
-    const sections = []
+    const sections: any[] = []
     const spacing = 1.2 // Espaçamento entre racks
+    const spacingRuas = 8 // Espaçamento maior entre as ruas principais
     
-    for (let corredor = 1; corredor <= 28; corredor++) {
-      for (let rua = 1; rua <= 21; rua++) {
-        const key = `${corredor}-${rua}`
+    // Organizar as 3 ruas principais
+    const ruas = [1, 2, 3] // CA, CB, PD
+    
+    ruas.forEach((rua, ruaIndex) => {
+      const dadosRua = posicoesPorRua[rua]
+      if (!dadosRua) return
+      
+      const minPos = dadosRua.min
+      const maxPos = dadosRua.max
+      const totalPosicoes = maxPos - minPos + 1
+      
+      // Posição Z da rua (separação entre ruas)
+      const zRua = (ruaIndex - 1) * spacingRuas
+      
+      // Para cada posição nesta rua
+      for (let numPos = minPos; numPos <= maxPos; numPos++) {
+        const key = `${rua}-${numPos}`
         const posicao = posicoesMap.get(key)
         
+        // Posição X dentro da rua (sequencial)
+        const xPos = (numPos - minPos - (totalPosicoes / 2)) * spacing
+        
         sections.push({
-          corredor,
           rua,
-          position: [
-            (corredor - 14) * spacing, // Centralizar
-            0,
-            (rua - 11) * spacing // Centralizar
-          ] as [number, number, number],
+          numeroPosicao: numPos,
+          position: [xPos, 0, zRua] as [number, number, number],
           posicao
         })
       }
-    }
+    })
     
     return sections
-  }, [posicoesMap])
+  }, [posicoesMap, posicoesPorRua])
   
   return (
     <>
@@ -246,7 +291,7 @@ function WarehouseScene({ posicoes, nivelSelecionado, onPositionClick }: Warehou
       
       {/* Chão com textura realista */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1, 0]} receiveShadow>
-        <planeGeometry args={[100, 100]} />
+        <planeGeometry args={[200, 50]} />
         <meshStandardMaterial 
           color="#E5E5E5" 
           roughness={0.9} 
@@ -254,12 +299,36 @@ function WarehouseScene({ posicoes, nivelSelecionado, onPositionClick }: Warehou
         />
       </mesh>
       
+      {/* Labels das ruas */}
+      {[1, 2, 3].map((rua, ruaIndex) => {
+        const dadosRua = posicoesPorRua[rua]
+        if (!dadosRua) return null
+        
+        const siglaRua = rua === 1 ? 'CA' : rua === 2 ? 'CB' : 'PD'
+        const zRua = (ruaIndex - 1) * 8
+        const totalPosicoes = dadosRua.max - dadosRua.min + 1
+        const xCentro = 0
+        
+        return (
+          <Text
+            key={`label-rua-${rua}`}
+            position={[xCentro - (totalPosicoes * 0.6), 3, zRua]}
+            fontSize={1.5}
+            color="#1E90FF"
+            anchorX="center"
+            anchorY="middle"
+          >
+            Rua {siglaRua}
+          </Text>
+        )
+      })}
+      
       {/* Renderizar todos os racks */}
       {rackSections.map((section) => (
         <RackSection
-          key={`${section.corredor}-${section.rua}`}
+          key={`${section.rua}-${section.numeroPosicao}`}
           position={section.position}
-          corredor={section.corredor}
+          corredor={section.numeroPosicao} // Usar número da posição como "corredor" para compatibilidade
           rua={section.rua}
           nivel={nivelSelecionado}
           posicao={section.posicao}
@@ -278,17 +347,18 @@ export default function Warehouse3D({ posicoes, nivelSelecionado, onPositionClic
         gl={{ antialias: true, alpha: false }}
         dpr={[1, 2]}
       >
-        <PerspectiveCamera makeDefault position={[40, 30, 40]} fov={45} />
+        <PerspectiveCamera makeDefault position={[0, 35, 25]} fov={50} />
         <OrbitControls
           enablePan={true}
           enableZoom={true}
           enableRotate={true}
-          minDistance={25}
-          maxDistance={120}
+          minDistance={20}
+          maxDistance={150}
           minPolarAngle={Math.PI / 6}
           maxPolarAngle={Math.PI / 2.1}
           autoRotate={false}
           autoRotateSpeed={0.5}
+          target={[0, 0, 0]} // Centralizar na origem
         />
         <WarehouseScene 
           posicoes={posicoes} 

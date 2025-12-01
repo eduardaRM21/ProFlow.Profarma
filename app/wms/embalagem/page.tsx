@@ -38,16 +38,17 @@ import {
   Play,
   ArrowBigLeft,
   FileText,
-  Eye,
   Filter,
 } from "lucide-react"
 import BarcodeScanner from "@/app/recebimento/components/barcode-scanner"
 import { EmbalagemService } from "@/lib/embalagem-service"
 import { EmbalagemNotasBipadasService } from "@/lib/embalagem-notas-bipadas-service"
 import { WMSService } from "@/lib/wms-service"
+import { getSupabase } from "@/lib/supabase-client"
+import { PrinterService } from "@/lib/printer-service"
 import { useToast } from "@/hooks/use-toast"
 import { useSession } from "@/hooks/use-database"
-import type { SessionData } from "@/lib/database-service"
+import type { SessionData, NotaFiscal } from "@/lib/database-service"
 import { Loader } from "@/components/ui/loader"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -128,6 +129,7 @@ export default function WMSEmbalagemPage() {
   const [quantidadePaletesReais, setQuantidadePaletesReais] = useState("")
   const [quantidadeGaiolas, setQuantidadeGaiolas] = useState("")
   const [quantidadeCaixaManga, setQuantidadeCaixaManga] = useState("")
+  const [finalizandoEmbalagem, setFinalizandoEmbalagem] = useState(false)
 
   useEffect(() => {
     verificarSessao()
@@ -158,6 +160,18 @@ export default function WMSEmbalagemPage() {
     }, 5000)
     return () => clearInterval(interval)
   }, [])
+
+  // Bloquear scroll do body quando modal estiver aberto
+  useEffect(() => {
+    if (modalPallets.aberto) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = 'unset'
+    }
+    return () => {
+      document.body.style.overflow = 'unset'
+    }
+  }, [modalPallets.aberto])
 
   const verificarSessao = async () => {
     try {
@@ -419,6 +433,25 @@ export default function WMSEmbalagemPage() {
       return {
         valido: false,
         erro: `NF já foi bipada neste carro em ${new Date(jaBipada.timestamp).toLocaleString("pt-BR")}`,
+      }
+    }
+
+    // Validação: ROD e CON não podem estar no mesmo carro
+    const tipoNormalizado = tipo.trim().toUpperCase()
+    const nfsValidasCarro = carroAtivo.nfs.filter((nf) => nf.status === "valida")
+    const tiposExistentes = [...new Set(nfsValidasCarro.map((nf) => nf.tipo.trim().toUpperCase()))]
+    
+    if (tiposExistentes.length > 0) {
+      const temROD = tiposExistentes.includes("ROD")
+      const temCON = tiposExistentes.includes("CON")
+      const ehROD = tipoNormalizado === "ROD"
+      const ehCON = tipoNormalizado === "CON"
+      
+      if ((ehROD && temCON) || (ehCON && temROD)) {
+        return {
+          valido: false,
+          erro: `Cargas ROD (Rodoviária) não podem ser embaladas com CON (Controlado) no mesmo carro. Esta nota é ${tipoNormalizado} e o carro já possui notas ${temROD ? "ROD" : "CON"}. Use um carro diferente.`,
+        }
       }
     }
 
@@ -750,7 +783,7 @@ export default function WMSEmbalagemPage() {
     }
   }
 
-  const embalarCarro = () => {
+  const embalarCarro = async () => {
     if (!carroAtivo || !carroFinalizadoPronto()) {
       alert("Carro não está pronto para embalar!")
       return
@@ -819,7 +852,7 @@ export default function WMSEmbalagemPage() {
       setCarroAtivo(carrosAtualizados.find((c) => c.id === carroAtivo.id)!)
 
       // Salvar na lista de carros para embalagem
-      salvarCarroParaEmbalagem()
+      await salvarCarroParaEmbalagem()
 
       // Criar automaticamente um novo carro após embalar o atual
       const novoCarro: Carro = {
@@ -840,11 +873,14 @@ export default function WMSEmbalagemPage() {
     }
   }
 
-  const salvarCarroParaEmbalagem = () => {
+  const salvarCarroParaEmbalagem = async () => {
     if (!carroAtivo || !sessionData) return
 
+    // Gerar carro_id único para WMS com prefixo (mesmo usado nas notas)
+    const wmsCarroId = `WMS_${carroAtivo.id}`
+
     const carroParaEmbalagem = {
-      id: carroAtivo.id,
+      id: wmsCarroId, // Usar ID com prefixo WMS_ para identificar carros bipados no WMS
       nomeCarro: carroAtivo.nome,
       colaboradores: sessionData.colaboradores,
       data: sessionData.data,
@@ -867,40 +903,71 @@ export default function WMSEmbalagemPage() {
         timestamp: nf.timestamp,
         status: nf.status,
       })),
-      status: "embalando",
+      status: "embalando" ,
       estimativaPallets: Math.ceil(totalVolumes / 100),
       palletesReais: null,
       posicoes: null,
       dataFinalizacao: null,
     }
 
-    const chaveCarrosEmbalagem = "wms_carros_embalagem"
-    const carrosExistentes = localStorage.getItem(chaveCarrosEmbalagem)
-    const carros = carrosExistentes ? JSON.parse(carrosExistentes) : []
+    // Salvar no backend para sincronização entre dispositivos
+    try {
+      await WMSService.salvarCarroProduzido({
+        id: carroParaEmbalagem.id, // Já inclui o prefixo WMS_
+        nomeCarro: carroParaEmbalagem.nomeCarro,
+        colaboradores: carroParaEmbalagem.colaboradores,
+        data: carroParaEmbalagem.data,
+        turno: carroParaEmbalagem.turno,
+        destinoFinal: carroParaEmbalagem.destinoFinal,
+        quantidadeNFs: carroParaEmbalagem.quantidadeNFs,
+        totalVolumes: carroParaEmbalagem.totalVolumes,
+        dataInicioEmbalagem: carroParaEmbalagem.dataInicioEmbalagem,
+        nfs: carroParaEmbalagem.nfs,
+        status: carroParaEmbalagem.status as "embalando" | "finalizado",
+        palletes: carroParaEmbalagem.palletesReais,
+        posicoes: carroParaEmbalagem.posicoes
+      })
+      console.log('✅ Carro produzido salvo no backend com ID WMS:', wmsCarroId)
+    } catch (error) {
+      console.error('❌ Erro ao salvar carro produzido:', error)
+      // Fallback para localStorage em caso de erro
+      const chaveCarrosEmbalagem = "wms_carros_embalagem"
+      const carrosExistentes = localStorage.getItem(chaveCarrosEmbalagem)
+      const carros = carrosExistentes ? JSON.parse(carrosExistentes) : []
 
-    const carroExistente = carros.findIndex((c: any) => c.id === carroParaEmbalagem.id)
+      const carroExistente = carros.findIndex((c: any) => c.id === carroParaEmbalagem.id)
 
-    if (carroExistente !== -1) {
-      carros[carroExistente] = carroParaEmbalagem
-    } else {
-      carros.push(carroParaEmbalagem)
+      if (carroExistente !== -1) {
+        carros[carroExistente] = carroParaEmbalagem
+      } else {
+        carros.push(carroParaEmbalagem)
+      }
+
+      carros.sort((a: any, b: any) => new Date(b.dataInicioEmbalagem).getTime() - new Date(a.dataInicioEmbalagem).getTime())
+
+      localStorage.setItem(chaveCarrosEmbalagem, JSON.stringify(carros))
     }
-
-    carros.sort((a: any, b: any) => new Date(b.dataInicioEmbalagem).getTime() - new Date(a.dataInicioEmbalagem).getTime())
-
-    localStorage.setItem(chaveCarrosEmbalagem, JSON.stringify(carros))
   }
 
-  const carregarCarrosProduzidos = () => {
-    const chaveCarrosEmbalagem = "wms_carros_embalagem"
-    const carrosEmbalagem = localStorage.getItem(chaveCarrosEmbalagem)
-    
-    if (carrosEmbalagem) {
-      try {
-        const carros = JSON.parse(carrosEmbalagem)
-        setCarrosProduzidos(carros.filter((c: any) => c.status === "embalando" || c.status === "finalizado"))
-      } catch (error) {
-        console.error("Erro ao carregar carros produzidos:", error)
+  const carregarCarrosProduzidos = async () => {
+    try {
+      // Carregar do backend para sincronização entre dispositivos
+      const carros = await WMSService.carregarCarrosProduzidos()
+      setCarrosProduzidos(carros)
+      console.log('✅ Carros produzidos carregados do backend:', carros.length)
+    } catch (error) {
+      console.error("❌ Erro ao carregar carros produzidos do backend:", error)
+      // Fallback para localStorage em caso de erro
+      const chaveCarrosEmbalagem = "wms_carros_embalagem"
+      const carrosEmbalagem = localStorage.getItem(chaveCarrosEmbalagem)
+      
+      if (carrosEmbalagem) {
+        try {
+          const carros = JSON.parse(carrosEmbalagem)
+          setCarrosProduzidos(carros.filter((c: any) => c.status === "embalando" || c.status === "finalizado" || c.status === "aguardando_lancamento"))
+        } catch (parseError) {
+          console.error("Erro ao parsear carros do localStorage:", parseError)
+        }
       }
     }
   }
@@ -923,51 +990,123 @@ export default function WMSEmbalagemPage() {
       return
     }
 
+    // Ativar loading
+    setFinalizandoEmbalagem(true)
+
     try {
-      // Criar carga no WMS
-      const carga = await WMSService.criarCarga({
-        cliente_destino: carro.destinoFinal.split(", ")[0] || "",
-        destino: carro.destinoFinal.split(", ")[0] || "",
+      // Validar destino antes de criar carga
+      const destinoFinal = carro.destinoFinal?.split(", ")[0]?.trim() || ""
+      if (!destinoFinal) {
+        alert("Erro: O destino final do carro está vazio. Não é possível criar a carga.")
+        console.error('❌ Destino final vazio para o carro:', carro)
+        return
+      }
+
+      console.log('📦 Criando carga para carro:', {
+        carroId: modalPallets.carroId,
+        nomeCarro: modalPallets.nomeCarro,
+        destinoFinal: destinoFinal,
+        destinoOriginal: carro.destinoFinal
       })
 
-      const timestamp = Date.now()
+      // Criar carga no WMS (verifica se já existe para evitar duplicatas)
+      const carga = await WMSService.criarCarga({
+        cliente_destino: destinoFinal,
+        destino: destinoFinal,
+        carro_id: modalPallets.carroId // Passar ID do carro para evitar duplicatas
+      })
+
+      console.log('✅ Carga criada/obtida:', carga)
+
       const paletes: any[] = []
+
+      // Preparar todas as notas uma única vez (otimização)
+      const todasNotas: NotaFiscal[] = carro.nfs ? carro.nfs.map((nfData: any) => ({
+        id: nfData.id || nfData.codigoCompleto || `NF-${nfData.numeroNF}`,
+        numeroNF: nfData.numeroNF,
+        codigoCompleto: nfData.codigoCompleto || "",
+        volumes: nfData.volume || 0,
+        fornecedor: nfData.nomeFornecedor || "",
+        clienteDestino: nfData.destinoFinal || "",
+        destino: nfData.codigoDestino || "",
+        tipoCarga: nfData.tipo || "",
+        data: nfData.data || new Date().toISOString().split('T')[0],
+        timestamp: nfData.timestamp || new Date().toISOString(),
+        status: (nfData.status || 'ok') as 'ok' | 'divergencia' | 'devolvida',
+        observacoes: nfData.observacoes,
+        divergencia: nfData.divergencia
+      })) : []
+
+      console.log(`📦 Preparando ${todasNotas.length} nota(s) para ${posicoes} palete(s)`)
 
       // Se tiver mais de uma posição, criar múltiplos paletes
       if (posicoes > 1) {
-        // Criar múltiplos paletes com códigos sequenciais
-        for (let i = 1; i <= posicoes; i++) {
-          const codigoPalete = `PAL-${timestamp}_${i}-${posicoes}`
-          const palete = await WMSService.criarPalete({
-            carga_id: carga.id,
-            codigo_palete: codigoPalete,
-          })
-          paletes.push(palete)
-
-          // Adicionar todas as NFs do carro a cada palete
-          if (carro.nfs) {
-            for (const nfData of carro.nfs) {
-              const nota: any = {
-                numeroNF: nfData.numeroNF,
-                codigoCompleto: nfData.codigoCompleto || "",
-                volumes: nfData.volume,
-                fornecedor: nfData.nomeFornecedor || "",
-                clienteDestino: nfData.destinoFinal || "",
-                destino: nfData.codigoDestino || "",
-                tipoCarga: nfData.tipo || "",
-              }
-              await WMSService.adicionarNotaAoPalete(palete.id, nota)
-            }
+        // Gerar código base uma única vez para todos os paletes
+        // Todos os paletes compartilharão o mesmo número base (ex: PAL-00004)
+        let codigoBase = ''
+        try {
+          const { data: codigoData, error: codigoError } = await getSupabase()
+            .rpc('gerar_codigo_palete')
+          
+          if (codigoError) {
+            console.error('❌ Erro ao gerar código base do palete:', codigoError)
+            // Fallback para timestamp
+            codigoBase = `PAL-${Date.now()}`
+          } else if (codigoData) {
+            codigoBase = codigoData as string
+          } else {
+            codigoBase = `PAL-${Date.now()}`
           }
+        } catch (error) {
+          console.error('❌ Erro ao gerar código base:', error)
+          codigoBase = `PAL-${Date.now()}`
+        }
+        
+        console.log(`📦 Código base gerado para ${posicoes} paletes: ${codigoBase}`)
+        
+        // Criar todos os paletes com sufixos (_1-3, _2-3, etc.)
+        const promessasPaletes = []
+        for (let i = 1; i <= posicoes; i++) {
+          const codigoComSufixo = `${codigoBase}_${i}-${posicoes}`
+          promessasPaletes.push(
+            WMSService.criarPalete({
+              carga_id: carga.id,
+              codigo_palete: codigoComSufixo,
+            })
+          )
+        }
+        const paletesCriados = await Promise.all(promessasPaletes)
+        paletes.push(...paletesCriados)
 
-          // Finalizar cada palete com quantidade_posicoes = 1
-          await WMSService.finalizarPalete(palete.id, {
+        // Distribuir notas entre os paletes de forma sequencial
+        if (todasNotas.length > 0 && paletesCriados.length > 0) {
+          const notasPorPalete = Math.ceil(todasNotas.length / paletesCriados.length)
+          const promessasNotas = paletesCriados.map((palete, index) => {
+            const inicio = index * notasPorPalete
+            const fim = Math.min(inicio + notasPorPalete, todasNotas.length)
+            const notasDoPalete = todasNotas.slice(inicio, fim)
+            return notasDoPalete.length > 0
+              ? WMSService.adicionarNotasAoPalete(palete.id, notasDoPalete)
+              : Promise.resolve()
+          })
+          await Promise.all(promessasNotas)
+        }
+
+        // Atualizar todos os paletes com todas as notas do carro
+        console.log('🔄 Atualizando todos os paletes com todas as notas do carro...')
+        await WMSService.atualizarTodasNotasEmTodosPaletes(carga.id)
+        console.log('✅ Todos os paletes atualizados com todas as notas do carro')
+
+        // Finalizar todos os paletes em paralelo
+        const promessasFinalizar = paletesCriados.map(palete =>
+          WMSService.finalizarPalete(palete.id, {
             quantidade_paletes: quantidadePaletesReais ? Number(quantidadePaletesReais) : 1,
-            quantidade_gaiolas: quantidadeGaiolas ? Number(quantidadeGaiolas) : 0,
-            quantidade_caixas_mangas: quantidadeCaixaManga ? Number(quantidadeCaixaManga) : 0,
+            quantidade_gaiolas: quantidadeGaiolas ? Number(quantidadeGaiolas) : undefined,
+            quantidade_caixas_mangas: quantidadeCaixaManga ? Number(quantidadeCaixaManga) : undefined,
             quantidade_posicoes: 1, // Cada palete ocupa 1 posição
           })
-        }
+        )
+        await Promise.all(promessasFinalizar)
       } else {
         // Se tiver apenas 1 posição, criar um único palete (comportamento original)
         const palete = await WMSService.criarPalete({
@@ -975,21 +1114,15 @@ export default function WMSEmbalagemPage() {
         })
         paletes.push(palete)
 
-        // Adicionar todas as NFs do carro ao palete
-        if (carro.nfs) {
-          for (const nfData of carro.nfs) {
-            const nota: any = {
-              numeroNF: nfData.numeroNF,
-              codigoCompleto: nfData.codigoCompleto || "",
-              volumes: nfData.volume,
-              fornecedor: nfData.nomeFornecedor || "",
-              clienteDestino: nfData.destinoFinal || "",
-              destino: nfData.codigoDestino || "",
-              tipoCarga: nfData.tipo || "",
-            }
-            await WMSService.adicionarNotaAoPalete(palete.id, nota)
-          }
+        // Adicionar todas as NFs ao palete de uma vez (otimizado)
+        if (todasNotas.length > 0) {
+          await WMSService.adicionarNotasAoPalete(palete.id, todasNotas)
         }
+
+        // Atualizar todos os paletes com todas as notas do carro (mesmo com 1 palete, garante consistência)
+        console.log('🔄 Atualizando todos os paletes com todas as notas do carro...')
+        await WMSService.atualizarTodasNotasEmTodosPaletes(carga.id)
+        console.log('✅ Todos os paletes atualizados com todas as notas do carro')
 
         // Finalizar palete no WMS
         await WMSService.finalizarPalete(palete.id, {
@@ -1000,30 +1133,107 @@ export default function WMSEmbalagemPage() {
         })
       }
 
-      // Atualizar carro no localStorage
-      const chaveCarrosEmbalagem = "wms_carros_embalagem"
-      const carrosEmbalagem = localStorage.getItem(chaveCarrosEmbalagem)
-      if (carrosEmbalagem) {
-        const carros = JSON.parse(carrosEmbalagem)
-        const carroIndex = carros.findIndex((c: any) => c.id === modalPallets.carroId)
+      // Atualizar campo notas na carga UMA ÚNICA VEZ no final (otimização crítica)
+      console.log('🔄 Atualizando campo notas da carga (batch final)...')
+      await WMSService.atualizarNotasCarga(carga.id)
+      console.log('✅ Campo notas da carga atualizado com sucesso')
+      
+      // Recalcular contadores da carga para garantir valores corretos
+      console.log('🔄 Recalculando contadores da carga...')
+      await WMSService.recalcularContadoresCarga(carga.id)
+      console.log('✅ Contadores da carga recalculados')
+      
+      // Buscar carga atualizada para usar os valores corretos na impressão
+      const cargaAtualizada = await WMSService.buscarCarga(carga.id)
+      console.log('📊 Carga atualizada:', cargaAtualizada)
 
-        if (carroIndex !== -1) {
-          carros[carroIndex] = {
-            ...carros[carroIndex],
-            status: "finalizado",
-            posicoes: posicoes,
-            palletes: quantidadePaletesReais ? Number(quantidadePaletesReais) : null,
-            gaiolas: quantidadeGaiolas ? Number(quantidadeGaiolas) : null,
-            caixasMangas: quantidadeCaixaManga ? Number(quantidadeCaixaManga) : null,
-            dataFinalizacao: new Date().toISOString(),
+      // Atualizar carro no backend
+      try {
+        await WMSService.finalizarCarroProduzido(modalPallets.carroId, {
+          posicoes: posicoes,
+          palletes: quantidadePaletesReais ? Number(quantidadePaletesReais) : undefined,
+          gaiolas: quantidadeGaiolas ? Number(quantidadeGaiolas) : undefined,
+          caixasMangas: quantidadeCaixaManga ? Number(quantidadeCaixaManga) : undefined
+        })
+        console.log('✅ Carro finalizado no backend')
+      } catch (error) {
+        console.error('❌ Erro ao finalizar carro no backend:', error)
+        // Fallback para localStorage em caso de erro
+        const chaveCarrosEmbalagem = "wms_carros_embalagem"
+        const carrosEmbalagem = localStorage.getItem(chaveCarrosEmbalagem)
+        if (carrosEmbalagem) {
+          const carros = JSON.parse(carrosEmbalagem)
+          const carroIndex = carros.findIndex((c: any) => c.id === modalPallets.carroId)
+
+          if (carroIndex !== -1) {
+            carros[carroIndex] = {
+              ...carros[carroIndex],
+              status: "finalizado",
+              posicoes: posicoes,
+              palletes: quantidadePaletesReais ? Number(quantidadePaletesReais) : null,
+              gaiolas: quantidadeGaiolas ? Number(quantidadeGaiolas) : null,
+              caixasMangas: quantidadeCaixaManga ? Number(quantidadeCaixaManga) : null,
+              dataFinalizacao: new Date().toISOString(),
+            }
+
+            localStorage.setItem(chaveCarrosEmbalagem, JSON.stringify(carros))
           }
-
-          localStorage.setItem(chaveCarrosEmbalagem, JSON.stringify(carros))
         }
       }
 
       // Atualizar lista de carros produzidos
-      carregarCarrosProduzidos()
+      await carregarCarrosProduzidos()
+
+      // Imprimir etiquetas para cada palete criado
+      console.log('📦 Paletes criados:', paletes)
+      const codigosPaletes = paletes.map(p => p.codigo_palete).filter(codigo => codigo)
+      console.log('🏷️ Códigos dos paletes para impressão:', codigosPaletes)
+      
+      if (codigosPaletes.length > 0) {
+        console.log(`🖨️ Iniciando impressão de ${codigosPaletes.length} etiqueta(s)...`)
+        try {
+          // Preparar dados adicionais para a etiqueta
+          // Usar dados da carga atualizada (valores corretos) em vez dos dados do carro
+          // Gerar ID WMS no formato: WMS-001-{timestamp}
+          const idWMS = `WMS-001-${Date.now()}`
+          const dadosEtiqueta = {
+            quantidadeNFs: cargaAtualizada?.total_nfs || carro.quantidadeNFs || 0,
+            totalVolumes: cargaAtualizada?.total_volumes || carro.totalVolumes || 0,
+            destino: cargaAtualizada?.destino || (carro.destinoFinal ? carro.destinoFinal.split(", ")[0] : ''),
+            posicoes: posicoes || null,
+            quantidadePaletes: quantidadePaletesReais ? Number(quantidadePaletesReais) : null,
+            codigoCarga: cargaAtualizada?.codigo_carga || carga?.codigo_carga || '',
+            idWMS: idWMS
+          }
+          console.log('📋 Dados da etiqueta:', dadosEtiqueta)
+          
+          const resultadoImpressao = await PrinterService.imprimirEtiquetasPaletes(codigosPaletes, dadosEtiqueta)
+          
+          if (resultadoImpressao.success) {
+            toast({
+              title: "Impressão concluída",
+              description: `${resultadoImpressao.sucessos} etiqueta(s) impressa(s) com sucesso`,
+            })
+            console.log(`✅ ${resultadoImpressao.sucessos} etiqueta(s) impressa(s) com sucesso`)
+          } else {
+            toast({
+              title: "Aviso de impressão",
+              description: `${resultadoImpressao.sucessos} sucesso(s), ${resultadoImpressao.falhas} falha(s). Verifique o console para detalhes.`,
+              variant: "destructive",
+            })
+            console.warn(`⚠️ Impressão: ${resultadoImpressao.sucessos} sucesso(s), ${resultadoImpressao.falhas} falha(s)`)
+            resultadoImpressao.mensagens.forEach(msg => console.log(msg))
+          }
+        } catch (error) {
+          console.error('Erro ao imprimir etiquetas:', error)
+          toast({
+            title: "Erro na impressão",
+            description: "Não foi possível imprimir as etiquetas. O carro foi finalizado, mas você pode tentar imprimir manualmente.",
+            variant: "destructive",
+          })
+          // Não bloquear a finalização se a impressão falhar
+        }
+      }
 
       // Fechar modal e limpar campos
       setModalPallets({ aberto: false, carroId: "", nomeCarro: "" })
@@ -1038,8 +1248,18 @@ export default function WMSEmbalagemPage() {
         : `${modalPallets.nomeCarro} finalizado e armazenado no WMS com sucesso!`
       alert(mensagem)
     } catch (error) {
-      console.error('Erro ao finalizar embalagem:', error)
-      alert(`Erro ao finalizar embalagem: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+      console.error('❌ Erro ao finalizar embalagem:', error)
+      if (error instanceof Error) {
+        console.error('❌ Mensagem de erro:', error.message)
+        console.error('❌ Stack trace:', error.stack)
+        alert(`Erro ao finalizar embalagem:\n\n${error.message}\n\nVerifique o console para mais detalhes.`)
+      } else {
+        console.error('❌ Erro desconhecido:', JSON.stringify(error))
+        alert(`Erro ao finalizar embalagem: Erro desconhecido\n\nVerifique o console para mais detalhes.`)
+      }
+    } finally {
+      // Desativar loading
+      setFinalizandoEmbalagem(false)
     }
   }
 
@@ -1580,7 +1800,7 @@ export default function WMSEmbalagemPage() {
                               )}
                             </div>
                           </div>
-                          {carro.status === "embalando" && (
+                          {carro.status === "embalando"  && (
                             <Button
                               onClick={() => abrirModalPallets(carro.id, carro.nomeCarro)}
                               className="bg-teal-600 hover:bg-teal-700 text-white"
@@ -1659,8 +1879,44 @@ export default function WMSEmbalagemPage() {
       </Dialog>
 
       {/* Modal para Finalizar Embalagem */}
-      <Dialog open={modalPallets.aberto} onOpenChange={(open) => setModalPallets({ ...modalPallets, aberto: open })}>
-        <DialogContent className="max-w-md">
+      <Dialog open={modalPallets.aberto} onOpenChange={(open) => !finalizandoEmbalagem && setModalPallets({ ...modalPallets, aberto: open })}>
+        <DialogContent className="max-w-md relative">
+          {finalizandoEmbalagem && (
+            <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-[101] flex flex-col items-center justify-center rounded-lg">
+              <div className="text-center relative z-10 max-w-sm w-full">
+                <div className="relative w-32 h-32 sm:w-48 sm:h-48 mx-auto mb-6 sm:mb-8">
+                  <svg 
+                    width="200" 
+                    height="200" 
+                    viewBox="0 0 512 512" 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    role="img" 
+                    className="w-full h-full loader-logo animate-pulse-custom drop-shadow-2xl"
+                  >
+                    <circle cx="256" cy="256" r="216" fill="#48C142"/>
+                    <rect x="196" y="140" width="20" height="232" rx="8" fill="#FFFFFF"/>
+                    <rect x="236" y="120" width="24" height="272" rx="8" fill="#FFFFFF"/>
+                    <rect x="280" y="140" width="20" height="232" rx="8" fill="#FFFFFF"/>
+                    <rect x="316" y="160" width="16" height="192" rx="8" fill="#FFFFFF"/>
+                  </svg>
+                </div>
+                
+                <div className="text-gray-800 text-lg sm:text-xl md:text-2xl font-semibold mb-3 sm:mb-4">
+                  Finalizando
+                </div>
+                
+                <div className="text-gray-800 text-lg sm:text-xl md:text-2xl h-6 sm:h-8 mb-4 sm:mb-5">
+                  <span className="animate-blink">.</span>
+                  <span className="animate-blink-delay-1">.</span>
+                  <span className="animate-blink-delay-2">.</span>
+                </div>
+
+                <div className="w-full max-w-xs sm:max-w-sm md:max-w-md h-1 bg-green-200 rounded-full mx-auto overflow-hidden">
+                  <div className="h-full bg-green-500 rounded-full animate-loading"></div>
+                </div>
+              </div>
+            </div>
+          )}
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <Package className="h-5 w-5 text-teal-600" />
@@ -1762,21 +2018,24 @@ export default function WMSEmbalagemPage() {
               </div>
             )}
 
-            <div className="flex space-x-4 pt-4">
-              <Button
-                onClick={finalizarEmbalagem}
-                disabled={!quantidadePosicoes.trim()}
-                className="flex-1 bg-teal-600 hover:bg-teal-700"
-              >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Finalizar e Armazenar no WMS
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setModalPallets({ aberto: false, carroId: "", nomeCarro: "" })}
-              >
-                Cancelar
-              </Button>
+            <div className="flex flex-col gap-2 pt-4">
+              <div className="flex space-x-4">
+                <Button
+                  onClick={finalizarEmbalagem}
+                  disabled={!quantidadePosicoes.trim() || finalizandoEmbalagem}
+                  className="flex-1 bg-teal-600 hover:bg-teal-700"
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Finalizar 
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setModalPallets({ aberto: false, carroId: "", nomeCarro: "" })}
+                  disabled={finalizandoEmbalagem}
+                >
+                  Cancelar
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>
