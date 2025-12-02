@@ -2533,7 +2533,7 @@ NOTAS FISCAIS:`
                                     <SelectTrigger>
                                       <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent>
+                                    <SelectContent className="z-[110]">
                                       <SelectItem value="todos">
                                         Todos os Status
                                       </SelectItem>
@@ -2559,7 +2559,7 @@ NOTAS FISCAIS:`
                                     <SelectTrigger>
                                       <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent>
+                                    <SelectContent className="z-[110]">
                                       <SelectItem value="data_desc">
                                         Ordem Original
                                       </SelectItem>
