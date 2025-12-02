@@ -18,7 +18,8 @@ const http = require('http');
 const PRINTER_IP = '10.27.30.75';
 const PRINTER_PORT = 6101;
 const ALTERNATE_PORT = 9100;
-const SERVICE_PORT = 3001;
+// Usar porta 3002 para evitar conflito com Next.js (que pode usar 3001 se 3000 estiver ocupada)
+const SERVICE_PORT = process.env.PRINTER_SERVICE_PORT || 3002;
 
 // Função para gerar ZPL
 function gerarZPL(codigoPalete, dados) {
@@ -234,8 +235,16 @@ function imprimirViaTCP(dados, porta = PRINTER_PORT) {
 
 // Headers CORS padrão
 function getCorsHeaders(origin) {
-  // Permitir qualquer origem em desenvolvimento, ou origem específica em produção
-  const allowOrigin = origin || '*';
+  // Permitir qualquer origem - necessário para requisições de navegadores
+  // Quando origin é '*', significa que aceita qualquer origem
+  // Quando há uma origin específica, usa ela (para requisições com origin)
+  let allowOrigin = '*';
+  
+  // Se houver origin específica e não for '*', usar ela
+  if (origin && origin !== '*') {
+    allowOrigin = origin;
+  }
+  
   return {
     'Access-Control-Allow-Origin': allowOrigin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
@@ -257,8 +266,13 @@ const server = http.createServer(async (req, res) => {
   console.log('='.repeat(60));
   
   // Obter origem da requisição
+  // Se não houver origin, pode ser requisição direta (curl, etc) - usar '*'
   const origin = req.headers.origin || req.headers.referer || '*';
   const corsHeaders = getCorsHeaders(origin);
+  
+  // Log para debug
+  console.log(`🌐 Origin recebido: ${origin || 'nenhum'}`);
+  console.log(`🌐 Headers CORS:`, JSON.stringify(corsHeaders, null, 2));
   
   // Responder imediatamente para requisições OPTIONS (preflight)
   if (req.method === 'OPTIONS') {

@@ -10,9 +10,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Package, CheckCircle, Edit } from "lucide-react";
+import { Package, CheckCircle, Edit, FileText, Calendar, MapPin, Building2, User, Box } from "lucide-react";
 import type { NotaFiscal } from "@/lib/database-service";
 import { useIsColetor } from "@/hooks/use-coletor";
+import { cn } from "@/lib/utils";
 
 interface ConfirmacaoModalProps {
   isOpen: boolean;
@@ -54,112 +55,203 @@ export default function ConfirmacaoModal({
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={`${isColetor ? 'max-w-sm mx-2 coletor-confirmation-modal' : 'max-w-2xl'}`}>
-        <DialogHeader className={`${isColetor ? 'coletor-modal-header' : ''}`}>
-          <DialogTitle className="flex items-center space-x-2">
-            <Package className="h-5 w-5 text-blue-600" />
+      <DialogContent 
+        className={cn(
+          "overflow-y-auto dark:bg-gray-950",
+          isColetor 
+            ? '!w-screen !h-screen !max-w-none !max-h-none !m-0 !rounded-none !p-6 flex flex-col !left-0 !right-0 !top-0 !bottom-0 !translate-x-0 !translate-y-0' 
+            : 'max-w-2xl'
+        )}
+        onEscapeKeyDown={(e) => {
+          // Permitir fechar com ESC
+          onClose();
+        }}
+      >
+        <DialogHeader className={cn(isColetor && "mb-6 flex-shrink-0")}>
+          <DialogTitle className={cn("flex items-center space-x-2", isColetor && "text-xl")}>
+            <Package className={cn("text-blue-600", isColetor ? "h-6 w-6" : "h-5 w-5")} />
             <span>Confirmar Recebimento</span>
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className={cn(isColetor && "text-base mt-2")}>
             Verifique os dados da nota fiscal antes de confirmar ou reportar divergência.
           </DialogDescription>
         </DialogHeader>
 
-        <div className={`space-y-${isColetor ? '4' : '6'} ${isColetor ? 'coletor-modal-content' : ''}`}>
-          {/* Informações da Nota */}
-          <div className={`bg-blue-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
-            <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '3'} ${isColetor ? 'text-sm' : ''}`}>
-              Dados da Nota Fiscal
-            </h3>
-
-            <div className={`grid ${isColetor ? 'grid-cols-2' : 'grid-cols-2'} gap-${isColetor ? '3' : '4'}`}>
-              {/* Primeira linha - Número da NF e Volumes */}
-              <div>
-                <div className="text-sm text-gray-600">Número da NF</div>
-                <div className="font-semibold text-lg">{nota.numeroNF}</div>
+        <div className={cn("space-y-5", isColetor && "flex-1 flex flex-col min-h-0 overflow-y-auto")}>
+          {/* Card Principal - Número da NF e Volumes (Destaque) */}
+          <div className={cn(
+            "bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl shadow-lg",
+            isColetor ? "p-6" : "p-4"
+          )}>
+            <div className={cn("flex items-center justify-between", isColetor ? "mb-4" : "mb-3")}>
+              <div className="flex items-center space-x-2">
+                <FileText className={cn("text-blue-100", isColetor ? "h-7 w-7" : "h-5 w-5")} />
+                <span className={cn("font-semibold", isColetor ? "text-lg" : "text-sm")}>
+                  Nota Fiscal
+                </span>
               </div>
+              <Badge variant="secondary" className={cn("bg-white/20 text-white border-white/30", isColetor && "text-base px-3 py-1")}>
+                {nota.numeroNF}
+              </Badge>
+            </div>
+            <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm text-gray-600">Volumes</div>
-                <div className="font-semibold text-lg text-blue-600">
+                <div className={cn("text-blue-100 mb-2", isColetor ? "text-base" : "text-xs")}>
+                  Volumes
+                </div>
+                <div className={cn("font-bold text-white", isColetor ? "text-5xl" : "text-2xl")}>
                   {nota.volumes}
                 </div>
               </div>
-              
-              {/* Segunda linha - Data e Destino */}
-              <div>
-                <div className="text-sm text-gray-600">Data</div>
-                <div className="font-medium text-xs truncate">{nota.data}</div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600">Destino</div>
-                <div className="font-medium text-xs truncate">
-                  {nota.destino}
-                </div>  
-              </div>
-              
-              {/* Terceira linha - Fornecedor e Cliente Destino */}
-              <div>
-                <div className="text-sm text-gray-600">Fornecedor</div>
-                <div className="font-medium text-xs truncate" title={nota.fornecedor}>
-                  {nota.fornecedor}
+              <Box className={cn("text-blue-200", isColetor ? "h-16 w-16" : "h-10 w-10")} />
+            </div>
+          </div>
+
+          {/* Informações Detalhadas */}
+          <div className={cn(
+            "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl space-y-4",
+            isColetor ? "p-5" : "p-4"
+          )}>
+            <h3 className={cn(
+              "font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center space-x-2",
+              isColetor ? "text-lg" : "text-sm"
+            )}>
+              <Package className={cn("text-blue-600", isColetor ? "h-5 w-5" : "h-4 w-4")} />
+              <span>Informações da Nota</span>
+            </h3>
+
+            <div className={cn("grid", isColetor ? "grid-cols-1 gap-4" : "grid-cols-2 gap-3")}>
+              {/* Data */}
+              <div className={cn("flex items-start space-x-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg", isColetor ? "p-4" : "p-2")}>
+                <Calendar className={cn("text-blue-600 flex-shrink-0 mt-0.5", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+                <div className="flex-1 min-w-0">
+                  <div className={cn("text-gray-600 dark:text-gray-400 mb-1", isColetor ? "text-sm font-medium" : "text-xs")}>
+                    Data
+                  </div>
+                  <div className={cn("font-medium text-gray-900 dark:text-gray-100", isColetor ? "text-base" : "text-sm")}>
+                    {nota.data}
+                  </div>
                 </div>
               </div>
-              <div>
-                <div className="text-sm text-gray-600">Cliente Destino</div>
-                <div className="font-medium text-xs truncate" title={nota.clienteDestino}>
-                  {nota.clienteDestino}
+
+              {/* Destino */}
+              <div className={cn("flex items-start space-x-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg", isColetor ? "p-4" : "p-2")}>
+                <MapPin className={cn("text-blue-600 flex-shrink-0 mt-0.5", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+                <div className="flex-1 min-w-0">
+                  <div className={cn("text-gray-600 dark:text-gray-400 mb-1", isColetor ? "text-sm font-medium" : "text-xs")}>
+                    Destino
+                  </div>
+                  <div className={cn("font-medium text-gray-900 dark:text-gray-100 truncate", isColetor ? "text-base" : "text-sm")} title={nota.destino}>
+                    {nota.destino}
+                  </div>
                 </div>
               </div>
-              
-              {/* Tipo de Carga - apenas na versão desktop */}
-              {!isColetor && (
-                <div className="col-span-2">
-                  <div className="text-sm text-gray-600">Tipo de Carga</div>
-                  <div className="font-medium">{nota.tipoCarga}</div>
+
+              {/* Fornecedor */}
+              <div className={cn("flex items-start space-x-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg", isColetor ? "p-4" : "p-2")}>
+                <Building2 className={cn("text-blue-600 flex-shrink-0 mt-0.5", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+                <div className="flex-1 min-w-0">
+                  <div className={cn("text-gray-600 dark:text-gray-400 mb-1", isColetor ? "text-sm font-medium" : "text-xs")}>
+                    Fornecedor
+                  </div>
+                  <div className={cn("font-medium text-gray-900 dark:text-gray-100 truncate", isColetor ? "text-base" : "text-sm")} title={nota.fornecedor}>
+                    {nota.fornecedor}
+                  </div>
+                </div>
+              </div>
+
+              {/* Cliente Destino */}
+              <div className={cn("flex items-start space-x-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg", isColetor ? "p-4" : "p-2")}>
+                <User className={cn("text-blue-600 flex-shrink-0 mt-0.5", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+                <div className="flex-1 min-w-0">
+                  <div className={cn("text-gray-600 dark:text-gray-400 mb-1", isColetor ? "text-sm font-medium" : "text-xs")}>
+                    Cliente Destino
+                  </div>
+                  <div className={cn("font-medium text-gray-900 dark:text-gray-100 truncate", isColetor ? "text-base" : "text-sm")} title={nota.clienteDestino}>
+                    {nota.clienteDestino}
+                  </div>
+                </div>
+              </div>
+
+              {/* Tipo de Carga */}
+              {nota.tipoCarga && (
+                <div className={cn("flex items-start space-x-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg", isColetor ? "p-4 col-span-1" : "p-2 col-span-2")}>
+                  <Box className={cn("text-blue-600 flex-shrink-0 mt-0.5", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+                  <div className="flex-1 min-w-0">
+                    <div className={cn("text-gray-600 dark:text-gray-400 mb-1", isColetor ? "text-sm font-medium" : "text-xs")}>
+                      Tipo de Carga
+                    </div>
+                    <div className={cn("font-medium text-gray-900 dark:text-gray-100", isColetor ? "text-base" : "text-sm")}>
+                      {nota.tipoCarga}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Pergunta de Confirmação */}
-          <div className="text-center">
-            <h3 className={`${isColetor ? 'text-base' : 'text-lg'} font-semibold text-gray-900 mb-2`}>
+          {/* Pergunta de Confirmação - Destaque */}
+          <div className={cn(
+            "text-center bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-xl",
+            isColetor ? "p-6" : "p-4"
+          )}>
+            <CheckCircle className={cn("text-green-600 mx-auto mb-3", isColetor ? "h-12 w-12" : "h-8 w-8")} />
+            <h3 className={cn("font-bold text-gray-900 dark:text-gray-100 mb-3", isColetor ? "text-xl" : "text-base")}>
               Os dados estão corretos?
             </h3>
-            <p className={`${isColetor ? 'text-xs' : 'text-sm'} text-gray-600`}>
-              Confirme se a nota <strong>{nota.numeroNF}</strong> possui{" "}
-              <strong>{nota.volumes} volumes</strong> e está liberada para
-              lançamento?
+            <p className={cn("text-gray-700 dark:text-gray-300", isColetor ? "text-base leading-relaxed" : "text-sm")}>
+              Confirme se a nota <strong className="text-blue-600">{nota.numeroNF}</strong> possui{" "}
+              <strong className="text-blue-600">{nota.volumes} volumes</strong> e está liberada para lançamento.
             </p>
           </div>
 
-          {/* Botões */}
-          <div className={`flex ${isColetor ? 'flex-col space-y-2 coletor-modal-buttons' : 'space-x-4'}`}>
+          {/* Código Completo - Colapsável */}
+          <details className={cn(
+            "bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden",
+            isColetor && "text-base"
+          )}>
+            <summary className={cn(
+              "cursor-pointer font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors",
+              isColetor ? "p-4 text-base" : "p-2 text-xs"
+            )}>
+              📋 Ver código completo
+            </summary>
+            <div className={cn("text-gray-600 dark:text-gray-400 font-mono break-all", isColetor ? "p-4 pt-0 text-sm" : "p-3 pt-0 text-xs")}>
+              {nota.codigoCompleto}
+            </div>
+          </details>
+
+          {/* Botões de Ação */}
+          <div className={cn(
+            "flex gap-4 flex-shrink-0",
+            isColetor ? "flex-col mt-2" : "space-x-4"
+          )}>
             <Button
               onClick={onAlterar}
               variant="outline"
-              className={`flex-1 border-orange-300 text-orange-700 hover:bg-orange-50 bg-transparent ${isColetor ? 'h-12 text-sm' : ''}`}
-              size={isColetor ? "default" : "lg"}
+              className={cn(
+                "border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-600 dark:text-orange-300 dark:hover:bg-orange-900/20",
+                isColetor ? "w-full h-16 text-lg font-bold" : "flex-1"
+              )}
+              size={isColetor ? "lg" : "lg"}
             >
-              <Edit className={`${isColetor ? 'h-4 w-4' : 'h-5 w-5'} mr-2`} />
-              ALTERAR
+              <Edit className={cn("mr-2", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+              ALTERAR DADOS
             </Button>
             <Button
               ref={confirmarButtonRef}
               onClick={onConfirmar}
               onKeyDown={handleKeyDown}
-              className={`flex-1 bg-green-600 hover:bg-green-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}
-              size={isColetor ? "default" : "lg"}
+              className={cn(
+                "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl transition-all",
+                isColetor ? "w-full h-16 text-lg font-bold" : "flex-1"
+              )}
+              size={isColetor ? "lg" : "lg"}
               autoFocus
             >
-              <CheckCircle className={`${isColetor ? 'h-4 w-4' : 'h-5 w-5'} mr-2`} />
-              OK - Confirmar
+              <CheckCircle className={cn("mr-2", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+              CONFIRMAR ✓
             </Button>
-          </div>
-
-          {/* Código Completo */}
-          <div className={`${isColetor ? 'text-xs' : 'text-xs'} text-gray-500 bg-gray-50 p-2 rounded font-mono break-all`}>
-            <strong>Código:</strong> {nota.codigoCompleto}
           </div>
         </div>
       </DialogContent>

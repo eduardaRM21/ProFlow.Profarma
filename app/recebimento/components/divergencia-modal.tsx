@@ -6,9 +6,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { AlertTriangle, CheckCircle } from "lucide-react"
+import { AlertTriangle, CheckCircle, FileText, Box, Building2, MapPin, Calendar, ArrowRight } from "lucide-react"
 import type { NotaFiscal } from "@/lib/database-service"
 import { useIsColetor } from "@/hooks/use-coletor"
+import { cn } from "@/lib/utils"
 
 interface TipoDivergencia {
   codigo: string
@@ -74,100 +75,207 @@ export default function DivergenciaModal({
     <>
       {/* Modal Principal de Divergência */}
       <Dialog open={isOpen && !modalConfirmacao} onOpenChange={handleClose}>
-        <DialogContent className={`${isColetor ? 'max-w-sm mx-2 coletor-confirmation-modal' : 'max-w-2xl'}`}>
-          <DialogHeader className={`${isColetor ? 'coletor-modal-header' : ''}`}>
-            <DialogTitle className="flex items-center space-x-2">
-              <AlertTriangle className="h-5 w-5 text-orange-600" />
+        <DialogContent 
+          className={cn(
+            "overflow-y-auto dark:bg-gray-950",
+            isColetor 
+              ? '!w-screen !h-screen !max-w-none !max-h-none !m-0 !rounded-none !p-6 flex flex-col !left-0 !right-0 !top-0 !bottom-0 !translate-x-0 !translate-y-0' 
+              : 'max-w-2xl'
+          )}
+        >
+          <DialogHeader className={cn(isColetor && "mb-6 flex-shrink-0")}>
+            <DialogTitle className={cn("flex items-center space-x-2", isColetor && "text-xl")}>
+              <AlertTriangle className={cn("text-orange-600", isColetor ? "h-6 w-6" : "h-5 w-5")} />
               <span>Informar Divergência</span>
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className={cn(isColetor && "text-base mt-2")}>
               Informe os detalhes da divergência encontrada na nota fiscal.
             </DialogDescription>
           </DialogHeader>
 
-          <div className={`space-y-${isColetor ? '4' : '6'} ${isColetor ? 'coletor-modal-content' : ''}`}>
-            {/* Informações da Nota */}
-            <div className={`bg-orange-50 p-${isColetor ? '3' : '4'} rounded-lg`}>
-              <h3 className={`font-semibold text-gray-900 mb-${isColetor ? '2' : '3'} ${isColetor ? 'text-sm' : ''}`}>Nota Fiscal: {nota.numeroNF}</h3>
-
-              <div className={`grid ${isColetor ? 'grid-cols-2' : 'grid-cols-2'} gap-${isColetor ? '3' : '4'} text-sm`}>
-                {/* Primeira linha - Volumes Originais e Fornecedor */}
+          <div className={cn("space-y-5", isColetor && "flex-1 flex flex-col min-h-0 overflow-y-auto")}>
+            {/* Card Principal - Nota Fiscal */}
+            <div className={cn(
+              "bg-gradient-to-br from-orange-600 to-orange-700 text-white rounded-xl shadow-lg",
+              isColetor ? "p-6" : "p-4"
+            )}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <FileText className={cn("text-orange-100", isColetor ? "h-7 w-7" : "h-5 w-5")} />
+                  <span className={cn("font-semibold", isColetor ? "text-lg" : "text-sm")}>
+                    Nota Fiscal
+                  </span>
+                </div>
+                <div className={cn("font-bold text-white", isColetor ? "text-2xl" : "text-xl")}>
+                  {nota.numeroNF}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-gray-600">Volumes Originais</div>
-                  <div className="font-semibold text-lg text-red-600">
+                  <div className={cn("text-orange-100 mb-2", isColetor ? "text-base" : "text-xs")}>
+                    Volumes Originais
+                  </div>
+                  <div className={cn("font-bold text-white", isColetor ? "text-5xl" : "text-2xl")}>
                     {nota.volumes}
                   </div>
                 </div>
-                <div>
-                  <div className="text-gray-600">Fornecedor</div>
-                  <div className="font-medium text-xs truncate" title={nota.fornecedor}>
-                    {nota.fornecedor}
+                <Box className={cn("text-orange-200", isColetor ? "h-16 w-16" : "h-10 w-10")} />
+              </div>
+            </div>
+
+            {/* Informações Detalhadas */}
+            <div className={cn(
+              "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl",
+              isColetor ? "p-5" : "p-4"
+            )}>
+              <h3 className={cn(
+                "font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center space-x-2",
+                isColetor ? "text-lg" : "text-sm"
+              )}>
+                <AlertTriangle className={cn("text-orange-600", isColetor ? "h-5 w-5" : "h-4 w-4")} />
+                <span>Informações da Nota</span>
+              </h3>
+
+              <div className={cn("grid gap-4", isColetor ? "grid-cols-1" : "grid-cols-2")}>
+                {/* Fornecedor */}
+                <div className={cn("flex items-start space-x-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg", isColetor ? "p-4" : "p-2")}>
+                  <Building2 className={cn("text-orange-600 flex-shrink-0 mt-0.5", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+                  <div className="flex-1 min-w-0">
+                    <div className={cn("text-gray-600 dark:text-gray-400 mb-1", isColetor ? "text-sm font-medium" : "text-xs")}>
+                      Fornecedor
+                    </div>
+                    <div className={cn("font-medium text-gray-900 dark:text-gray-100 truncate", isColetor ? "text-base" : "text-sm")} title={nota.fornecedor}>
+                      {nota.fornecedor}
+                    </div>
                   </div>
                 </div>
-                
-                {/* Segunda linha - Destino e Data */}
-                <div>
-                  <div className="text-gray-600">Destino</div>
-                  <div className="font-medium text-xs truncate">{nota.destino}</div>
+
+                {/* Destino */}
+                <div className={cn("flex items-start space-x-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg", isColetor ? "p-4" : "p-2")}>
+                  <MapPin className={cn("text-orange-600 flex-shrink-0 mt-0.5", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+                  <div className="flex-1 min-w-0">
+                    <div className={cn("text-gray-600 dark:text-gray-400 mb-1", isColetor ? "text-sm font-medium" : "text-xs")}>
+                      Destino
+                    </div>
+                    <div className={cn("font-medium text-gray-900 dark:text-gray-100 truncate", isColetor ? "text-base" : "text-sm")}>
+                      {nota.destino}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-gray-600">Data</div>
-                  <div className="font-medium text-xs truncate" title={nota.data}>
-                    {nota.data}
+
+                {/* Data */}
+                <div className={cn("flex items-start space-x-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg", isColetor ? "p-4 col-span-1" : "p-2 col-span-2")}>
+                  <Calendar className={cn("text-orange-600 flex-shrink-0 mt-0.5", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+                  <div className="flex-1 min-w-0">
+                    <div className={cn("text-gray-600 dark:text-gray-400 mb-1", isColetor ? "text-sm font-medium" : "text-xs")}>
+                      Data
+                    </div>
+                    <div className={cn("font-medium text-gray-900 dark:text-gray-100", isColetor ? "text-base" : "text-sm")} title={nota.data}>
+                      {nota.data}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Formulário de Divergência */}
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="volumes">Quantidade de Volumes Recebidos *</Label>
-                <Input
-                  id="volumes"
-                  type="number"
-                  min="0"
-                  value={volumesInformados}
-                  onChange={(e) => setVolumesInformados(e.target.value)}
-                  className="text-lg font-semibold"
-                  placeholder="Informe a quantidade real recebida"
-                />
-                <p className="text-xs text-gray-500 mt-1">Original: {nota.volumes} volumes</p>
-              </div>
+            <div className={cn(
+              "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl space-y-5",
+              isColetor ? "p-5" : "p-4"
+            )}>
+              <h3 className={cn(
+                "font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center space-x-2",
+                isColetor ? "text-lg" : "text-sm"
+              )}>
+                <AlertTriangle className={cn("text-orange-600", isColetor ? "h-5 w-5" : "h-4 w-4")} />
+                <span>Informar Divergência</span>
+              </h3>
 
-              <div>
-                <Label htmlFor="tipoDivergencia">Tipo de Divergência *</Label>
-                <Select value={tipoDivergencia} onValueChange={setTipoDivergencia}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o tipo de divergência" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60 z-[110]">
-                    {tiposDivergencia.map((tipo) => (
-                      <SelectItem key={tipo.codigo} value={tipo.codigo}>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">{tipo.codigo}</span>
-                          <span>{tipo.descricao}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-5">
+                {/* Campo de Volumes */}
+                <div>
+                  <Label htmlFor="volumes" className={cn(isColetor && "text-base font-semibold mb-2 block")}>
+                    Quantidade de Volumes Recebidos *
+                  </Label>
+                  <Input
+                    id="volumes"
+                    type="number"
+                    min="0"
+                    value={volumesInformados}
+                    onChange={(e) => setVolumesInformados(e.target.value)}
+                    className={cn(
+                      "text-lg font-semibold",
+                      isColetor && "h-14 text-xl"
+                    )}
+                    placeholder="Informe a quantidade real recebida"
+                  />
+                  <div className={cn("mt-2 flex items-center space-x-2", isColetor && "text-base")}>
+                    <span className="text-gray-500">Original:</span>
+                    <span className="font-semibold text-red-600">{nota.volumes} volumes</span>
+                  </div>
+                </div>
+
+                {/* Campo de Tipo de Divergência */}
+                <div>
+                  <Label htmlFor="tipoDivergencia" className={cn(isColetor && "text-base font-semibold mb-2 block")}>
+                    Tipo de Divergência *
+                  </Label>
+                  <Select value={tipoDivergencia} onValueChange={setTipoDivergencia}>
+                    <SelectTrigger className={cn(isColetor && "h-14 text-base")}>
+                      <SelectValue placeholder="Selecione o tipo de divergência" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60 z-[110]">
+                      {tiposDivergencia.map((tipo) => (
+                        <SelectItem key={tipo.codigo} value={tipo.codigo}>
+                          <div className="flex items-center space-x-2">
+                            <span className={cn("font-mono bg-gray-100 px-2 py-1 rounded", isColetor ? "text-sm" : "text-xs")}>
+                              {tipo.codigo}
+                            </span>
+                            <span className={isColetor ? "text-base" : "text-sm"}>{tipo.descricao}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
 
             {/* Resumo da Divergência */}
             {tipoDivergencia && (
-              <div className={`bg-yellow-50 p-${isColetor ? '3' : '4'} rounded-lg border border-yellow-200`}>
-                <h4 className={`font-semibold text-gray-900 mb-${isColetor ? '1' : '2'} ${isColetor ? 'text-sm' : ''}`}>Resumo da Divergência</h4>
-                <div className={`space-y-1 ${isColetor ? 'text-xs' : 'text-sm'}`}>
-                  <div>
-                    <strong>Tipo:</strong> {tipoDivergencia} - {tipoSelecionado?.descricao}
+              <div className={cn(
+                "bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-800 rounded-xl",
+                isColetor ? "p-6" : "p-4"
+              )}>
+                <h4 className={cn(
+                  "font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center space-x-2",
+                  isColetor ? "text-lg" : "text-base"
+                )}>
+                  <AlertTriangle className={cn("text-yellow-600", isColetor ? "h-6 w-6" : "h-5 w-5")} />
+                  <span>Resumo da Divergência</span>
+                </h4>
+                <div className={cn("space-y-3", isColetor ? "text-base" : "text-sm")}>
+                  <div className="flex items-center space-x-2">
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">Tipo:</span>
+                    <span className="font-mono bg-yellow-100 dark:bg-yellow-900/40 px-2 py-1 rounded text-sm">
+                      {tipoDivergencia}
+                    </span>
+                    <span className="text-gray-700 dark:text-gray-300">- {tipoSelecionado?.descricao}</span>
                   </div>
-                  <div>
-                    <strong>Volumes:</strong> {nota.volumes} → {volumesInformados}
+                  <div className="flex items-center space-x-2">
+                    <span className="font-semibold text-gray-700 dark:text-gray-300">Volumes:</span>
+                    <span className="text-red-600 font-bold">{nota.volumes}</span>
+                    <ArrowRight className="h-4 w-4 text-gray-400" />
+                    <span className="text-green-600 font-bold">{volumesInformados}</span>
                     {Number.parseInt(volumesInformados) !== nota.volumes && (
-                      <span className="text-orange-600 ml-2">
-                        (Diferença: {Number.parseInt(volumesInformados) - nota.volumes})
+                      <span className={cn(
+                        "ml-2 px-2 py-1 rounded font-semibold",
+                        Number.parseInt(volumesInformados) > nota.volumes 
+                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                          : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                      )}>
+                        {Number.parseInt(volumesInformados) > nota.volumes ? '+' : ''}
+                        {Number.parseInt(volumesInformados) - nota.volumes}
                       </span>
                     )}
                   </div>
@@ -176,17 +284,30 @@ export default function DivergenciaModal({
             )}
 
             {/* Botões */}
-            <div className={`flex ${isColetor ? 'flex-col space-y-2 coletor-modal-buttons' : 'space-x-4'}`}>
+            <div className={cn(
+              "flex gap-4 flex-shrink-0",
+              isColetor ? "flex-col mt-2" : "space-x-4"
+            )}>
               <Button
                 onClick={handleSubmit}
                 disabled={!tipoDivergencia || !volumesInformados}
-                className={`flex-1 bg-orange-600 hover:bg-orange-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}
-                size={isColetor ? "default" : "lg"}
+                className={cn(
+                  "bg-orange-600 hover:bg-orange-700 text-white shadow-lg hover:shadow-xl transition-all",
+                  isColetor ? "w-full h-16 text-lg font-bold" : "flex-1"
+                )}
+                size={isColetor ? "lg" : "lg"}
               >
-                <AlertTriangle className={`${isColetor ? 'h-4 w-4' : 'h-5 w-5'} mr-2`} />
+                <AlertTriangle className={cn("mr-2", isColetor ? "h-6 w-6" : "h-5 w-5")} />
                 Confirmar Divergência
               </Button>
-              <Button onClick={handleClose} variant="outline" className={`flex-1 bg-transparent ${isColetor ? 'h-12 text-sm' : ''}`} size={isColetor ? "default" : "lg"}>
+              <Button 
+                onClick={handleClose} 
+                variant="outline" 
+                className={cn(
+                  isColetor ? "w-full h-16 text-lg font-semibold" : "flex-1"
+                )} 
+                size={isColetor ? "lg" : "lg"}
+              >
                 Cancelar
               </Button>
             </div>
@@ -196,36 +317,68 @@ export default function DivergenciaModal({
 
       {/* Modal de Confirmação Final */}
       <Dialog open={modalConfirmacao} onOpenChange={() => setModalConfirmacao(false)}>
-        <DialogContent className={`${isColetor ? 'max-w-sm mx-2 coletor-confirmation-modal' : 'max-w-md'}`}>
-          <DialogHeader className={`${isColetor ? 'coletor-modal-header' : ''}`}>
-            <DialogTitle className="flex items-center space-x-2">
-              <CheckCircle className="h-5 w-5 text-green-600" />
+        <DialogContent 
+          className={cn(
+            "overflow-y-auto dark:bg-gray-950",
+            isColetor 
+              ? '!w-screen !h-screen !max-w-none !max-h-none !m-0 !rounded-none !p-6 flex flex-col !left-0 !right-0 !top-0 !bottom-0 !translate-x-0 !translate-y-0' 
+              : 'max-w-md'
+          )}
+        >
+          <DialogHeader className={cn(isColetor && "mb-6 flex-shrink-0")}>
+            <DialogTitle className={cn("flex items-center space-x-2", isColetor && "text-xl")}>
+              <CheckCircle className={cn("text-green-600", isColetor ? "h-6 w-6" : "h-5 w-5")} />
               <span>Confirmar Divergência</span>
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className={cn(isColetor && "text-base mt-2")}>
               Confirme se os dados da divergência estão corretos antes de salvar.
             </DialogDescription>
           </DialogHeader>
 
-          <div className={`space-y-${isColetor ? '3' : '4'} ${isColetor ? 'coletor-modal-content' : ''}`}>
-            <div className="text-center">
-              <p className={`${isColetor ? 'text-base' : 'text-lg'}`}>
-                Confirma que a nota <strong>{nota.numeroNF}</strong> possui{" "}
+          <div className={cn("space-y-5", isColetor && "flex-1 flex flex-col min-h-0")}>
+            <div className={cn(
+              "text-center p-6 bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-xl",
+              isColetor && "p-8"
+            )}>
+              <CheckCircle className={cn("text-green-600 mx-auto mb-4", isColetor ? "h-12 w-12" : "h-8 w-8")} />
+              <p className={cn("text-gray-700 dark:text-gray-300", isColetor ? "text-lg leading-relaxed" : "text-base")}>
+                Confirma que a nota <strong className="text-blue-600">{nota.numeroNF}</strong> possui{" "}
                 <strong className="text-orange-600">{tipoSelecionado?.descricao}</strong>?
               </p>
 
               {Number.parseInt(volumesInformados) !== nota.volumes && (
-                <p className={`${isColetor ? 'text-xs' : 'text-sm'} text-gray-600 mt-2`}>
-                  Volumes alterados: {nota.volumes} → {volumesInformados}
-                </p>
+                <div className={cn("mt-4 flex items-center justify-center space-x-2", isColetor && "text-base")}>
+                  <span className="text-gray-600 dark:text-gray-400">Volumes alterados:</span>
+                  <span className="text-red-600 font-bold">{nota.volumes}</span>
+                  <ArrowRight className="h-4 w-4 text-gray-400" />
+                  <span className="text-green-600 font-bold">{volumesInformados}</span>
+                </div>
               )}
             </div>
 
-            <div className={`flex ${isColetor ? 'flex-col space-y-2 coletor-modal-buttons' : 'space-x-4'}`}>
-              <Button onClick={confirmarDivergencia} className={`flex-1 bg-green-600 hover:bg-green-700 text-white ${isColetor ? 'h-12 text-sm' : ''}`}>
+            <div className={cn(
+              "flex gap-4 flex-shrink-0",
+              isColetor ? "flex-col mt-2" : "space-x-4"
+            )}>
+              <Button 
+                onClick={confirmarDivergencia} 
+                className={cn(
+                  "bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl transition-all",
+                  isColetor ? "w-full h-16 text-lg font-bold" : "flex-1"
+                )}
+                size={isColetor ? "lg" : "lg"}
+              >
+                <CheckCircle className={cn("mr-2", isColetor ? "h-6 w-6" : "h-4 w-4")} />
                 Confirmar
               </Button>
-              <Button onClick={() => setModalConfirmacao(false)} variant="outline" className={`flex-1 ${isColetor ? 'h-12 text-sm' : ''}`}>
+              <Button 
+                onClick={() => setModalConfirmacao(false)} 
+                variant="outline" 
+                className={cn(
+                  isColetor ? "w-full h-16 text-lg font-semibold" : "flex-1"
+                )}
+                size={isColetor ? "lg" : "lg"}
+              >
                 Cancelar
               </Button>
             </div>

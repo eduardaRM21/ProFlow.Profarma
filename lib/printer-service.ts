@@ -1,6 +1,9 @@
 // Serviço de impressão de etiquetas
 const PRINTER_SERVICE_URL = process.env.NEXT_PUBLIC_PRINTER_SERVICE_URL || null
 
+// Verificar se está rodando no cliente (browser)
+const isClient = typeof window !== 'undefined'
+
 export const PrinterService = {
   /**
    * Imprime uma etiqueta com o código do palete
@@ -16,17 +19,135 @@ export const PrinterService = {
       destino?: string
       posicoes?: number | null
       quantidadePaletes?: number | null
+      codigoCarga?: string
+      idWMS?: string
     }
   ): Promise<{ success: boolean; message: string }> {
     try {
       console.log(`🖨️ Iniciando impressão do palete: ${codigoPalete}`)
+      console.log(`🔍 Debug - PRINTER_SERVICE_URL: ${PRINTER_SERVICE_URL || 'não configurado'}`)
+      console.log(`🔍 Debug - isClient: ${isClient}`)
       
-      // Sempre usar API do Next.js como proxy para evitar problemas de CORS
-      // A API do Next.js fará a requisição para o serviço intermediário
+      // Se houver URL do serviço intermediário configurada e estivermos no cliente,
+      // fazer requisição direta do navegador para o serviço (bypass do Vercel)
+      // Isso funciona porque o cliente está na rede corporativa e pode acessar o serviço local
+      if (PRINTER_SERVICE_URL && isClient) {
+        console.log(`📡 Fazendo requisição direta do cliente para o serviço intermediário: ${PRINTER_SERVICE_URL}`)
+        
+        // Limpar URL do serviço intermediário
+        let baseUrl = PRINTER_SERVICE_URL.replace(/\/api\/print\/?$/, '').replace(/\/print\/?$/, '').replace(/\/$/, '')
+        const serviceUrl = `${baseUrl}/print`
+        
+        console.log(`🔗 URL completa do serviço: ${serviceUrl}`)
+        
+        try {
+          const response = await fetch(serviceUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              codigoPalete,
+              quantidadeNFs: dados?.quantidadeNFs,
+              totalVolumes: dados?.totalVolumes,
+              destino: dados?.destino,
+              posicoes: dados?.posicoes,
+              quantidadePaletes: dados?.quantidadePaletes,
+              codigoCarga: dados?.codigoCarga,
+              idWMS: dados?.idWMS,
+            }),
+          })
+
+          console.log(`📡 Resposta do serviço intermediário: status ${response.status}`)
+
+          const contentType = response.headers.get('content-type')
+          if (!contentType || !contentType.includes('application/json')) {
+            const textResponse = await response.text()
+            console.error(`❌ Resposta não é JSON. Status: ${response.status}, Conteúdo: ${textResponse.substring(0, 200)}`)
+            return {
+              success: false,
+              message: `Erro na API de impressão (status ${response.status}): ${textResponse.substring(0, 100)}`,
+            }
+          }
+
+          const data = await response.json()
+          console.log('📦 Dados da resposta:', data)
+
+          if (!response.ok) {
+            console.error(`❌ Erro na resposta (status ${response.status}):`, data)
+            return {
+              success: false,
+              message: data.message || data.erro || `Erro ao imprimir etiqueta (status ${response.status})`,
+            }
+          }
+
+          if (data.success) {
+            console.log(`✅ Impressão bem-sucedida: ${data.message}`)
+          } else {
+            console.warn(`⚠️ Impressão falhou: ${data.message || 'Sem mensagem de erro'}`)
+          }
+
+          return {
+            success: data.success || false,
+            message: data.message || 'Etiqueta impressa com sucesso',
+          }
+        } catch (error) {
+          console.error('❌ Erro ao chamar serviço intermediário diretamente:', error)
+          const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
+          
+          // Verificar se é erro de conexão ou CORS
+          if (errorMessage.includes('Failed to fetch') || errorMessage.includes('ERR_CONNECTION_REFUSED') || errorMessage.includes('NetworkError') || errorMessage.includes('CORS')) {
+            // Tentar determinar se é CORS ou conexão
+            const isCorsError = errorMessage.includes('CORS') || errorMessage.includes('Access-Control')
+            const isConnectionError = errorMessage.includes('ERR_CONNECTION_REFUSED') || errorMessage.includes('ECONNREFUSED')
+            
+            let diagnosticMessage = `Não foi possível conectar ao serviço intermediário em ${serviceUrl}.\n\n`
+            
+            if (isCorsError) {
+              diagnosticMessage += `🚫 ERRO DE CORS DETECTADO\n\n`
+              diagnosticMessage += `O navegador está bloqueando a requisição por política de CORS.\n\n`
+              diagnosticMessage += `🔧 SOLUÇÕES:\n`
+              diagnosticMessage += `1. Verifique se o serviço intermediário está configurado para aceitar requisições do navegador\n`
+              diagnosticMessage += `2. Verifique se o serviço está retornando headers CORS corretos\n`
+              diagnosticMessage += `3. Tente acessar de http:// ao invés de https:// (ou vice-versa)\n`
+              diagnosticMessage += `4. Verifique se há proxy ou firewall bloqueando headers CORS\n\n`
+            } else if (isConnectionError) {
+              diagnosticMessage += `🚫 ERRO DE CONEXÃO\n\n`
+              diagnosticMessage += `Não foi possível estabelecer conexão com o serviço.\n\n`
+            } else {
+              diagnosticMessage += `🚫 ERRO DE REDE\n\n`
+            }
+            
+            diagnosticMessage += `🔧 VERIFICAÇÕES:\n`
+            diagnosticMessage += `1. O serviço intermediário está rodando? Execute: node scripts/printer-service.js\n`
+            diagnosticMessage += `2. O IP está correto? Verifique o IP mostrado quando o serviço inicia\n`
+            diagnosticMessage += `3. Firewall bloqueando? Verifique se a porta 3001 está aberta\n`
+            diagnosticMessage += `4. Mesma rede? Cliente e serviço devem estar na mesma rede corporativa\n`
+            diagnosticMessage += `5. Teste no Console do navegador (F12) para ver erros detalhados\n\n`
+            diagnosticMessage += `📝 Teste manualmente:\n`
+            diagnosticMessage += `curl ${serviceUrl} -X POST -H "Content-Type: application/json" -d '{"codigoPalete":"TESTE"}'\n\n`
+            diagnosticMessage += `💡 Dica: Se o curl funcionar mas o navegador não, o problema é CORS ou política do navegador.\n\n`
+            diagnosticMessage += `Erro técnico: ${errorMessage}`
+            
+            return {
+              success: false,
+              message: diagnosticMessage
+            }
+          }
+          
+          // Se falhar, tentar via API do Next.js como fallback
+          console.log('🔄 Tentando via API do Next.js como fallback...')
+          // Continuar para o código abaixo que usa a API do Next.js
+        }
+      }
+      
+      // Usar API do Next.js como proxy (desenvolvimento local ou fallback)
       const apiUrl = '/api/print'
       console.log(`📡 Usando API do Next.js como proxy: ${apiUrl}`)
       if (PRINTER_SERVICE_URL) {
         console.log(`🔧 PRINTER_SERVICE_URL configurado: ${PRINTER_SERVICE_URL} (será usado pelo servidor)`)
+      } else {
+        console.log(`⚠️ PRINTER_SERVICE_URL não configurado - usando API do Next.js`)
       }
       
       const response = await fetch(apiUrl, {

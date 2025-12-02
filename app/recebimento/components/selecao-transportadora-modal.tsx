@@ -334,7 +334,7 @@ export default function SelecaoTransportadoraModal({
             <span>Selecionar Transportadora</span>
           </DialogTitle>
           <DialogDescription className={isColetor ? "text-sm" : ""}>
-            Selecione uma transportadora para iniciar a bipagem das notas fiscais.
+            Selecione uma transportadora para iniciar a bipagem.
           </DialogDescription>
         </DialogHeader>
 

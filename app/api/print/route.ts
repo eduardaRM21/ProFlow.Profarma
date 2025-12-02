@@ -401,6 +401,10 @@ export async function POST(req: Request) {
       )
     }
 
+    // Verificar se está rodando no Vercel (produção)
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined
+    const isProduction = process.env.NODE_ENV === 'production'
+    
     // Se houver serviço intermediário configurado, usar como proxy
     if (printerServiceUrl) {
       console.log(`🔄 Usando serviço intermediário como proxy: ${printerServiceUrl}`)
@@ -421,7 +425,9 @@ export async function POST(req: Request) {
             totalVolumes,
             destino,
             posicoes,
-            quantidadePaletes
+            quantidadePaletes,
+            codigoCarga,
+            idWMS
           }),
         })
 
@@ -438,7 +444,27 @@ export async function POST(req: Request) {
         }
       } catch (error) {
         console.error('❌ Erro ao chamar serviço intermediário:', error)
-        // Continuar para tentar impressão direta
+        const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
+        
+        // Se estiver no Vercel e o serviço intermediário falhar, não tentar impressão direta
+        if (isVercel || isProduction) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: `Não foi possível conectar ao serviço intermediário de impressão (${printerServiceUrl}).
+
+🔧 SOLUÇÃO:
+1. Verifique se o serviço intermediário está rodando e acessível
+2. Se o serviço está em rede local, configure um túnel (ngrok, Cloudflare Tunnel, etc.)
+3. Configure a variável NEXT_PUBLIC_PRINTER_SERVICE_URL no Vercel com a URL pública do serviço
+4. Verifique se o firewall permite conexões externas na porta do serviço
+
+Erro técnico: ${errorMessage}`
+            },
+            { status: 500 }
+          )
+        }
+        // Em desenvolvimento, continuar para tentar impressão direta
         console.log('🔄 Tentando impressão direta como fallback...')
       }
     }
@@ -452,7 +478,40 @@ export async function POST(req: Request) {
     console.log(`📡 Conectividade porta ${ALTERNATE_PORT}: ${conectividade9100 ? '✅ OK' : '❌ FALHOU'}`)
     
     if (!conectividade6101 && !conectividade9100) {
-      const mensagemErro = `Não foi possível conectar à impressora ${PRINTER_IP} a partir do servidor Next.js.
+      let mensagemErro = ''
+      
+      if (isVercel || isProduction) {
+        // Mensagem específica para produção/Vercel
+        mensagemErro = `Não foi possível conectar à impressora ${PRINTER_IP} a partir do servidor Vercel.
+
+⚠️ O Vercel não tem acesso à rede local da impressora.
+
+🔧 SOLUÇÃO OBRIGATÓRIA: Configure o serviço intermediário de impressão.
+
+1. Em uma máquina que tenha acesso à rede local da impressora (${PRINTER_IP}), execute:
+   node scripts/printer-service.js
+   
+2. Torne o serviço acessível publicamente usando um túnel:
+   - Opção A: ngrok (https://ngrok.com)
+     ngrok http 3001
+   - Opção B: Cloudflare Tunnel (gratuito)
+   - Opção C: Outro serviço de túnel reverso
+   
+3. Configure a variável de ambiente no Vercel:
+   - Acesse: Vercel Dashboard > Seu Projeto > Settings > Environment Variables
+   - Adicione: NEXT_PUBLIC_PRINTER_SERVICE_URL=https://seu-tunel.ngrok.io
+   - IMPORTANTE: Use a URL pública do túnel (sem /print no final)
+   
+4. Faça redeploy da aplicação no Vercel
+
+📋 Verificações:
+- O serviço intermediário deve estar rodando na máquina local
+- O túnel deve estar ativo e acessível
+- A variável NEXT_PUBLIC_PRINTER_SERVICE_URL deve estar configurada no Vercel
+- Consulte README-IMPRESSAO.md para mais detalhes`
+      } else {
+        // Mensagem para desenvolvimento local
+        mensagemErro = `Não foi possível conectar à impressora ${PRINTER_IP} a partir do servidor Next.js.
 
 🔧 SOLUÇÃO: Use o serviço intermediário de impressão.
 
@@ -470,6 +529,7 @@ export async function POST(req: Request) {
 - Se o IP está correto: ${PRINTER_IP}
 - Teste manualmente: telnet ${PRINTER_IP} ${PRINTER_PORT} ou telnet ${PRINTER_IP} ${ALTERNATE_PORT}
 - Consulte README-IMPRESSAO.md para mais detalhes`
+      }
       
       console.error('❌', mensagemErro)
       return NextResponse.json(

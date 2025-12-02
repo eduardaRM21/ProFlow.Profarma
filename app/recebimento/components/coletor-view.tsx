@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useMemo, useCallback, memo } from "react"
+import { useMemo, useCallback, memo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -25,7 +25,6 @@ import {
 import BarcodeScanner from "./barcode-scanner"
 import type { NotaFiscal } from "@/lib/database-service"
 import { useTheme } from "@/contexts/theme-context"
-import { useLongPress } from "@/hooks/use-long-press"
 import "../coletor-styles.css"
 
 interface ColetorViewProps {
@@ -73,22 +72,54 @@ const NotaItem = memo(({ nota, onLongPress }: { nota: NotaFiscal; onLongPress?: 
   )
 
   const statusText = nota.status === "ok" ? "Nota processada com sucesso" : "Nota com divergência"
-  
-  const longPress = useLongPress({
-    onLongPress: onLongPress || (() => {}),
-    delay: 800, // 800ms para long press
-  })
+
+  // Handler para duplo toque que funciona em dispositivos touch
+  const lastTapRef = useRef<number>(0)
+  const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!onLongPress) return
+    
+    const now = Date.now()
+    const DOUBLE_TAP_DELAY = 300 // 300ms entre toques para considerar duplo toque
+
+    if (lastTapRef.current && (now - lastTapRef.current) < DOUBLE_TAP_DELAY) {
+      // Duplo toque detectado
+      e.preventDefault()
+      if (tapTimeoutRef.current) {
+        clearTimeout(tapTimeoutRef.current)
+        tapTimeoutRef.current = null
+      }
+      lastTapRef.current = 0
+      onLongPress()
+    } else {
+      // Primeiro toque
+      lastTapRef.current = now
+      tapTimeoutRef.current = setTimeout(() => {
+        lastTapRef.current = 0
+      }, DOUBLE_TAP_DELAY)
+    }
+  }, [onLongPress])
+
+  // Handler para duplo clique (mouse/desktop)
+  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
+    if (onLongPress) {
+      e.preventDefault()
+      onLongPress()
+    }
+  }, [onLongPress])
 
   return (
     <div
-      {...longPress}
+      onDoubleClick={handleDoubleClick}
+      onTouchEnd={handleTouchEnd}
       className={`p-3 border-l-4 rounded-lg coletor-nota-item cursor-pointer transition-all hover:shadow-md ${nota.status === "ok"
           ? "coletor-nota-ok"
           : "coletor-nota-divergencia"
         }`}
       role="listitem"
       aria-label={`Nota fiscal ${nota.numeroNF}, status: ${statusText}`}
-      title={onLongPress ? "Segure para alterar o status da nota" : undefined}
+      title={onLongPress ? "Duplo clique ou duplo toque para alterar o status da nota" : undefined}
     >
       <div className="flex items-start space-x-2">
         <div aria-hidden="true">

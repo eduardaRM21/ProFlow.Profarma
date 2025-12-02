@@ -30,7 +30,6 @@ import BarcodeScanner from "./components/barcode-scanner"
 import ConfirmacaoModal from "./components/confirmacao-modal"
 import DivergenciaModal from "./components/divergencia-modal"
 import AlterarStatusModal from "./components/alterar-status-modal"
-import { useLongPress } from "@/hooks/use-long-press"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -55,27 +54,24 @@ import { ErrorHandler } from "@/lib/error-handler"
 import { useIsColetor } from "@/hooks/use-coletor"
 import { useTheme } from "@/contexts/theme-context"
 import { useToast } from "@/hooks/use-toast"
+import { cn } from "@/lib/utils"
+import { Label } from "@/components/ui/label"
 import ColetorView from "./components/coletor-view"
 import DarEntrada from "./components/dar-entrada"
 import VerConsolidado from "./components/ver-consolidado"
 import { Loader } from "@/components/ui/loader"
 
-// Componente para nota com long press
+// Componente para nota com duplo clique
 function NotaItemComLongPress({ nota, onLongPress }: { nota: NotaFiscal; onLongPress: () => void }) {
-  const longPress = useLongPress({
-    onLongPress,
-    delay: 800, // 800ms para long press
-  })
-
   return (
     <div
-      {...longPress}
+      onDoubleClick={onLongPress}
       className={`p-4 border-l-4 rounded-r-lg cursor-pointer transition-all hover:shadow-md ${
         nota.status === "ok" 
           ? "border-l-green-500 bg-green-50 dark:bg-green-900/20 dark:border-l-green-400" 
           : "border-l-orange-500 bg-orange-50 dark:bg-orange-900/20 dark:border-l-orange-400"
       }`}
-      title="Segure para alterar o status da nota"
+      title="Duplo clique para alterar o status da nota"
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start space-x-3 flex-1">
@@ -175,6 +171,9 @@ export default function RecebimentoPage() {
   const [modalConsultarNfsFaltantes, setModalConsultarNfsFaltantes] = useState(false)
   const [modalAlterarStatus, setModalAlterarStatus] = useState(false)
   const [notaParaAlterarStatus, setNotaParaAlterarStatus] = useState<NotaFiscal | null>(null)
+  const [modalSenha, setModalSenha] = useState(false)
+  const [senhaInput, setSenhaInput] = useState("")
+  const [senhaErrada, setSenhaErrada] = useState(false)
   const [finalizando, setFinalizando] = useState(false)
   const [telaAtiva, setTelaAtiva] = useState("bipagem")
   const [transportadoraSelecionada, setTransportadoraSelecionada] = useState("")
@@ -1212,7 +1211,29 @@ export default function RecebimentoPage() {
 
   const handleLongPressNota = (nota: NotaFiscal) => {
     setNotaParaAlterarStatus(nota)
-    setModalAlterarStatus(true)
+    setSenhaInput("")
+    setSenhaErrada(false)
+    setModalSenha(true)
+  }
+
+  const validarSenha = () => {
+    const SENHA_CORRETA = "rec2026"
+    if (senhaInput === SENHA_CORRETA) {
+      setModalSenha(false)
+      setSenhaInput("")
+      setSenhaErrada(false)
+      setModalAlterarStatus(true)
+    } else {
+      setSenhaErrada(true)
+      setSenhaInput("")
+    }
+  }
+
+  const fecharModalSenha = () => {
+    setModalSenha(false)
+    setSenhaInput("")
+    setSenhaErrada(false)
+    setNotaParaAlterarStatus(null)
   }
 
   const confirmarDivergencia = async (tipoDivergencia: string, volumesInformados: number) => {
@@ -1220,7 +1241,7 @@ export default function RecebimentoPage() {
     
     const tipoObj = TIPOS_DIVERGENCIA.find((t) => t.codigo === tipoDivergencia)
     
-    // Verificar se a nota já existe (pode ser uma atualização de status via long press)
+    // Verificar se a nota já existe (pode ser uma atualização de status via duplo clique)
     const notaExistente = notas.find(n => n.numeroNF === notaAtual.numeroNF)
     const isAtualizacao = !!notaExistente
     
@@ -2475,6 +2496,89 @@ export default function RecebimentoPage() {
         onClose={() => setModalConsultarNfsFaltantes(false)}
         transportadoraSelecionada={transportadoraSelecionada}
       />
+
+      {/* Modal de Senha para Alterar Status */}
+      <Dialog open={modalSenha} onOpenChange={fecharModalSenha}>
+        <DialogContent 
+          className={cn(
+            "overflow-y-auto dark:bg-gray-950",
+            isColetor 
+              ? '!w-screen !h-screen !max-w-none !max-h-none !m-0 !rounded-none !p-6 flex flex-col !left-0 !right-0 !top-0 !bottom-0 !translate-x-0 !translate-y-0' 
+              : 'max-w-md'
+          )}
+        >
+          <DialogHeader className={cn(isColetor && "mb-6 flex-shrink-0")}>
+            <DialogTitle className={cn("flex items-center space-x-2", isColetor && "text-xl")}>
+              <AlertTriangle className={cn("text-orange-600", isColetor ? "h-6 w-6" : "h-5 w-5")} />
+              <span>Senha de Segurança</span>
+            </DialogTitle>
+            <DialogDescription className={cn(isColetor && "text-base mt-2")}>
+              Digite a senha para alterar o status da nota fiscal.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className={cn("space-y-5", isColetor && "flex-1 flex flex-col")}>
+            <div className="space-y-3">
+              <label htmlFor="senha" className={cn("block font-semibold text-gray-900 dark:text-gray-100", isColetor && "text-base")}>
+                Senha
+              </label>
+              <Input
+                id="senha"
+                type="password"
+                value={senhaInput}
+                onChange={(e) => {
+                  setSenhaInput(e.target.value)
+                  setSenhaErrada(false)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    validarSenha()
+                  }
+                }}
+                className={cn(
+                  "font-mono",
+                  isColetor && "h-14 text-lg"
+                )}
+                placeholder="Digite a senha"
+                autoFocus
+              />
+              {senhaErrada && (
+                <p className={cn("text-red-600 dark:text-red-400", isColetor ? "text-base" : "text-sm")}>
+                  Senha incorreta. Tente novamente.
+                </p>
+              )}
+            </div>
+
+            <div className={cn(
+              "flex gap-4 flex-shrink-0",
+              isColetor ? "flex-col mt-2" : "space-x-4"
+            )}>
+              <Button
+                onClick={validarSenha}
+                className={cn(
+                  "bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all",
+                  isColetor ? "w-full h-16 text-lg font-bold" : "flex-1"
+                )}
+                size={isColetor ? "lg" : "lg"}
+                disabled={!senhaInput.trim()}
+              >
+                <CheckCircle className={cn("mr-2", isColetor ? "h-6 w-6" : "h-4 w-4")} />
+                Confirmar
+              </Button>
+              <Button
+                onClick={fecharModalSenha}
+                variant="outline"
+                className={cn(
+                  isColetor ? "w-full h-16 text-lg font-semibold" : "flex-1"
+                )}
+                size={isColetor ? "lg" : "lg"}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Alterar Status */}
       {notaParaAlterarStatus && (
