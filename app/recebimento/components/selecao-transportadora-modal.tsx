@@ -328,7 +328,7 @@ export default function SelecaoTransportadoraModal({
           }
         }}
       >
-        <DialogHeader className={cn(isColetor && "mb-4 flex-shrink-0")}>
+        <DialogHeader className={cn(isColetor && "mb-2 flex-shrink-0")}>
           <DialogTitle className={cn("flex items-center space-x-2", isColetor && "text-lg")}>
             <Truck className="h-5 w-5 text-blue-600" />
             <span>Selecionar Transportadora</span>
@@ -491,7 +491,7 @@ export default function SelecaoTransportadoraModal({
 
 
         {/* Botões */}
-        <div className={cn("flex", isColetor ? "flex-col space-y-3 mt-4 flex-shrink-0" : "space-x-3")}>
+        <div className={cn("flex", isColetor ? "flex-col space-y-3 mt-2 flex-shrink-0" : "space-x-3")}>
           <Button
             onClick={handleConfirmar}
             disabled={!transportadoraSelecionada || carregando}

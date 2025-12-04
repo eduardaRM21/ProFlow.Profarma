@@ -293,7 +293,7 @@ function WarehouseScene({ posicoes, nivelSelecionado, onPositionClick }: Warehou
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1, 0]} receiveShadow>
         <planeGeometry args={[200, 50]} />
         <meshStandardMaterial 
-          color="#E5E5E5" 
+          color="#ADADAD" 
           roughness={0.9} 
           metalness={0.1}
         />
