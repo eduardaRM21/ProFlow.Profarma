@@ -293,6 +293,25 @@ const server = http.createServer(async (req, res) => {
   // Obter origem da requisição (já definido acima, mas garantir que está disponível)
   const corsHeadersForResponse = getCorsHeaders(origin);
   
+  // Tratar requisições GET (pode ser verificação de saúde ou erro)
+  if (req.method === 'GET') {
+    console.log(`ℹ️ Requisição GET recebida em ${req.url}`);
+    // Responder com informações do serviço
+    res.writeHead(200, { 
+      ...corsHeadersForResponse,
+      'Content-Type': 'application/json',
+      'Vary': 'Origin'
+    });
+    res.end(JSON.stringify({ 
+      success: true, 
+      message: 'Serviço de impressão ativo',
+      endpoint: '/print',
+      method: 'POST',
+      printer: `${PRINTER_IP}:${PRINTER_PORT}`
+    }));
+    return;
+  }
+
   if (req.method !== 'POST') {
     console.log(`❌ Método ${req.method} não permitido. Apenas POST é aceito.`);
     res.writeHead(405, { 
@@ -300,7 +319,7 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Vary': 'Origin'
     });
-    res.end(JSON.stringify({ success: false, message: 'Método não permitido' }));
+    res.end(JSON.stringify({ success: false, message: 'Método não permitido. Use POST.' }));
     return;
   }
 
@@ -311,7 +330,10 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Vary': 'Origin'
     });
-    res.end(JSON.stringify({ success: false, message: 'Rota não encontrada' }));
+    res.end(JSON.stringify({ 
+      success: false, 
+      message: `Rota não encontrada: ${req.url}. Use /print com método POST.` 
+    }));
     return;
   }
 

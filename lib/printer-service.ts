@@ -4,6 +4,20 @@ const PRINTER_SERVICE_URL = process.env.NEXT_PUBLIC_PRINTER_SERVICE_URL || null
 // Verificar se está rodando no cliente (browser)
 const isClient = typeof window !== 'undefined'
 
+// Importar detecção de coletor
+import { isColetorZebra } from './detect-coletor'
+
+// Importar Zebra Browser Print (apenas no cliente)
+// Usar import dinâmico para evitar erro no servidor
+const loadZebraBrowserPrint = async () => {
+  if (!isClient) return null
+  try {
+    return await import('./zebra-browser-print')
+  } catch {
+    return null
+  }
+}
+
 export const PrinterService = {
   /**
    * Imprime uma etiqueta com o código do palete
@@ -27,11 +41,82 @@ export const PrinterService = {
       console.log(`🖨️ Iniciando impressão do palete: ${codigoPalete}`)
       console.log(`🔍 Debug - PRINTER_SERVICE_URL: ${PRINTER_SERVICE_URL || 'não configurado'}`)
       console.log(`🔍 Debug - isClient: ${isClient}`)
+      const isColetor = isColetorZebra()
+      console.log(`🔍 Debug - isColetor: ${isColetor}`)
       
-      // Se houver URL do serviço intermediário configurada e estivermos no cliente,
+      // Se estiver no coletor e não tiver serviço intermediário configurado, pular direto para impressão direta
+      if (isColetor && !PRINTER_SERVICE_URL) {
+        console.log('📱 Coletor detectado e sem serviço intermediário - usando apenas impressão direta')
+      }
+      
+      // PRIORIDADE 0: Tentar interface web da impressora
+      // NOTA: Pode ter erro CORS, mas vamos tentar mesmo assim (usando no-cors)
+      if (isClient) {
+        try {
+          const webInterfaceModule = await import('./zebra-printer-web-interface').catch(() => null)
+          if (webInterfaceModule) {
+            console.log('🌐 Tentando impressão via interface web da impressora...')
+            const resultado = await webInterfaceModule.imprimirViaInterfaceWeb(codigoPalete, dados, '10.27.30.75')
+            if (resultado.success) {
+              return resultado
+            }
+            console.log('⚠️ Impressão via interface web não funcionou, tentando outros métodos...')
+          }
+        } catch (error) {
+          // Ignorar - interface web pode não estar disponível ou ter CORS
+          console.log('⚠️ Erro ao tentar interface web (pode ser CORS):', error)
+        }
+      }
+      
+      // PRIORIDADE 1: Se estiver no coletor, tentar impressão direta via coletor
+      if (isClient && isColetor) {
+        try {
+          console.log('📱 Detectado coletor Zebra - tentando impressão direta...')
+          
+          const coletorModule = await import('./zebra-coletor-print').catch(() => null)
+          if (coletorModule) {
+            const resultado = await coletorModule.imprimirNoColetor(codigoPalete, dados)
+            if (resultado.success) {
+              return resultado
+            }
+            console.log('⚠️ Impressão direta no coletor falhou, tentando outros métodos...')
+          }
+        } catch (error) {
+          console.log('⚠️ Erro ao tentar impressão via coletor:', error)
+        }
+      }
+      
+      // PRIORIDADE 2: Tentar Zebra Browser Print (se disponível)
+      if (isClient) {
+        try {
+          const zebraModule = await loadZebraBrowserPrint()
+          if (zebraModule) {
+            const isAvailable = zebraModule.isZebraBrowserPrintAvailable()
+            if (isAvailable) {
+              console.log('🎯 Tentando imprimir com Zebra Browser Print...')
+              const resultado = await zebraModule.imprimirComZebraBrowserPrint(codigoPalete, dados)
+              if (resultado.success) {
+                return resultado
+              }
+              console.log('⚠️ Zebra Browser Print falhou, tentando método alternativo...')
+            }
+          }
+        } catch (error) {
+          console.log('⚠️ Erro ao usar Zebra Browser Print, tentando método alternativo:', error)
+        }
+      }
+      
+      // PRIORIDADE 2: Se houver URL do serviço intermediário configurada e estivermos no cliente,
       // fazer requisição direta do navegador para o serviço (bypass do Vercel)
       // Isso funciona porque o cliente está na rede corporativa e pode acessar o serviço local
+      // NOTA: Se estiver no coletor, só tenta serviço intermediário se explicitamente configurado
       if (PRINTER_SERVICE_URL && isClient) {
+        // Se estiver no coletor, avisar que está tentando serviço intermediário (pode não ser necessário)
+        if (isColetorZebra()) {
+          console.log('⚠️ Coletor detectado, mas PRINTER_SERVICE_URL está configurado. Tentando serviço intermediário...')
+          console.log('💡 Dica: Se a impressora está conectada ao coletor, remova PRINTER_SERVICE_URL para usar impressão direta')
+        }
+        
         console.log(`📡 Fazendo requisição direta do cliente para o serviço intermediário: ${PRINTER_SERVICE_URL}`)
         
         // Limpar URL do serviço intermediário
@@ -41,11 +126,15 @@ export const PrinterService = {
         console.log(`🔗 URL completa do serviço: ${serviceUrl}`)
         
         try {
+          // Fazer requisição POST para o serviço intermediário
           const response = await fetch(serviceUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
             },
+            // Adicionar modo cors explícito
+            mode: 'cors',
+            cache: 'no-cache',
             body: JSON.stringify({
               codigoPalete,
               quantidadeNFs: dados?.quantidadeNFs,
@@ -101,7 +190,19 @@ export const PrinterService = {
             const isCorsError = errorMessage.includes('CORS') || errorMessage.includes('Access-Control')
             const isConnectionError = errorMessage.includes('ERR_CONNECTION_REFUSED') || errorMessage.includes('ECONNREFUSED')
             
+            // Extrair porta da URL para mensagem mais precisa
+            const urlMatch = serviceUrl.match(/:(\d+)/)
+            const porta = urlMatch ? urlMatch[1] : '3002'
+            
             let diagnosticMessage = `Não foi possível conectar ao serviço intermediário em ${serviceUrl}.\n\n`
+            
+            // Se estiver no coletor, dar dica especial
+            const isColetor = isColetorZebra()
+            if (isColetor) {
+              diagnosticMessage += `📱 COLETOR DETECTADO\n\n`
+              diagnosticMessage += `Você está em um coletor Zebra. Se a impressora está conectada ao coletor,\n`
+              diagnosticMessage += `considere remover a variável NEXT_PUBLIC_PRINTER_SERVICE_URL para usar impressão direta.\n\n`
+            }
             
             if (isCorsError) {
               diagnosticMessage += `🚫 ERRO DE CORS DETECTADO\n\n`
@@ -121,12 +222,14 @@ export const PrinterService = {
             diagnosticMessage += `🔧 VERIFICAÇÕES:\n`
             diagnosticMessage += `1. O serviço intermediário está rodando? Execute: node scripts/printer-service.js\n`
             diagnosticMessage += `2. O IP está correto? Verifique o IP mostrado quando o serviço inicia\n`
-            diagnosticMessage += `3. Firewall bloqueando? Verifique se a porta 3001 está aberta\n`
-            diagnosticMessage += `4. Mesma rede? Cliente e serviço devem estar na mesma rede corporativa\n`
-            diagnosticMessage += `5. Teste no Console do navegador (F12) para ver erros detalhados\n\n`
+            diagnosticMessage += `3. A porta está correta? O serviço usa porta ${porta} por padrão (verifique se mudou)\n`
+            diagnosticMessage += `4. Firewall bloqueando? Verifique se a porta ${porta} está aberta\n`
+            diagnosticMessage += `5. Mesma rede? Cliente e serviço devem estar na mesma rede corporativa\n`
+            diagnosticMessage += `6. Teste no Console do navegador (F12) para ver erros detalhados\n\n`
             diagnosticMessage += `📝 Teste manualmente:\n`
             diagnosticMessage += `curl ${serviceUrl} -X POST -H "Content-Type: application/json" -d '{"codigoPalete":"TESTE"}'\n\n`
             diagnosticMessage += `💡 Dica: Se o curl funcionar mas o navegador não, o problema é CORS ou política do navegador.\n\n`
+            diagnosticMessage += `💡 Dica: Se estiver no coletor, tente remover NEXT_PUBLIC_PRINTER_SERVICE_URL para usar impressão direta.\n\n`
             diagnosticMessage += `Erro técnico: ${errorMessage}`
             
             return {

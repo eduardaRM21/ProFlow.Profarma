@@ -8,14 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import {
-  Dialog,
+  Dialog, 
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ArrowLeft, MapPin, Package, Search, Layers, Scan, CheckCircle2, XCircle } from "lucide-react"
-import { WMSService, type WMSSugestaoPosicao, type WMSSugestaoConjuntoPosicoes, type WMSCarga } from "@/lib/wms-service"
+import { WMSService, type WMSSugestaoPosicao, type WMSSugestaoConjuntoPosicoes, type WMSCarga, type WMSPosicao } from "@/lib/wms-service"
 import { SlotRecommendationCard } from "@/components/wms/slot-recommendation-card"
 import { SlotConjuntoRecommendationCard } from "@/components/wms/slot-conjunto-recommendation-card"
 import { obterDestinoCompleto } from "@/lib/wms-utils"
@@ -48,6 +48,13 @@ export default function WMSEnderecamentoPage() {
   const [scannerAtivo, setScannerAtivo] = useState(false)
   const [paleteValidado, setPaleteValidado] = useState(false)
   const [posicaoValidada, setPosicaoValidada] = useState(false)
+  
+  // Estados para endereçamento manual
+  const [mostrarDialogManual, setMostrarDialogManual] = useState(false)
+  const [codigoPosicaoManual, setCodigoPosicaoManual] = useState("")
+  const [posicaoManualEncontrada, setPosicaoManualEncontrada] = useState<WMSPosicao | null>(null)
+  const [erroPosicaoManual, setErroPosicaoManual] = useState<string | null>(null)
+  const [scannerManualAtivo, setScannerManualAtivo] = useState(false)
 
   useEffect(() => {
     carregarCargasMontadas()
@@ -419,6 +426,92 @@ export default function WMSEnderecamentoPage() {
     iniciarFluxoBipagem(posicaoId)
   }
 
+  const abrirDialogManual = () => {
+    if (!paleteSelecionado || !cargaSelecionada) {
+      toast({
+        title: "Erro",
+        description: "Selecione uma carga e um palete antes de endereçar manualmente",
+        variant: "destructive"
+      })
+      return
+    }
+    setMostrarDialogManual(true)
+    setCodigoPosicaoManual("")
+    setPosicaoManualEncontrada(null)
+    setErroPosicaoManual(null)
+  }
+
+  const buscarPosicaoPorCodigo = async (codigo: string) => {
+    try {
+      setErroPosicaoManual(null)
+      setPosicaoManualEncontrada(null)
+      
+      if (!codigo.trim()) {
+        return
+      }
+
+      const posicao = await WMSService.buscarPosicaoPorCodigo(codigo.trim())
+      
+      if (!posicao) {
+        setErroPosicaoManual("Posição não encontrada. Verifique o código digitado.")
+        return
+      }
+
+      if (posicao.status !== 'disponivel') {
+        setErroPosicaoManual(`Posição não está disponível. Status atual: ${posicao.status === 'ocupada' ? 'Ocupada' : 'Bloqueada'}`)
+        return
+      }
+
+      setPosicaoManualEncontrada(posicao)
+    } catch (error: any) {
+      console.error("Erro ao buscar posição:", error)
+      setErroPosicaoManual(error.message || "Erro ao buscar posição")
+    }
+  }
+
+  const handleCodigoPosicaoManualChange = (codigo: string) => {
+    setCodigoPosicaoManual(codigo)
+    setPosicaoManualEncontrada(null)
+    setErroPosicaoManual(null)
+    
+    // Buscar automaticamente quando o código tiver um tamanho razoável (ex: pelo menos 5 caracteres)
+    if (codigo.trim().length >= 5) {
+      buscarPosicaoPorCodigo(codigo)
+    }
+  }
+
+  const handleCodigoPosicaoManualEscaneado = (codigo: string) => {
+    setScannerManualAtivo(false)
+    setCodigoPosicaoManual(codigo)
+    buscarPosicaoPorCodigo(codigo)
+  }
+
+  const confirmarEnderecamentoManual = () => {
+    if (!posicaoManualEncontrada || !paleteSelecionado) {
+      toast({
+        title: "Erro",
+        description: "Selecione uma posição válida antes de confirmar",
+        variant: "destructive"
+      })
+      return
+    }
+
+    // Usar o mesmo fluxo de bipagem, mas com a posição manual
+    iniciarFluxoBipagem(posicaoManualEncontrada.id)
+    setMostrarDialogManual(false)
+    setCodigoPosicaoManual("")
+    setPosicaoManualEncontrada(null)
+    setErroPosicaoManual(null)
+  }
+
+  const cancelarEnderecamentoManual = () => {
+    setMostrarDialogManual(false)
+    setCodigoPosicaoManual("")
+    setPosicaoManualEncontrada(null)
+    setErroPosicaoManual(null)
+    setScannerManualAtivo(false)
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-gray-50 p-4">
       <div className="max-w-7xl mx-auto space-y-5">
@@ -637,11 +730,21 @@ export default function WMSEnderecamentoPage() {
         {paleteSelecionado && (
           <Card className="rounded-2xl shadow-lg">
             <CardHeader>
-              <CardTitle>
-                {nivelFiltro !== "all" 
-                  ? `Posições Sugeridas - Nível ${nivelFiltro}`
-                  : "Top 10 Posições Sugeridas"}
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>
+                  {nivelFiltro !== "all" 
+                    ? `Posições Sugeridas - Nível ${nivelFiltro}`
+                    : "Top 10 Posições Sugeridas"}
+                </CardTitle>
+                <Button
+                  onClick={abrirDialogManual}
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <MapPin className="h-4 w-4" />
+                  Endereçamento Manual
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -686,6 +789,128 @@ export default function WMSEnderecamentoPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Dialog de Endereçamento Manual */}
+        <Dialog open={mostrarDialogManual} onOpenChange={setMostrarDialogManual}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-blue-600" />
+                Endereçamento Manual
+              </DialogTitle>
+              <DialogDescription>
+                Digite ou escaneie o código da posição onde deseja endereçar o palete {paleteSelecionado?.codigo_palete || ""}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label>Código da Posição</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={codigoPosicaoManual}
+                    onChange={(e) => handleCodigoPosicaoManualChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && posicaoManualEncontrada) {
+                        confirmarEnderecamentoManual()
+                      }
+                    }}
+                    placeholder="Digite ou escaneie o código da posição (ex: CA-001-01, PD-097-03)"
+                    className="flex-1"
+                    autoFocus
+                  />
+                  <Button
+                    onClick={() => setScannerManualAtivo(!scannerManualAtivo)}
+                    variant="outline"
+                  >
+                    <Scan className="h-4 w-4 mr-2" />
+                    {scannerManualAtivo ? "Fechar Scanner" : "Abrir Scanner"}
+                  </Button>
+                  <Button
+                    onClick={() => buscarPosicaoPorCodigo(codigoPosicaoManual)}
+                    disabled={!codigoPosicaoManual.trim()}
+                  >
+                    Buscar
+                  </Button>
+                </div>
+              </div>
+
+              {scannerManualAtivo && (
+                <div className="mt-4">
+                  <BarcodeScanner
+                    onScan={handleCodigoPosicaoManualEscaneado}
+                    onError={(error) => {
+                      console.error("Erro no scanner:", error)
+                      toast({
+                        title: "Erro no Scanner",
+                        description: error,
+                        variant: "destructive"
+                      })
+                    }}
+                  />
+                </div>
+              )}
+
+              {posicaoManualEncontrada && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-semibold text-green-900 mb-2">Posição encontrada e disponível!</p>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Código:</span>
+                          <span className="font-mono font-semibold text-gray-900">{posicaoManualEncontrada.codigo_posicao}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Rua:</span>
+                          <span className="font-semibold text-gray-900">
+                            {posicaoManualEncontrada.rua === 1 ? 'CA' : posicaoManualEncontrada.rua === 2 ? 'CB' : posicaoManualEncontrada.rua === 3 ? 'PD' : `Rua ${posicaoManualEncontrada.rua}`}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Nível:</span>
+                          <span className="font-semibold text-gray-900">{posicaoManualEncontrada.nivel}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Status:</span>
+                          <span className="font-semibold text-green-700">Disponível</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Capacidade:</span>
+                          <span className="font-semibold text-gray-900">{posicaoManualEncontrada.capacidade_peso} kg</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {erroPosicaoManual && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <XCircle className="h-5 w-5 text-red-600" />
+                  <span className="text-red-700">{erroPosicaoManual}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={cancelarEnderecamentoManual}
+                  disabled={loading}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={confirmarEnderecamentoManual}
+                  disabled={!posicaoManualEncontrada || loading}
+                >
+                  Confirmar Endereçamento
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Dialog de Bipagem */}
         <Dialog open={mostrarDialogBipagem} onOpenChange={setMostrarDialogBipagem}>

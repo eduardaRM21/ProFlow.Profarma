@@ -4,6 +4,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { ThemeProvider } from "@/contexts/theme-context"
 import { SWRProvider } from "@/contexts/swr-provider"
+import { ZebraBrowserPrintScript } from "@/components/zebra-browser-print-script"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -31,6 +32,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className}>
+        <ZebraBrowserPrintScript />
         <SWRProvider>
           <ThemeProvider>
             {children}

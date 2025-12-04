@@ -884,7 +884,63 @@ export const WMSService = {
   },
 
   /**
+   * Corrige os contadores de todos os paletes de uma carga específica
+   * Atualiza quantidade_volumes e quantidade_nfs com os valores totais da carga
+   */
+  async corrigirContadoresPaletesCarga(carga_id: string): Promise<void> {
+    try {
+      const carga = await this.buscarCarga(carga_id)
+      if (!carga) {
+        console.warn(`⚠️ Carga ${carga_id} não encontrada`)
+        return
+      }
+
+      // Calcular totais da carga
+      const notasUnicas = carga.notas || []
+      const total_volumes = notasUnicas.reduce((acc, nota) => {
+        const volumes = typeof nota.volumes === 'number' 
+          ? nota.volumes 
+          : Number(nota.volumes) || 0
+        return acc + volumes
+      }, 0)
+      const total_nfs = notasUnicas.length
+
+      // Buscar todos os paletes da carga
+      const { data: todosPaletes } = await retryWithBackoff(async () => {
+        return await getSupabase()
+          .from('wms_paletes')
+          .select('id, codigo_palete')
+          .eq('carga_id', carga_id)
+      })
+
+      if (!todosPaletes || todosPaletes.length === 0) {
+        console.warn(`⚠️ Nenhum palete encontrado para a carga ${carga_id}`)
+        return
+      }
+
+      console.log(`🔧 Corrigindo ${todosPaletes.length} palete(s) da carga ${carga.codigo_carga}...`)
+      console.log(`   - Total volumes: ${total_volumes}`)
+      console.log(`   - Total NFs: ${total_nfs}`)
+
+      // Atualizar todos os paletes
+      for (const palete of todosPaletes) {
+        await this.atualizarPalete(palete.id, {
+          quantidade_volumes: total_volumes,
+          quantidade_nfs: total_nfs
+        })
+        console.log(`   ✅ Palete ${palete.codigo_palete} atualizado`)
+      }
+
+      console.log(`✅ Todos os paletes da carga ${carga.codigo_carga} foram corrigidos`)
+    } catch (error) {
+      console.error('❌ Erro ao corrigir contadores dos paletes:', error)
+      throw error
+    }
+  },
+
+  /**
    * Recalcula e atualiza os contadores da carga baseado em todos os paletes associados
+   * Também atualiza todos os paletes da carga com os valores totais (volumes e NFs da carga)
    */
   async recalcularContadoresCarga(carga_id: string): Promise<void> {
     try {
@@ -929,6 +985,18 @@ export const WMSService = {
         total_volumes: total_volumes,
         total_nfs: total_nfs
       })
+      
+      // Atualizar TODOS os paletes da carga com os valores totais da carga
+      if (todosPaletes && todosPaletes.length > 0) {
+        console.log(`🔄 Atualizando ${todosPaletes.length} palete(s) com valores totais da carga...`)
+        for (const palete of todosPaletes) {
+          await this.atualizarPalete(palete.id, {
+            quantidade_volumes: total_volumes,
+            quantidade_nfs: total_nfs
+          })
+        }
+        console.log(`✅ Todos os paletes atualizados com ${total_volumes} volumes e ${total_nfs} NFs`)
+      }
       
       console.log(`✅ Contadores da carga ${carga_id} atualizados: ${quantidade_paletes} paletes, ${total_volumes} volumes, ${total_nfs} NFs`)
     } catch (error) {

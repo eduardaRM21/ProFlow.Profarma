@@ -67,21 +67,21 @@ export default function ConfirmacaoModal({
           onClose();
         }}
       >
-        <DialogHeader className={cn(isColetor && "mb-6 flex-shrink-0")}>
+        <DialogHeader className={cn(isColetor && "mb-1 flex-shrink-0")}>
           <DialogTitle className={cn("flex items-center space-x-2", isColetor && "text-xl")}>
             <Package className={cn("text-blue-600", isColetor ? "h-6 w-6" : "h-5 w-5")} />
             <span>Confirmar Recebimento</span>
           </DialogTitle>
-          <DialogDescription className={cn(isColetor && "text-base mt-2")}>
-            Verifique os dados da nota fiscal antes de confirmar ou reportar divergência.
+          <DialogDescription className={cn(isColetor && "text-base mt-1")}>
+            Verifique os dados antes de confirmar.
           </DialogDescription>
         </DialogHeader>
 
-        <div className={cn("space-y-5", isColetor && "flex-1 flex flex-col min-h-0 overflow-y-auto")}>
+        <div className={cn("space-y-4", isColetor && "flex-1 flex flex-col min-h-0 overflow-y-auto")}>
           {/* Card Principal - Número da NF e Volumes (Destaque) */}
           <div className={cn(
             "bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-xl shadow-lg",
-            isColetor ? "p-6" : "p-4"
+            isColetor ? "p-5" : "p-3"
           )}>
             <div className={cn("flex items-center justify-between", isColetor ? "mb-4" : "mb-3")}>
               <div className="flex items-center space-x-2">
@@ -195,7 +195,7 @@ export default function ConfirmacaoModal({
             "text-center bg-green-50 dark:bg-green-900/20 border-2 border-green-200 dark:border-green-800 rounded-xl",
             isColetor ? "p-6" : "p-4"
           )}>
-            <CheckCircle className={cn("text-green-600 mx-auto mb-3", isColetor ? "h-12 w-12" : "h-8 w-8")} />
+            <CheckCircle className={cn("text-green-600 mx-auto mb-3", isColetor ? "h-10 w-10" : "h-8 w-8")} />
             <h3 className={cn("font-bold text-gray-900 dark:text-gray-100 mb-3", isColetor ? "text-xl" : "text-base")}>
               Os dados estão corretos?
             </h3>

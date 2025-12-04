@@ -47,7 +47,7 @@ export function SideDrawerPalete({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="mt-3 space-y-6">
           {/* Status */}
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-2">Status</h3>
