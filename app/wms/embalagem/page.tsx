@@ -1315,17 +1315,47 @@ export default function WMSEmbalagemPage() {
     setDadosEtiquetaPreview(null)
 
     // Aguardar e verificar se o script do Zebra Browser Print foi carregado
-    // Tentar até 3 vezes com intervalo de 500ms
+    // Tentar até 5 vezes com intervalo de 1000ms (aumentado para coletor)
     let tentativas = 0
-    const maxTentativas = 3
+    const maxTentativas = 5
+    const isColetorCheck = isColetorZebra()
+    const intervaloEspera = isColetorCheck ? 1000 : 500 // Mais tempo para coletor
+    
+    console.log(`⏳ [Modal] Aguardando Zebra Browser Print... (coletor: ${isColetorCheck})`)
+    
     while (tentativas < maxTentativas && !isZebraBrowserPrintAvailable()) {
-      await new Promise(resolve => setTimeout(resolve, 500))
+      await new Promise(resolve => setTimeout(resolve, intervaloEspera))
       tentativas++
-      console.log(`⏳ Aguardando Zebra Browser Print... (tentativa ${tentativas}/${maxTentativas})`)
+      
+      // Verificação detalhada a cada tentativa
+      const windowAny = typeof window !== 'undefined' ? (window as any) : null
+      const hasBrowserPrint = windowAny?.BrowserPrint !== undefined
+      const hasBrowserPrintAPI = windowAny?.BrowserPrint?.BrowserPrint !== undefined
+      
+      console.log(`⏳ [Modal] Tentativa ${tentativas}/${maxTentativas}:`)
+      console.log(`   - window.BrowserPrint: ${hasBrowserPrint}`)
+      console.log(`   - BrowserPrint.BrowserPrint: ${hasBrowserPrintAPI}`)
+      console.log(`   - isZebraBrowserPrintAvailable(): ${isZebraBrowserPrintAvailable()}`)
     }
     
-    if (!isZebraBrowserPrintAvailable() && isColetorZebra()) {
-      console.warn('⚠️ Zebra Browser Print ainda não está disponível após aguardar')
+    if (!isZebraBrowserPrintAvailable()) {
+      const windowAny = typeof window !== 'undefined' ? (window as any) : null
+      console.warn('⚠️ [Modal] Zebra Browser Print ainda não está disponível após aguardar')
+      console.warn('⚠️ [Modal] Verificações finais:')
+      console.warn(`   - window existe: ${typeof window !== 'undefined'}`)
+      console.warn(`   - window.BrowserPrint: ${windowAny?.BrowserPrint !== undefined}`)
+      console.warn(`   - BrowserPrint.BrowserPrint: ${windowAny?.BrowserPrint?.BrowserPrint !== undefined}`)
+      
+      if (isColetorCheck) {
+        console.error('❌ [Modal] COLETOR: Zebra Browser Print não está disponível!')
+        console.error('❌ [Modal] Verifique se:')
+        console.error('   1. O Zebra Browser Print está instalado no coletor')
+        console.error('   2. O coletor foi reiniciado após a instalação')
+        console.error('   3. O navegador foi reiniciado após a instalação')
+        console.error('   4. O script foi carregado corretamente (verifique o console)')
+      }
+    } else {
+      console.log('✅ [Modal] Zebra Browser Print está disponível!')
     }
 
     // Verificar se é coletor ou desktop
@@ -1427,20 +1457,42 @@ export default function WMSEmbalagemPage() {
 
     // Se for coletor, verificar Zebra Browser Print
     if (!browserPrintDisponivel) {
-      console.warn('⚠️ Zebra Browser Print não está disponível no coletor')
+      console.error('❌ [Coletor] Zebra Browser Print não está disponível!')
+      console.error('❌ [Coletor] Verificações detalhadas:')
+      console.error(`   - window existe: ${typeof window !== 'undefined'}`)
+      console.error(`   - window.BrowserPrint: ${windowAny?.BrowserPrint !== undefined}`)
+      console.error(`   - BrowserPrint.BrowserPrint: ${windowAny?.BrowserPrint?.BrowserPrint !== undefined}`)
+      console.error(`   - isZebraBrowserPrintAvailable(): ${isZebraBrowserPrintAvailable()}`)
+      
       toast({
         title: "Zebra Browser Print não disponível",
-        description: "Por favor, instale o Zebra Browser Print no coletor para imprimir etiquetas.",
+        description: "Por favor, verifique se o Zebra Browser Print está instalado e reinicie o navegador do coletor.",
         variant: "destructive",
+        duration: 10000, // Mostrar por mais tempo
       })
       return
     }
 
     try {
-      console.log('📋 Listando impressoras disponíveis...')
+      console.log('📋 [Coletor] Listando impressoras disponíveis...')
+      console.log('📋 [Coletor] Verificando API antes de listar...')
+      console.log('   - window.BrowserPrint existe:', typeof window !== 'undefined' && typeof (window as any).BrowserPrint !== 'undefined')
+      console.log('   - BrowserPrint.BrowserPrint existe:', typeof window !== 'undefined' && typeof (window as any).BrowserPrint?.BrowserPrint !== 'undefined')
+      console.log('   - getPrinters existe:', typeof window !== 'undefined' && typeof (window as any).BrowserPrint?.BrowserPrint?.getPrinters === 'function')
+      
       // Listar impressoras disponíveis
       const impressoras = await listarImpressorasZebra()
-      console.log('✅ Impressoras encontradas:', impressoras.length, impressoras)
+      console.log('✅ [Coletor] Impressoras encontradas:', impressoras.length)
+      
+      if (impressoras.length > 0) {
+        console.log('📋 [Coletor] Lista de impressoras:')
+        impressoras.forEach((imp, idx) => {
+          console.log(`   ${idx + 1}. ${imp.name}`)
+        })
+      } else {
+        console.warn('⚠️ [Coletor] Nenhuma impressora encontrada no Zebra Browser Print')
+        console.warn('⚠️ [Coletor] Verifique se há impressoras cadastradas no aplicativo Zebra Browser Print')
+      }
 
       if (impressoras.length === 0) {
         console.warn('⚠️ Nenhuma impressora encontrada')

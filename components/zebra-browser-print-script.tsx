@@ -15,28 +15,50 @@ export function ZebraBrowserPrintScript() {
       src="https://www.zebra.com/apps/r/browser-print/BrowserPrint-3.0.216.min.js"
       strategy="afterInteractive" // Mudado de lazyOnload para afterInteractive para carregar mais cedo
       onLoad={() => {
-        console.log('✅ Zebra Browser Print carregado com sucesso')
+        console.log('✅ [Zebra Script] Script carregado do CDN')
         
-        // Verificar se a API está disponível
-        if (typeof window !== 'undefined' && (window as any).BrowserPrint) {
-          console.log('✅ Zebra Browser Print API disponível')
+        // Verificar se a API está disponível imediatamente
+        if (typeof window !== 'undefined') {
+          const win = window as any
+          console.log('🔍 [Zebra Script] Verificando API...')
+          console.log('   - window existe:', typeof window !== 'undefined')
+          console.log('   - window.BrowserPrint existe:', typeof win.BrowserPrint !== 'undefined')
+          console.log('   - window.BrowserPrint.BrowserPrint existe:', typeof win.BrowserPrint?.BrowserPrint !== 'undefined')
           
-          // Aguardar um pouco e verificar novamente para garantir que a API está totalmente carregada
-          setTimeout(() => {
-            if (typeof window !== 'undefined' && (window as any).BrowserPrint?.BrowserPrint) {
-              console.log('✅ Zebra Browser Print API totalmente carregada e pronta para uso')
-            } else {
-              console.warn('⚠️ Zebra Browser Print script carregado, mas API BrowserPrint.BrowserPrint não está disponível')
-            }
-          }, 200)
-        } else {
-          console.warn('⚠️ Zebra Browser Print script carregado, mas API não está disponível')
+          if (win.BrowserPrint) {
+            console.log('✅ [Zebra Script] BrowserPrint encontrado')
+            
+            // Aguardar e verificar novamente para garantir que a API está totalmente carregada
+            setTimeout(() => {
+              if (typeof window !== 'undefined') {
+                const win2 = window as any
+                if (win2.BrowserPrint?.BrowserPrint) {
+                  console.log('✅ [Zebra Script] API BrowserPrint.BrowserPrint totalmente carregada e pronta')
+                  
+                  // Tentar verificar se há impressoras disponíveis (opcional, apenas para debug)
+                  try {
+                    if (win2.BrowserPrint.BrowserPrint.getPrinters) {
+                      console.log('✅ [Zebra Script] Método getPrinters() disponível')
+                    }
+                  } catch (e) {
+                    console.warn('⚠️ [Zebra Script] Erro ao verificar getPrinters:', e)
+                  }
+                } else {
+                  console.warn('⚠️ [Zebra Script] BrowserPrint.BrowserPrint ainda não está disponível após 200ms')
+                  console.warn('⚠️ [Zebra Script] Isso pode indicar que o Zebra Browser Print não está instalado no dispositivo')
+                }
+              }
+            }, 500) // Aumentado para 500ms
+          } else {
+            console.warn('⚠️ [Zebra Script] Script carregado, mas window.BrowserPrint não está disponível')
+            console.warn('⚠️ [Zebra Script] Verifique se o Zebra Browser Print está instalado no dispositivo')
+          }
         }
       }}
-      onError={() => {
-        // Erro ao carregar script - não é crítico, o sistema tem outros métodos
-        // Mostrar apenas uma mensagem discreta, já que é comportamento esperado
-        console.info('ℹ️ Zebra Browser Print não disponível - usando métodos alternativos de impressão')
+      onError={(error) => {
+        console.error('❌ [Zebra Script] Erro ao carregar script do CDN:', error)
+        console.error('❌ [Zebra Script] Verifique a conexão com a internet ou se o CDN da Zebra está acessível')
+        console.info('ℹ️ [Zebra Script] O sistema tentará usar métodos alternativos de impressão')
       }}
     />
   )

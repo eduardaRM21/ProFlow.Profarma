@@ -25,9 +25,24 @@ interface BrowserPrintPrinter {
  * Verifica se Zebra Browser Print está disponível
  */
 export function isZebraBrowserPrintAvailable(): boolean {
-  if (typeof window === 'undefined') return false
-  return typeof window.BrowserPrint !== 'undefined' &&
-         typeof window.BrowserPrint?.BrowserPrint !== 'undefined'
+  if (typeof window === 'undefined') {
+    return false
+  }
+  
+  const win = window as any
+  const hasBrowserPrint = typeof win.BrowserPrint !== 'undefined'
+  const hasBrowserPrintAPI = typeof win.BrowserPrint?.BrowserPrint !== 'undefined'
+  
+  const disponivel = hasBrowserPrint && hasBrowserPrintAPI
+  
+  // Log apenas quando não estiver disponível (para debug)
+  if (!disponivel) {
+    console.log('⚠️ [Zebra API] Zebra Browser Print NÃO está disponível')
+    console.log(`   - BrowserPrint: ${hasBrowserPrint}`)
+    console.log(`   - BrowserPrint.BrowserPrint: ${hasBrowserPrintAPI}`)
+  }
+  
+  return disponivel
 }
 
 /**
@@ -39,10 +54,30 @@ export async function listarImpressorasZebra(): Promise<BrowserPrintPrinter[]> {
   }
 
   try {
+    console.log('🔍 [Zebra API] Chamando BrowserPrint.getPrinters()...')
+    console.log('🔍 [Zebra API] window.BrowserPrint:', typeof window.BrowserPrint)
+    console.log('🔍 [Zebra API] BrowserPrint.BrowserPrint:', typeof window.BrowserPrint?.BrowserPrint)
+    
     const printers = await window.BrowserPrint!.BrowserPrint.getPrinters()
+    
+    console.log('✅ [Zebra API] getPrinters() retornou:', printers.length, 'impressora(s)')
+    if (printers.length > 0) {
+      console.log('📋 [Zebra API] Impressoras encontradas:')
+      printers.forEach((printer, index) => {
+        console.log(`   ${index + 1}. ${printer.name}`)
+        console.log(`      - Tipo: ${typeof printer}`)
+        console.log(`      - Tem método send: ${typeof printer.send === 'function'}`)
+      })
+    }
+    
     return printers
   } catch (error) {
-    console.error('Erro ao listar impressoras:', error)
+    console.error('❌ [Zebra API] Erro ao listar impressoras:', error)
+    console.error('❌ [Zebra API] Tipo do erro:', error instanceof Error ? error.constructor.name : typeof error)
+    console.error('❌ [Zebra API] Mensagem:', error instanceof Error ? error.message : String(error))
+    if (error instanceof Error && error.stack) {
+      console.error('❌ [Zebra API] Stack:', error.stack)
+    }
     throw error
   }
 }
@@ -116,13 +151,28 @@ export async function imprimirComZebraBrowserPrint(
     }
 
     console.log(`📡 [Zebra Browser Print] Usando impressora: ${printer.name}`)
+    console.log(`📡 [Zebra Browser Print] Tipo da impressora: ${typeof printer}`)
+    console.log(`📡 [Zebra Browser Print] Métodos disponíveis:`, Object.keys(printer))
 
     // Gerar ZPL
     const zpl = gerarZPL(codigoPalete, dados)
     console.log(`📄 [Zebra Browser Print] ZPL gerado (${zpl.length} caracteres)`)
+    console.log(`📄 [Zebra Browser Print] Primeiros 200 caracteres do ZPL:`, zpl.substring(0, 200))
+
+    // Verificar se o método send existe
+    if (typeof printer.send !== 'function') {
+      throw new Error(`Impressora "${printer.name}" não possui método send(). Métodos disponíveis: ${Object.keys(printer).join(', ')}`)
+    }
 
     // Enviar para impressora
-    await printer.send(zpl)
+    console.log(`📤 [Zebra Browser Print] Enviando ZPL para impressora...`)
+    try {
+      await printer.send(zpl)
+      console.log(`✅ [Zebra Browser Print] ZPL enviado com sucesso!`)
+    } catch (sendError) {
+      console.error('❌ [Zebra Browser Print] Erro ao enviar ZPL:', sendError)
+      throw sendError
+    }
 
     console.log(`✅ [Zebra Browser Print] Etiqueta ${codigoPalete} enviada para impressão com sucesso!`)
 
