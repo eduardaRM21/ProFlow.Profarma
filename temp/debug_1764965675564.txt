@@ -1,0 +1,30 @@
+
+=== DEBUG DE IMPRESSÃO ===
+Data/Hora: 2025-12-05T20:14:35.564Z
+Código Palete: PAL-00056
+Impressora: ZDesigner ZT411-300dpi ZPL
+Tamanho ZPL: 346 caracteres
+Arquivo ZPL: C:\Projeto Proflow\ProFlow_profarma - versão WMS\temp\zpl_1764965675563.zpl
+ZPL Completo:
+^XA
+^PW800
+^LL600
+^MNy
+^PR6
+
+^CF0,60
+^FO0,40^FB800,1,0,C^FDCODIGO PALETE^FS
+
+^FO270,100^BQN,2,10^FDLA,PAL-00056^FS
+
+^CF0,30
+^FO0,380^FB800,1,0,C^FDPAL-00056^FS
+^CF0,38
+^FO0,420^FB800,1,0,C^FDCAR-00038 - WMS-001-1764965674021^FS
+^CF0,32
+^FO0,455^FB800,1,0,C^FDNFs: 1 | Vol: 4 | Dest: GRAVAT^FS
+^CF0,32
+^FO0,490^FB800,1,0,C^FDPos: 1 | Pal: 1^FS
+^XZ
+=== FIM DEBUG ===
+      

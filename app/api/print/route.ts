@@ -272,16 +272,18 @@ export async function POST(req: Request) {
     const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined
     const isProduction = process.env.NODE_ENV === 'production'
     
-    // Se houver serviço intermediário configurado, usar como proxy
-    if (printerServiceUrl) {
-      console.log(`🔄 Usando serviço intermediário como proxy: ${printerServiceUrl}`)
+    // Se houver serviço intermediário configurado (no body ou variável de ambiente), usar como proxy
+    // No servidor, podemos ler NEXT_PUBLIC_* mas é melhor ter uma variável sem prefixo também
+    const serviceUrl = printerServiceUrl || process.env.PRINTER_SERVICE_URL || process.env.NEXT_PUBLIC_PRINTER_SERVICE_URL
+    if (serviceUrl) {
+      console.log(`🔄 Usando serviço intermediário como proxy: ${serviceUrl}`)
       try {
         // Limpar URL do serviço intermediário
-        let baseUrl = printerServiceUrl.replace(/\/api\/print\/?$/, '').replace(/\/print\/?$/, '').replace(/\/$/, '')
-        const serviceUrl = `${baseUrl}/print`
+        let baseUrl = serviceUrl.replace(/\/api\/print\/?$/, '').replace(/\/print\/?$/, '').replace(/\/$/, '')
+        const fullServiceUrl = `${baseUrl}/print`
         
-        console.log(`📡 Fazendo requisição para: ${serviceUrl}`)
-        const response = await fetch(serviceUrl, {
+        console.log(`📡 Fazendo requisição para: ${fullServiceUrl}`)
+        const response = await fetch(fullServiceUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -318,7 +320,7 @@ export async function POST(req: Request) {
           return NextResponse.json(
             {
               success: false,
-              message: `Não foi possível conectar ao serviço intermediário de impressão (${printerServiceUrl}).
+              message: `Não foi possível conectar ao serviço intermediário de impressão (${serviceUrl}).
 
 🔧 SOLUÇÃO:
 1. Verifique se o serviço intermediário está rodando e acessível

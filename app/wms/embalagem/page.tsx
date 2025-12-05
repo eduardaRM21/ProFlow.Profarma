@@ -39,6 +39,9 @@ import {
   ArrowBigLeft,
   FileText,
   Filter,
+  Printer,
+  Eye,
+  Code,
 } from "lucide-react"
 import BarcodeScanner from "@/app/recebimento/components/barcode-scanner"
 import { EmbalagemService } from "@/lib/embalagem-service"
@@ -46,11 +49,19 @@ import { EmbalagemNotasBipadasService } from "@/lib/embalagem-notas-bipadas-serv
 import { WMSService } from "@/lib/wms-service"
 import { getSupabase } from "@/lib/supabase-client"
 import { PrinterService } from "@/lib/printer-service"
+import { 
+  isZebraBrowserPrintAvailable, 
+  listarImpressorasZebra, 
+  imprimirComZebraBrowserPrint 
+} from "@/lib/zebra-browser-print"
+import { isColetorZebra } from "@/lib/detect-coletor"
 import { useToast } from "@/hooks/use-toast"
 import { useSession } from "@/hooks/use-database"
 import type { SessionData, NotaFiscal } from "@/lib/database-service"
 import { Loader } from "@/components/ui/loader"
 import { motion, AnimatePresence } from "framer-motion"
+import { QRCodePreview } from "@/components/qr-code-preview"
+import { type DadosEtiqueta } from "@/lib/zpl-generator"
 
 type StatusCarro = "aguardando_colagem" | "em_conferencia" | "liberado" | "embalando" | "em_producao"
 
@@ -130,10 +141,81 @@ export default function WMSEmbalagemPage() {
   const [quantidadeGaiolas, setQuantidadeGaiolas] = useState("")
   const [quantidadeCaixaManga, setQuantidadeCaixaManga] = useState("")
   const [finalizandoEmbalagem, setFinalizandoEmbalagem] = useState(false)
+  const [modalImpressao, setModalImpressao] = useState<{
+    aberto: boolean
+    carroId: string
+    nomeCarro: string
+  }>({ aberto: false, carroId: "", nomeCarro: "" })
+  const [impressorasDisponiveis, setImpressorasDisponiveis] = useState<Array<{ name: string }>>([])
+  const [impressoraSelecionada, setImpressoraSelecionada] = useState<string>("")
+  const [imprimindo, setImprimindo] = useState(false)
+  const [mostrarZPL, setMostrarZPL] = useState(false)
+  const [zplGerado, setZplGerado] = useState<string>("")
+  const [dadosEtiquetaPreview, setDadosEtiquetaPreview] = useState<any>(null)
 
   useEffect(() => {
     verificarSessao()
   }, [])
+
+  // Gerar ZPL para visualização quando o modal abrir
+  useEffect(() => {
+    if (modalImpressao.aberto && modalImpressao.carroId && !zplGerado) {
+      const gerarZPLPreview = async () => {
+        try {
+          const carro = carrosProduzidos.find(c => c.id === modalImpressao.carroId)
+          if (!carro) return
+
+          // Buscar carga para obter paletes
+          const { data: cargas } = await getSupabase()
+            .from('wms_cargas')
+            .select('*')
+            .ilike('observacoes', `%Carro: ${modalImpressao.carroId}%`)
+            .order('data_criacao', { ascending: false })
+            .limit(1)
+
+          if (!cargas || cargas.length === 0) return
+
+          const carga = cargas[0]
+          const cargaId = typeof carga.id === 'string' ? carga.id : String(carga.id)
+
+          const { data: paletes } = await getSupabase()
+            .from('wms_paletes')
+            .select('id, codigo_palete')
+            .eq('carga_id', cargaId)
+            .limit(1)
+
+          if (!paletes || paletes.length === 0) return
+
+          const primeiroPalete = paletes[0] as { id: string; codigo_palete: string | null | undefined }
+          const codigoPalete = primeiroPalete.codigo_palete
+
+          if (!codigoPalete || typeof codigoPalete !== 'string') return
+
+          const idWMS = `WMS-001-${Date.now()}`
+          const codigoCarga = typeof carga.codigo_carga === 'string' ? carga.codigo_carga : (carga.codigo_carga ? String(carga.codigo_carga) : '')
+          const dadosEtiqueta = {
+            quantidadeNFs: carro.quantidadeNFs || 0,
+            totalVolumes: carro.totalVolumes || 0,
+            destino: carro.destinoFinal ? carro.destinoFinal.split(", ")[0] : '',
+            posicoes: carro.posicoes || null,
+            quantidadePaletes: carro.palletes || null,
+            codigoCarga: codigoCarga || undefined,
+            idWMS: idWMS
+          }
+
+          const { gerarZPL } = await import('@/lib/zpl-generator')
+          const zpl = gerarZPL(codigoPalete, dadosEtiqueta)
+          setZplGerado(zpl)
+          setDadosEtiquetaPreview({ codigoPalete, ...dadosEtiqueta })
+          console.log('📄 [Preview] ZPL gerado para visualização:', zpl.length, 'caracteres')
+        } catch (error) {
+          console.error('❌ [Preview] Erro ao gerar ZPL para visualização:', error)
+        }
+      }
+
+      gerarZPLPreview()
+    }
+  }, [modalImpressao.aberto, modalImpressao.carroId, carrosProduzidos, zplGerado])
 
   useEffect(() => {
     if (carros.length === 0 && sessionData) {
@@ -1184,57 +1266,6 @@ export default function WMSEmbalagemPage() {
       // Atualizar lista de carros produzidos
       await carregarCarrosProduzidos()
 
-      // Imprimir etiquetas para cada palete criado
-      console.log('📦 Paletes criados:', paletes)
-      const codigosPaletes = paletes.map(p => p.codigo_palete).filter(codigo => codigo)
-      console.log('🏷️ Códigos dos paletes para impressão:', codigosPaletes)
-      
-      if (codigosPaletes.length > 0) {
-        console.log(`🖨️ Iniciando impressão de ${codigosPaletes.length} etiqueta(s)...`)
-        try {
-          // Preparar dados adicionais para a etiqueta
-          // Usar dados da carga atualizada (valores corretos) em vez dos dados do carro
-          // Gerar ID WMS no formato: WMS-001-{timestamp}
-          const idWMS = `WMS-001-${Date.now()}`
-          const dadosEtiqueta = {
-            quantidadeNFs: cargaAtualizada?.total_nfs || carro.quantidadeNFs || 0,
-            totalVolumes: cargaAtualizada?.total_volumes || carro.totalVolumes || 0,
-            destino: cargaAtualizada?.destino || (carro.destinoFinal ? carro.destinoFinal.split(", ")[0] : ''),
-            posicoes: posicoes || null,
-            quantidadePaletes: quantidadePaletesReais ? Number(quantidadePaletesReais) : null,
-            codigoCarga: cargaAtualizada?.codigo_carga || carga?.codigo_carga || '',
-            idWMS: idWMS
-          }
-          console.log('📋 Dados da etiqueta:', dadosEtiqueta)
-          
-          const resultadoImpressao = await PrinterService.imprimirEtiquetasPaletes(codigosPaletes, dadosEtiqueta)
-          
-          if (resultadoImpressao.success) {
-            toast({
-              title: "Impressão concluída",
-              description: `${resultadoImpressao.sucessos} etiqueta(s) impressa(s) com sucesso`,
-            })
-            console.log(`✅ ${resultadoImpressao.sucessos} etiqueta(s) impressa(s) com sucesso`)
-          } else {
-            toast({
-              title: "Aviso de impressão",
-              description: `${resultadoImpressao.sucessos} sucesso(s), ${resultadoImpressao.falhas} falha(s). Verifique o console para detalhes.`,
-              variant: "destructive",
-            })
-            console.warn(`⚠️ Impressão: ${resultadoImpressao.sucessos} sucesso(s), ${resultadoImpressao.falhas} falha(s)`)
-            resultadoImpressao.mensagens.forEach(msg => console.log(msg))
-          }
-        } catch (error) {
-          console.error('Erro ao imprimir etiquetas:', error)
-          toast({
-            title: "Erro na impressão",
-            description: "Não foi possível imprimir as etiquetas. O carro foi finalizado, mas você pode tentar imprimir manualmente.",
-            variant: "destructive",
-          })
-          // Não bloquear a finalização se a impressão falhar
-        }
-      }
-
       // Fechar modal e limpar campos
       setModalPallets({ aberto: false, carroId: "", nomeCarro: "" })
       setQuantidadePosicoes("")
@@ -1270,6 +1301,671 @@ export default function WMSEmbalagemPage() {
     setQuantidadePaletesReais("")
     setQuantidadeGaiolas("")
     setQuantidadeCaixaManga("")
+  }
+
+  const abrirModalImpressao = async (carroId: string, nomeCarro: string) => {
+    console.log('🖨️ Abrindo modal de impressão para carro:', carroId, nomeCarro)
+    
+    // Abrir modal primeiro para feedback visual imediato
+    setModalImpressao({ aberto: true, carroId, nomeCarro })
+    setImpressorasDisponiveis([])
+    setImpressoraSelecionada("")
+    setMostrarZPL(false)
+    setZplGerado("")
+    setDadosEtiquetaPreview(null)
+
+    // Aguardar e verificar se o script do Zebra Browser Print foi carregado
+    // Tentar até 3 vezes com intervalo de 500ms
+    let tentativas = 0
+    const maxTentativas = 3
+    while (tentativas < maxTentativas && !isZebraBrowserPrintAvailable()) {
+      await new Promise(resolve => setTimeout(resolve, 500))
+      tentativas++
+      console.log(`⏳ Aguardando Zebra Browser Print... (tentativa ${tentativas}/${maxTentativas})`)
+    }
+    
+    if (!isZebraBrowserPrintAvailable() && isColetorZebra()) {
+      console.warn('⚠️ Zebra Browser Print ainda não está disponível após aguardar')
+    }
+
+    // Verificar se é coletor ou desktop
+    const isColetor = isColetorZebra()
+    
+    // Verificação detalhada do Zebra Browser Print
+    const windowAny = typeof window !== 'undefined' ? (window as any) : null
+    const hasBrowserPrint = windowAny?.BrowserPrint !== undefined
+    const hasBrowserPrintAPI = windowAny?.BrowserPrint?.BrowserPrint !== undefined
+    const browserPrintDisponivel = isZebraBrowserPrintAvailable()
+    
+    console.log('🔍 É coletor:', isColetor)
+    console.log('🔍 Verificações detalhadas:')
+    console.log('   - window existe?', typeof window !== 'undefined')
+    console.log('   - window.BrowserPrint existe?', hasBrowserPrint)
+    console.log('   - window.BrowserPrint.BrowserPrint existe?', hasBrowserPrintAPI)
+    console.log('   - isZebraBrowserPrintAvailable() retorna:', browserPrintDisponivel)
+
+    // Se for desktop, tentar usar Zebra Browser Print se disponível
+    if (!isColetor) {
+      console.log('💻 Desktop detectado')
+      console.log('🔍 Verificando Zebra Browser Print...')
+      console.log('   - window.BrowserPrint existe?', typeof window !== 'undefined' && typeof (window as any).BrowserPrint !== 'undefined')
+      console.log('   - BrowserPrint.BrowserPrint existe?', typeof window !== 'undefined' && typeof (window as any).BrowserPrint?.BrowserPrint !== 'undefined')
+      
+      // Tentar usar Zebra Browser Print no desktop também
+      if (browserPrintDisponivel) {
+        console.log('✅ Zebra Browser Print disponível no desktop - listando impressoras...')
+        try {
+          const impressoras = await listarImpressorasZebra()
+          console.log('✅ Impressoras encontradas no desktop:', impressoras.length, impressoras)
+          console.log('📋 Detalhes das impressoras:', JSON.stringify(impressoras, null, 2))
+
+          if (impressoras.length > 0) {
+            setImpressorasDisponiveis(impressoras)
+            setImpressoraSelecionada(impressoras[0]?.name || "")
+            console.log('✅ Modal configurado com', impressoras.length, 'impressora(s) do sistema')
+            toast({
+              title: "Impressoras encontradas",
+              description: `${impressoras.length} impressora(s) disponível(is) no sistema`,
+            })
+            return
+          } else {
+            console.warn('⚠️ Zebra Browser Print disponível mas nenhuma impressora encontrada')
+            toast({
+              title: "Nenhuma impressora encontrada",
+              description: "O Zebra Browser Print está instalado, mas nenhuma impressora foi encontrada. Verifique se há impressoras instaladas no sistema.",
+              variant: "destructive",
+            })
+          }
+        } catch (error) {
+          console.error("❌ Erro ao listar impressoras no desktop:", error)
+          console.error("❌ Detalhes do erro:", error instanceof Error ? error.stack : error)
+          toast({
+            title: "Erro ao listar impressoras",
+            description: error instanceof Error ? error.message : "Erro desconhecido ao acessar impressoras do sistema",
+            variant: "destructive",
+          })
+        }
+      } else {
+        console.warn('⚠️ Zebra Browser Print NÃO está disponível no desktop')
+        console.log('💡 Para listar impressoras do sistema, instale o Zebra Browser Print:')
+        console.log('   https://www.zebra.com/us/en/support-downloads/knowledge-articles/software/browser-print.html')
+      }
+      
+      // Se Zebra Browser Print não estiver disponível, tentar listar impressoras do sistema via API
+      console.log('💻 Tentando listar impressoras do sistema via API...')
+      try {
+        const response = await fetch('/api/print/printers')
+        const data = await response.json()
+        
+        if (data.success && data.printers && data.printers.length > 0) {
+          console.log('✅ Impressoras encontradas via API:', data.printers.length, data.printers)
+          const primeiraImpressora = data.printers[0]?.name || ""
+          setImpressorasDisponiveis(data.printers)
+          setImpressoraSelecionada(primeiraImpressora)
+          console.log('✅ Estado atualizado - impressoras:', data.printers.length, 'selecionada:', primeiraImpressora)
+          toast({
+            title: "Impressoras encontradas",
+            description: `${data.printers.length} impressora(s) do sistema encontrada(s)`,
+          })
+          return
+        } else {
+          console.warn('⚠️ API não retornou impressoras:', data.message)
+          if (data.printers && Array.isArray(data.printers) && data.printers.length === 0) {
+            console.warn('⚠️ API retornou array vazio de impressoras')
+          }
+        }
+      } catch (error) {
+        console.error('❌ Erro ao listar impressoras via API:', error)
+      }
+      
+      // Se não conseguir listar impressoras, usar PrinterService (API do servidor)
+      console.log('💻 Usando PrinterService (API do servidor) como fallback')
+      setImpressorasDisponiveis([{ name: 'Impressora via Servidor (API)' }])
+      setImpressoraSelecionada('Impressora via Servidor (API)')
+      return
+    }
+
+    // Se for coletor, verificar Zebra Browser Print
+    if (!browserPrintDisponivel) {
+      console.warn('⚠️ Zebra Browser Print não está disponível no coletor')
+      toast({
+        title: "Zebra Browser Print não disponível",
+        description: "Por favor, instale o Zebra Browser Print no coletor para imprimir etiquetas.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      console.log('📋 Listando impressoras disponíveis...')
+      // Listar impressoras disponíveis
+      const impressoras = await listarImpressorasZebra()
+      console.log('✅ Impressoras encontradas:', impressoras.length, impressoras)
+
+      if (impressoras.length === 0) {
+        console.warn('⚠️ Nenhuma impressora encontrada')
+        toast({
+          title: "Nenhuma impressora encontrada",
+          description: "Configure uma impressora no Zebra Browser Print antes de imprimir.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setImpressorasDisponiveis(impressoras)
+      setImpressoraSelecionada(impressoras[0]?.name || "")
+      console.log('✅ Modal configurado com', impressoras.length, 'impressora(s)')
+    } catch (error) {
+      console.error("❌ Erro ao listar impressoras:", error)
+      toast({
+        title: "Erro ao listar impressoras",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const imprimirEtiquetasCarro = async () => {
+    // Verificar se é coletor ou desktop
+    const isColetor = isColetorZebra()
+    const browserPrintDisponivel = isZebraBrowserPrintAvailable()
+    const usaBrowserPrint = browserPrintDisponivel && impressoraSelecionada !== 'Impressora via Servidor (API)'
+    const usaImpressoraLocal = !isColetor && !browserPrintDisponivel && impressoraSelecionada && impressoraSelecionada !== 'Impressora via Servidor (API)'
+    
+    // Se usar Browser Print ou impressora local, precisa selecionar impressora
+    if ((usaBrowserPrint || usaImpressoraLocal) && !impressoraSelecionada) {
+      toast({
+        title: "Selecione uma impressora",
+        description: "Por favor, selecione uma impressora antes de imprimir.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setImprimindo(true)
+
+    try {
+      // Buscar carro
+      const carro = carrosProduzidos.find(c => c.id === modalImpressao.carroId)
+      if (!carro) {
+        throw new Error("Carro não encontrado")
+      }
+
+      console.log('🚗 Carro encontrado:', {
+        id: carro.id,
+        nomeCarro: carro.nomeCarro,
+        destinoFinal: carro.destinoFinal,
+        status: carro.status
+      })
+
+      // Verificar se o carro foi finalizado (se tiver status)
+      if (carro.status && carro.status !== 'finalizado' && carro.status !== 'embalando') {
+        console.warn('⚠️ Carro não está finalizado. Status:', carro.status)
+        toast({
+          title: "Carro não finalizado",
+          description: "Este carro ainda não foi finalizado na etapa de embalagem. Finalize o carro antes de imprimir etiquetas.",
+          variant: "destructive",
+        })
+        throw new Error("Carro não finalizado. Finalize o carro na etapa de embalagem antes de imprimir etiquetas.")
+      }
+
+      // Buscar carga pelo carro_id (armazenado nas observações como "Carro: WMS_carro_id")
+      // A tabela wms_cargas não tem campo carro_id diretamente, então buscamos nas observações
+      console.log('🔍 Buscando carga para carro:', modalImpressao.carroId)
+      
+      // Primeira tentativa: buscar pelo formato exato "Carro: WMS_carro_id"
+      let { data: cargas, error: cargaError } = await getSupabase()
+        .from('wms_cargas')
+        .select('*')
+        .ilike('observacoes', `%Carro: ${modalImpressao.carroId}%`)
+        .order('data_criacao', { ascending: false })
+        .limit(5)
+
+      type CargaType = { id: string; codigo_carga?: string; observacoes?: string | null; [key: string]: any }
+      let cargasTyped: CargaType[] | null = cargas ? (cargas as CargaType[]) : null
+
+      const formatObservacoes = (obs: string | null | undefined): string => {
+        if (typeof obs === 'string') return obs.substring(0, 100)
+        return String(obs || '').substring(0, 100)
+      }
+
+      console.log('📦 Resultado da busca 1 (formato exato):', {
+        encontradas: cargasTyped?.length || 0,
+        erro: cargaError,
+        carroIdBuscado: modalImpressao.carroId,
+        query: `%Carro: ${modalImpressao.carroId}%`,
+        cargas: cargasTyped?.map(c => ({ 
+          id: c.id, 
+          codigo_carga: c.codigo_carga, 
+          observacoes: formatObservacoes(c.observacoes),
+          observacoesCompleta: typeof c.observacoes === 'string' ? c.observacoes : String(c.observacoes || '')
+        }))
+      })
+
+      // Se não encontrou, tentar busca mais flexível (sem o prefixo "Carro: ")
+      if ((!cargasTyped || cargasTyped.length === 0) && !cargaError) {
+        console.log('🔍 Tentando busca alternativa (sem prefixo)...')
+        const { data: cargasAlt, error: cargaErrorAlt } = await getSupabase()
+          .from('wms_cargas')
+          .select('*')
+          .ilike('observacoes', `%${modalImpressao.carroId}%`)
+          .order('data_criacao', { ascending: false })
+          .limit(5)
+
+        const cargasAltTyped: CargaType[] | null = cargasAlt ? (cargasAlt as CargaType[]) : null
+
+        console.log('📦 Resultado da busca 2 (busca flexível):', {
+          encontradas: cargasAltTyped?.length || 0,
+          erro: cargaErrorAlt,
+          carroIdBuscado: modalImpressao.carroId,
+          query: `%${modalImpressao.carroId}%`,
+          cargas: cargasAltTyped?.map(c => ({ 
+            id: c.id, 
+            codigo_carga: c.codigo_carga, 
+            observacoes: formatObservacoes(c.observacoes),
+            observacoesCompleta: typeof c.observacoes === 'string' ? c.observacoes : String(c.observacoes || '')
+          }))
+        })
+
+        if (cargasAltTyped && cargasAltTyped.length > 0) {
+          cargasTyped = cargasAltTyped as CargaType[]
+          cargaError = cargaErrorAlt
+        }
+      }
+
+      // Se ainda não encontrou, tentar buscar pelos paletes diretamente (pode haver relação indireta)
+      if ((!cargasTyped || cargasTyped.length === 0) && !cargaError) {
+        console.log('🔍 Tentando buscar paletes diretamente relacionados ao carro...')
+        // Buscar todos os paletes e verificar se algum tem relação com o carro
+        // Isso é uma busca mais ampla, mas pode ajudar em casos edge
+        const { data: todasCargas, error: todasCargasError } = await getSupabase()
+          .from('wms_cargas')
+          .select('id, codigo_carga, observacoes, data_criacao')
+          .in('status', ['montada', 'aguardando_armazenagem'])
+          .order('data_criacao', { ascending: false })
+          .limit(20)
+
+        type CargaCompletaType = CargaType & { data_criacao?: string }
+        const todasCargasTyped: CargaCompletaType[] | null = todasCargas ? (todasCargas as CargaCompletaType[]) : null
+
+        if (todasCargasTyped && todasCargasTyped.length > 0) {
+          console.log('📦 Cargas recentes encontradas:', todasCargasTyped.length)
+          // Filtrar manualmente por carro_id nas observações
+          const cargasFiltradas = todasCargasTyped.filter(c => {
+            const obs = formatObservacoes(c.observacoes)
+            return obs.includes(modalImpressao.carroId) || obs.includes(`Carro: ${modalImpressao.carroId}`)
+          })
+          
+          if (cargasFiltradas.length > 0) {
+            console.log('✅ Carga encontrada na busca manual:', cargasFiltradas.length)
+            cargasTyped = cargasFiltradas as CargaType[]
+          }
+        }
+      }
+
+      if (cargaError) {
+        console.error('❌ Erro ao buscar carga:', cargaError)
+        throw new Error(`Erro ao buscar carga: ${cargaError.message}`)
+      }
+
+      // Se ainda não encontrou, tentar buscar pela carga mais recente do mesmo destino
+      let cargasFinal = cargasTyped
+      
+      if (!cargasFinal || cargasFinal.length === 0) {
+        console.log('🔍 Tentando busca alternativa: carga mais recente do mesmo destino...')
+        const destinoFinal = carro.destinoFinal?.split(", ")[0]?.trim() || ""
+        
+        if (destinoFinal) {
+          const { data: cargasPorDestino, error: errorDestino } = await getSupabase()
+            .from('wms_cargas')
+            .select('*')
+            .eq('destino', destinoFinal)
+            .in('status', ['montada', 'aguardando_armazenagem'])
+            .order('data_criacao', { ascending: false })
+            .limit(5)
+
+          if (!errorDestino && cargasPorDestino && cargasPorDestino.length > 0) {
+            console.log('📦 Cargas encontradas por destino:', cargasPorDestino.length)
+            // Verificar se alguma dessas cargas tem paletes
+            const cargasPorDestinoTyped = cargasPorDestino as CargaType[]
+            for (const cargaDestino of cargasPorDestinoTyped) {
+              const cargaId = typeof cargaDestino.id === 'string' ? cargaDestino.id : String(cargaDestino.id)
+              const { data: paletesTeste } = await getSupabase()
+                .from('wms_paletes')
+                .select('id')
+                .eq('carga_id', cargaId)
+                .limit(1)
+              
+              if (paletesTeste && paletesTeste.length > 0) {
+                console.log('✅ Carga encontrada por destino com paletes:', cargaId)
+                cargasFinal = [cargaDestino]
+                break
+              }
+            }
+          }
+        }
+      }
+
+      if (!cargasFinal || cargasFinal.length === 0) {
+        console.error('❌ Carga não encontrada para carro:', modalImpressao.carroId)
+        console.error('📋 Informações do carro:', {
+          id: carro.id,
+          nomeCarro: carro.nomeCarro,
+          destinoFinal: carro.destinoFinal,
+          status: carro.status
+        })
+        
+        // Tentar criar a carga automaticamente se o carro foi finalizado
+        const destinoFinal = carro.destinoFinal?.split(", ")[0]?.trim() || ""
+        if (destinoFinal && carro.status === 'finalizado') {
+          console.log('🔄 Tentando criar carga automaticamente para o carro...')
+          try {
+            const cargaCriada = await WMSService.criarCarga({
+              cliente_destino: destinoFinal,
+              destino: destinoFinal,
+              carro_id: modalImpressao.carroId
+            })
+            
+            console.log('✅ Carga criada automaticamente:', cargaCriada.id)
+            cargasFinal = [cargaCriada as CargaType]
+            
+            // Buscar paletes da carga (pode não ter paletes ainda)
+            const { data: paletesExistentes } = await getSupabase()
+              .from('wms_paletes')
+              .select('id, codigo_palete')
+              .eq('carga_id', cargaCriada.id)
+            
+            if (!paletesExistentes || paletesExistentes.length === 0) {
+              console.warn('⚠️ Carga criada mas não há paletes. O carro precisa ser finalizado na etapa de embalagem para criar os paletes.')
+              toast({
+                title: "Carga criada, mas sem paletes",
+                description: "A carga foi criada, mas não há paletes associados. Finalize o carro na etapa de embalagem para criar os paletes.",
+                variant: "destructive",
+              })
+              throw new Error("Carga criada, mas não há paletes. Finalize o carro na etapa de embalagem para criar os paletes.")
+            }
+          } catch (error) {
+            console.error('❌ Erro ao criar carga automaticamente:', error)
+            // Continuar com o erro original
+          }
+        }
+        
+        if (!cargasFinal || cargasFinal.length === 0) {
+          console.error('💡 Dica: Certifique-se de que:')
+          console.error('   1. O carro foi finalizado na etapa de embalagem')
+          console.error('   2. A carga foi criada com sucesso')
+          console.error('   3. O carro_id está correto nas observações da carga')
+          console.error('   4. Verifique se há cargas com o mesmo destino no sistema')
+          
+          // Listar cargas recentes para debug
+          const { data: cargasRecentes } = await getSupabase()
+            .from('wms_cargas')
+            .select('id, codigo_carga, destino, observacoes, data_criacao')
+            .in('status', ['montada', 'aguardando_armazenagem'])
+            .order('data_criacao', { ascending: false })
+            .limit(10)
+          
+          if (cargasRecentes && cargasRecentes.length > 0) {
+            const cargasRecentesTyped = cargasRecentes as Array<{ id: string; codigo_carga?: string; destino?: string; observacoes?: string | null; data_criacao?: string; [key: string]: any }>
+            console.error('📋 Cargas recentes no sistema:', cargasRecentesTyped.map(c => {
+              const obs = typeof c.observacoes === 'string' ? c.observacoes : String(c.observacoes || '')
+              return {
+                id: c.id,
+                codigo_carga: c.codigo_carga,
+                destino: c.destino,
+                observacoes: formatObservacoes(obs).substring(0, 100)
+              }
+            }))
+          }
+          
+          throw new Error("Carga não encontrada para este carro. Certifique-se de que o carro foi finalizado na etapa de embalagem.")
+        }
+      }
+
+      console.log('✅ Carga encontrada:', {
+        id: cargasFinal[0].id,
+        codigo_carga: cargasFinal[0].codigo_carga,
+        observacoes: formatObservacoes(cargasFinal[0].observacoes).substring(0, 150)
+      })
+
+      const carga = cargasFinal[0] as { id: string; codigo_carga?: string; [key: string]: any }
+      const cargaId = typeof carga.id === 'string' ? carga.id : String(carga.id)
+
+      // Buscar paletes da carga
+      const { data: paletes, error: paleteError } = await getSupabase()
+        .from('wms_paletes')
+        .select('id, codigo_palete')
+        .eq('carga_id', cargaId)
+
+      if (paleteError) {
+        throw paleteError
+      }
+
+      if (!paletes || paletes.length === 0) {
+        throw new Error("Nenhum palete encontrado para este carro")
+      }
+
+      console.log(`🖨️ Iniciando impressão de ${paletes.length} etiqueta(s)...`)
+
+      // Preparar dados da etiqueta
+      const idWMS = `WMS-001-${Date.now()}`
+      const dadosEtiqueta = {
+        quantidadeNFs: carro.quantidadeNFs || 0,
+        totalVolumes: carro.totalVolumes || 0,
+        destino: carro.destinoFinal ? carro.destinoFinal.split(", ")[0] : '',
+        posicoes: carro.posicoes || null,
+        quantidadePaletes: carro.palletes || null,
+        codigoCarga: carga.codigo_carga || '',
+        idWMS: idWMS
+      }
+
+      // Gerar ZPL do primeiro palete para visualização
+      if (paletes.length > 0) {
+        const primeiroPalete = paletes[0] as { id: string; codigo_palete: string | null | undefined }
+        const codigoPrimeiroPalete = primeiroPalete.codigo_palete
+        if (codigoPrimeiroPalete && typeof codigoPrimeiroPalete === 'string') {
+          const { gerarZPL } = await import('@/lib/zpl-generator')
+          const zpl = gerarZPL(codigoPrimeiroPalete, dadosEtiqueta)
+          setZplGerado(zpl)
+          setDadosEtiquetaPreview({ codigoPalete: codigoPrimeiroPalete, ...dadosEtiqueta })
+        }
+      }
+
+      // Imprimir cada palete
+      let sucessos = 0
+      let falhas = 0
+      const mensagens: string[] = []
+
+      // Se for desktop, verificar se usa Zebra Browser Print, impressora local ou PrinterService
+      if (!isColetor) {
+        const browserPrintDisponivel = isZebraBrowserPrintAvailable()
+        const usaBrowserPrint = browserPrintDisponivel && impressoraSelecionada !== 'Impressora via Servidor (API)'
+        const usaImpressoraLocal = !browserPrintDisponivel && impressoraSelecionada && impressoraSelecionada !== 'Impressora via Servidor (API)'
+        
+        if (usaBrowserPrint) {
+          // Desktop com Zebra Browser Print - usar impressora selecionada
+          console.log('💻 Desktop com Zebra Browser Print - usando impressora:', impressoraSelecionada)
+          for (const palete of paletes) {
+            const paleteTyped = palete as { id: string; codigo_palete: string | null | undefined }
+            const codigoPalete = paleteTyped.codigo_palete
+            if (!codigoPalete || typeof codigoPalete !== 'string') continue
+
+            try {
+              const resultado = await imprimirComZebraBrowserPrint(
+                codigoPalete,
+                dadosEtiqueta,
+                impressoraSelecionada
+              )
+
+              if (resultado.success) {
+                sucessos++
+                mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
+              } else {
+                falhas++
+                mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
+              }
+
+              // Delay entre impressões
+              if (paletes.indexOf(palete) < paletes.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 500))
+              }
+            } catch (error) {
+              falhas++
+              mensagens.push(`Palete ${codigoPalete}: Erro - ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+            }
+          }
+        } else if (usaImpressoraLocal) {
+          // Desktop com impressora local selecionada - usar API local
+          console.log('💻 Desktop com impressora local - usando API local:', impressoraSelecionada)
+          for (const palete of paletes) {
+            const paleteTyped = palete as { id: string; codigo_palete: string | null | undefined }
+            const codigoPalete = paleteTyped.codigo_palete
+            if (!codigoPalete || typeof codigoPalete !== 'string') continue
+
+            try {
+                console.log('📤 [Frontend] Enviando requisição para API local:', {
+                  codigoPalete,
+                  printerName: impressoraSelecionada,
+                  dadosEtiqueta
+                })
+
+                const response = await fetch('/api/print/local', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    codigoPalete,
+                    ...dadosEtiqueta,
+                    printerName: impressoraSelecionada
+                  }),
+                })
+
+                console.log('📥 [Frontend] Resposta recebida:', {
+                  status: response.status,
+                  statusText: response.statusText,
+                  ok: response.ok
+                })
+
+                const resultado = await response.json()
+                
+                console.log('📋 [Frontend] Resultado da API:', resultado)
+
+                if (!response.ok) {
+                  console.error('❌ [Frontend] Erro na resposta da API:', {
+                    status: response.status,
+                    resultado
+                  })
+                }
+
+                if (resultado.success) {
+                  sucessos++
+                  mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
+                  console.log('✅ [Frontend] Impressão bem-sucedida:', codigoPalete)
+                } else {
+                  falhas++
+                  mensagens.push(`Palete ${codigoPalete}: ${resultado.message || 'Erro desconhecido'}`)
+                  console.error('❌ [Frontend] Impressão falhou:', resultado.message)
+                }
+
+                // Delay entre impressões
+                if (paletes.indexOf(palete) < paletes.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 500))
+                }
+            } catch (error) {
+              falhas++
+              mensagens.push(`Palete ${codigoPalete}: Erro - ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+            }
+          }
+        } else {
+          // Desktop sem Zebra Browser Print - usar PrinterService (API)
+          console.log('💻 Desktop sem Zebra Browser Print - usando PrinterService (API)')
+          const codigosPaletes = paletes
+            .map(p => {
+              const paleteTyped = p as { id: string; codigo_palete: string | null | undefined }
+              return paleteTyped.codigo_palete
+            })
+            .filter((codigo): codigo is string => typeof codigo === 'string' && codigo.length > 0)
+
+          if (codigosPaletes.length === 0) {
+            throw new Error("Nenhum código de palete válido encontrado")
+          }
+
+          const resultadoImpressao = await PrinterService.imprimirEtiquetasPaletes(codigosPaletes, dadosEtiqueta)
+          
+          if (resultadoImpressao.success) {
+            sucessos = resultadoImpressao.sucessos
+            falhas = resultadoImpressao.falhas
+            mensagens.push(...resultadoImpressao.mensagens)
+          } else {
+            sucessos = resultadoImpressao.sucessos
+            falhas = resultadoImpressao.falhas
+            mensagens.push(...resultadoImpressao.mensagens)
+          }
+        }
+      } else {
+        // Se for coletor, usar Zebra Browser Print
+        console.log('📱 Usando Zebra Browser Print para impressão no coletor')
+        for (const palete of paletes) {
+          const paleteTyped = palete as { id: string; codigo_palete: string | null | undefined }
+          const codigoPalete = paleteTyped.codigo_palete
+          if (!codigoPalete || typeof codigoPalete !== 'string') continue
+
+          try {
+            const resultado = await imprimirComZebraBrowserPrint(
+              codigoPalete,
+              dadosEtiqueta,
+              impressoraSelecionada
+            )
+
+            if (resultado.success) {
+              sucessos++
+              mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
+            } else {
+              falhas++
+              mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
+            }
+
+            // Delay entre impressões
+            if (paletes.indexOf(palete) < paletes.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 500))
+            }
+          } catch (error) {
+            falhas++
+            mensagens.push(`Palete ${codigoPalete}: Erro - ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+          }
+        }
+      }
+
+      // Mostrar resultado
+      if (sucessos > 0) {
+        toast({
+          title: "Impressão concluída",
+          description: `${sucessos} etiqueta(s) impressa(s) com sucesso${falhas > 0 ? `, ${falhas} falha(s)` : ''}`,
+        })
+      } else {
+        toast({
+          title: "Erro na impressão",
+          description: `Nenhuma etiqueta foi impressa. ${falhas} falha(s).`,
+          variant: "destructive",
+        })
+      }
+
+      mensagens.forEach(msg => console.log(msg))
+
+      // Fechar modal
+      setModalImpressao({ aberto: false, carroId: "", nomeCarro: "" })
+      setImpressoraSelecionada("")
+    } catch (error) {
+      console.error("Erro ao imprimir etiquetas:", error)
+      toast({
+        title: "Erro ao imprimir",
+        description: error instanceof Error ? error.message : "Erro desconhecido",
+        variant: "destructive",
+      })
+    } finally {
+      setImprimindo(false)
+    }
   }
 
   if (!sessionData) {
@@ -1800,15 +2496,29 @@ export default function WMSEmbalagemPage() {
                               )}
                             </div>
                           </div>
-                          {carro.status === "embalando"  && (
-                            <Button
-                              onClick={() => abrirModalPallets(carro.id, carro.nomeCarro)}
-                              className="bg-teal-600 hover:bg-teal-700 text-white"
-                            >
-                              <Package className="h-4 w-4 mr-2" />
-                              Finalizar e Armazenar
-                            </Button>
-                          )}
+                          <div className="flex gap-2">
+                            {carro.status === "embalando" && (
+                              <Button
+                                onClick={() => abrirModalPallets(carro.id, carro.nomeCarro)}
+                                className="bg-teal-600 hover:bg-teal-700 text-white"
+                              >
+                                <Package className="h-4 w-4 mr-2" />
+                                Finalizar e Armazenar
+                              </Button>
+                            )}
+                            {carro.status === "finalizado" && (
+                              <Button
+                                onClick={() => {
+                                  console.log('🖨️ Botão Imprimir Etiqueta clicado para carro:', carro.id, carro.nomeCarro)
+                                  abrirModalImpressao(carro.id, carro.nomeCarro)
+                                }}
+                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                <Printer className="h-4 w-4 mr-2" />
+                                Imprimir Etiqueta
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )
@@ -2032,6 +2742,287 @@ export default function WMSEmbalagemPage() {
                   variant="outline"
                   onClick={() => setModalPallets({ aberto: false, carroId: "", nomeCarro: "" })}
                   disabled={finalizandoEmbalagem}
+                >
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para Imprimir Etiquetas */}
+      <Dialog open={modalImpressao.aberto} onOpenChange={(open) => {
+        if (!imprimindo) {
+          setModalImpressao({ ...modalImpressao, aberto: open })
+          if (!open) {
+            // Limpar visualização quando fechar o modal
+            setMostrarZPL(false)
+            setZplGerado("")
+            setDadosEtiquetaPreview(null)
+          }
+        }
+      }}>
+        <DialogContent className="max-w-md z-50">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <Printer className="h-5 w-5 text-blue-600" />
+              <span>Imprimir Etiquetas - {modalImpressao.nomeCarro}</span>
+            </DialogTitle>
+            <DialogDescription>
+              Selecione a impressora para imprimir as etiquetas dos paletes
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Área de Visualização da Etiqueta */}
+          {dadosEtiquetaPreview && (
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <Eye className="h-4 w-4 text-gray-600" />
+                  <span className="text-sm font-medium text-gray-700">Pré-visualização da Etiqueta</span>
+                </div>
+                <div className="flex space-x-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setMostrarZPL(!mostrarZPL)}
+                    className="h-7"
+                  >
+                    <Code className="h-4 w-4 mr-1" />
+                    {mostrarZPL ? 'Ocultar' : 'Mostrar'} ZPL
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Visualização Visual da Etiqueta */}
+              <div className="mb-3">
+                <div 
+                  className="border-2 border-gray-300 bg-white shadow-lg mx-auto relative overflow-hidden"
+                  style={{
+                    width: '378px', // 100mm a 96dpi (aproximado)
+                    height: '283px', // 75mm a 96dpi (aproximado)
+                    padding: '8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {/* Título */}
+                  <div className="text-center font-bold mb-2" style={{ fontSize: '18px', lineHeight: '1.2' }}>
+                    CÓDIGO PALETE
+                  </div>
+
+                  {/* QR Code */}
+                  <QRCodePreview codigoPalete={dadosEtiquetaPreview.codigoPalete} />
+
+                  {/* Código do Palete */}
+                  <div className="text-center font-semibold mb-1" style={{ fontSize: '14px', lineHeight: '1.2' }}>
+                    {dadosEtiquetaPreview.codigoPalete}
+                  </div>
+
+                  {/* Código Carga + WMS */}
+                  {dadosEtiquetaPreview.codigoCarga && (
+                    <div className="text-center mb-1" style={{ fontSize: '12px', lineHeight: '1.2' }}>
+                      {dadosEtiquetaPreview.codigoCarga}
+                      {dadosEtiquetaPreview.idWMS && ` - ${dadosEtiquetaPreview.idWMS}`}
+                    </div>
+                  )}
+
+                  {/* Informações Linha 1 */}
+                  {dadosEtiquetaPreview && (
+                    <div className="text-center mb-1" style={{ fontSize: '10px', lineHeight: '1.2' }}>
+                      NFs: {dadosEtiquetaPreview.quantidadeNFs || 0} | Vol: {dadosEtiquetaPreview.totalVolumes || 0} | Dest: {(dadosEtiquetaPreview.destino || '').substring(0, 8)}
+                    </div>
+                  )}
+
+                  {/* Informações Linha 2 */}
+                  {(dadosEtiquetaPreview.posicoes || dadosEtiquetaPreview.quantidadePaletes) && (
+                    <div className="text-center" style={{ fontSize: '10px', lineHeight: '1.2' }}>
+                      {dadosEtiquetaPreview.posicoes && `Pos: ${dadosEtiquetaPreview.posicoes}`}
+                      {dadosEtiquetaPreview.posicoes && dadosEtiquetaPreview.quantidadePaletes && ' | '}
+                      {dadosEtiquetaPreview.quantidadePaletes && `Pal: ${dadosEtiquetaPreview.quantidadePaletes}`}
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 text-center mt-2">
+                  📏 Dimensões: 100mm x 75mm (aproximado)
+                </div>
+              </div>
+
+              {/* Código ZPL (colapsável) */}
+              {mostrarZPL && (
+                <div className="mt-3 space-y-2 border-t pt-3">
+                  <div className="bg-white border rounded p-3 max-h-40 overflow-y-auto">
+                    <pre className="text-xs font-mono whitespace-pre-wrap break-words">
+                      {zplGerado}
+                    </pre>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    📏 Tamanho: {zplGerado.length} caracteres
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {(() => {
+              const isColetor = isColetorZebra()
+              const browserPrintDisponivel = isZebraBrowserPrintAvailable()
+
+              // Log removido para reduzir poluição no console
+              // Se necessário para debug, descomente:
+              // console.log('🔍 Estado do modal:', { isColetor, browserPrintDisponivel, impressorasDisponiveis: impressorasDisponiveis.length, impressoraSelecionada })
+
+              // Se tem impressoras disponíveis (qualquer método), mostrar seletor
+              if (impressorasDisponiveis.length > 0 && impressoraSelecionada && impressoraSelecionada !== 'Impressora via Servidor (API)') {
+                return (
+                  <div>
+                    <Label htmlFor="impressora">Selecione a Impressora</Label>
+                    <Select value={impressoraSelecionada} onValueChange={setImpressoraSelecionada}>
+                      <SelectTrigger className="w-full mt-2">
+                        <SelectValue placeholder="Selecione uma impressora" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[110]">
+                        {impressorasDisponiveis.map((impressora) => (
+                          <SelectItem key={impressora.name} value={impressora.name}>
+                            {impressora.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!isColetor && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        💻 {impressorasDisponiveis.length} impressora(s) do sistema encontrada(s)
+                      </p>
+                    )}
+                  </div>
+                )
+              }
+
+              // Desktop: verificar se tem Zebra Browser Print
+              if (!isColetor) {
+                // Se tem impressoras disponíveis (qualquer método), mostrar seletor
+                if (impressorasDisponiveis.length > 0 && impressoraSelecionada && impressoraSelecionada !== 'Impressora via Servidor (API)') {
+                  return (
+                    <div>
+                      <Label htmlFor="impressora">Selecione a Impressora</Label>
+                      <Select value={impressoraSelecionada} onValueChange={setImpressoraSelecionada}>
+                        <SelectTrigger className="w-full mt-2">
+                          <SelectValue placeholder="Selecione uma impressora" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[110]">
+                          {impressorasDisponiveis.map((impressora) => (
+                            <SelectItem key={impressora.name} value={impressora.name}>
+                              {impressora.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!isColetor && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          💻 {impressorasDisponiveis.length} impressora(s) do sistema encontrada(s)
+                        </p>
+                      )}
+                    </div>
+                  )
+                }
+
+                // Se não tem impressoras ou está usando API do servidor, mostrar mensagem
+                if (!browserPrintDisponivel && (impressorasDisponiveis.length === 0 || impressoraSelecionada === 'Impressora via Servidor (API)')) {
+                  return (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Printer className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm font-medium text-blue-800">
+                          Modo Desktop (via API)
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-700 mb-2">
+                        As etiquetas serão impressas usando a impressora configurada no servidor.
+                      </p>
+                      <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                        <p className="text-xs font-medium text-yellow-800 mb-1">
+                          💡 Para listar impressoras do seu PC:
+                        </p>
+                        <ol className="text-xs text-yellow-700 list-decimal list-inside space-y-1">
+                          <li>Baixe e instale o <strong>Zebra Browser Print</strong></li>
+                          <li>Reinicie o navegador após a instalação</li>
+                          <li>As impressoras do sistema aparecerão automaticamente</li>
+                        </ol>
+                        <a 
+                          href="https://www.zebra.com/us/en/support-downloads/knowledge-articles/software/browser-print.html" 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+                        >
+                          📥 Baixar Zebra Browser Print →
+                        </a>
+                      </div>
+                    </div>
+                  )
+                }
+              }
+
+              // Coletor: precisa do Zebra Browser Print
+              if (isColetor && !browserPrintDisponivel) {
+                return (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                      <span className="text-sm font-medium text-yellow-800">
+                        Zebra Browser Print não disponível
+                      </span>
+                    </div>
+                    <p className="text-xs text-yellow-700">
+                      Por favor, instale o Zebra Browser Print no coletor para imprimir etiquetas.
+                    </p>
+                  </div>
+                )
+              }
+
+              // Carregando impressoras
+              return (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                  <div className="text-sm text-gray-600">
+                    Carregando impressoras...
+                  </div>
+                </div>
+              )
+            })()}
+
+            <div className="flex flex-col gap-2 pt-4">
+              <div className="flex space-x-4">
+                <Button
+                  onClick={imprimirEtiquetasCarro}
+                  disabled={
+                    imprimindo || 
+                    (isZebraBrowserPrintAvailable() && impressoraSelecionada !== 'Impressora via Servidor (API)' && !impressoraSelecionada)
+                  }
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                >
+                  {imprimindo ? (
+                    <>
+                      <Loader className="h-4 w-4 mr-2" />
+                      Imprimindo...
+                    </>
+                  ) : (
+                    <>
+                      <Printer className="h-4 w-4 mr-2" />
+                      Imprimir
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setModalImpressao({ aberto: false, carroId: "", nomeCarro: "" })
+                    setImpressoraSelecionada("")
+                  }}
+                  disabled={imprimindo}
                 >
                   Cancelar
                 </Button>

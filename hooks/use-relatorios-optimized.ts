@@ -178,10 +178,58 @@ export const useRelatoriosOptimized = () => {
           console.log('✅ Tabela relatorio_colaboradores existe')
         }
         
-        const { data: todosColaboradores, error: colaboradoresError } = await supabase
-          .from('relatorio_colaboradores')
-          .select('relatorio_id, user_id')
-          .in('relatorio_id', relatorioIds)
+        // CORREÇÃO: Garantir que os IDs sejam strings para a busca
+        const relatorioIdsStr = relatorioIds.map(id => String(id))
+        console.log('🔍 Buscando colaboradores para relatórios:', relatorioIdsStr.slice(0, 5), '... (total:', relatorioIdsStr.length, ')')
+        
+        // CORREÇÃO: Dividir em lotes para evitar erro 400 (Bad Request) quando há muitos IDs
+        // O Supabase tem um limite de ~100 itens por query .in()
+        const BATCH_SIZE = 100
+        let todosColaboradores: any[] = []
+        let colaboradoresError: any = null
+        
+        if (relatorioIdsStr.length > BATCH_SIZE) {
+          console.log(`🔍 Dividindo busca de colaboradores em lotes de ${BATCH_SIZE} (total: ${relatorioIdsStr.length})`)
+          const batches: string[][] = []
+          for (let i = 0; i < relatorioIdsStr.length; i += BATCH_SIZE) {
+            batches.push(relatorioIdsStr.slice(i, i + BATCH_SIZE))
+          }
+          
+          console.log(`🔍 Processando ${batches.length} lotes de colaboradores...`)
+          
+          for (let i = 0; i < batches.length; i++) {
+            const batch = batches[i]
+            try {
+              const { data: batchColaboradores, error: batchError } = await supabase
+                .from('relatorio_colaboradores')
+                .select('relatorio_id, user_id')
+                .in('relatorio_id', batch)
+              
+              if (batchError) {
+                console.error(`❌ Erro ao buscar colaboradores no lote ${i + 1}/${batches.length}:`, batchError)
+                colaboradoresError = batchError
+                // Continuar com os outros lotes mesmo se um falhar
+              } else if (batchColaboradores) {
+                todosColaboradores = [...todosColaboradores, ...batchColaboradores]
+                console.log(`✅ Lote ${i + 1}/${batches.length} processado: ${batchColaboradores.length} colaboradores`)
+              }
+            } catch (error) {
+              console.error(`❌ Erro ao processar lote ${i + 1}/${batches.length}:`, error)
+              colaboradoresError = error
+            }
+          }
+          
+          console.log(`✅ Total de colaboradores carregados em ${batches.length} lotes:`, todosColaboradores.length)
+        } else {
+          // Se há poucos IDs, fazer busca direta
+          const { data: colaboradoresData, error: errorData } = await supabase
+            .from('relatorio_colaboradores')
+            .select('relatorio_id, user_id')
+            .in('relatorio_id', relatorioIdsStr)
+          
+          todosColaboradores = colaboradoresData || []
+          colaboradoresError = errorData
+        }
 
         if (colaboradoresError) {
           console.warn('⚠️ Erro ao buscar colaboradores:', colaboradoresError)
@@ -193,6 +241,24 @@ export const useRelatoriosOptimized = () => {
           })
         } else {
           console.log('✅ Colaboradores carregados:', todosColaboradores?.length || 0)
+          if (todosColaboradores && todosColaboradores.length > 0) {
+            console.log('🔍 Exemplo de colaboradores encontrados:', todosColaboradores.slice(0, 3))
+            // Agrupar por relatório para diagnóstico
+            const colaboradoresPorRelatorio = todosColaboradores.reduce((acc: any, col: any) => {
+              const relId = String(col.relatorio_id)
+              if (!acc[relId]) acc[relId] = []
+              acc[relId].push(col.user_id)
+              return acc
+            }, {})
+            console.log('🔍 Colaboradores agrupados por relatório (primeiros 3):', 
+              Object.keys(colaboradoresPorRelatorio).slice(0, 3).map(id => ({
+                relatorio_id: id,
+                colaboradores: colaboradoresPorRelatorio[id].length
+              }))
+            )
+          } else {
+            console.warn('⚠️ NENHUM COLABORADOR ENCONTRADO para os relatórios:', relatorioIdsStr.slice(0, 5))
+          }
         }
 
         // Buscar nomes dos usuários separadamente
@@ -218,10 +284,52 @@ export const useRelatoriosOptimized = () => {
             console.log('✅ Tabela users existe')
           }
           
-          const { data: usuarios, error: usuariosError } = await supabase
-            .from('users')
-            .select('id, nome')
-            .in('id', userIds)
+          // CORREÇÃO: Dividir em lotes para evitar erro 400 (Bad Request) quando há muitos IDs
+          const BATCH_SIZE_USUARIOS = 100
+          let usuarios: any[] = []
+          let usuariosError: any = null
+          
+          if (userIds.length > BATCH_SIZE_USUARIOS) {
+            console.log(`🔍 Dividindo busca de usuários em lotes de ${BATCH_SIZE_USUARIOS} (total: ${userIds.length})`)
+            const batches: any[][] = []
+            for (let i = 0; i < userIds.length; i += BATCH_SIZE_USUARIOS) {
+              batches.push(userIds.slice(i, i + BATCH_SIZE_USUARIOS))
+            }
+            
+            console.log(`🔍 Processando ${batches.length} lotes de usuários...`)
+            
+            for (let i = 0; i < batches.length; i++) {
+              const batch = batches[i]
+              try {
+                const { data: batchUsuarios, error: batchError } = await supabase
+                  .from('users')
+                  .select('id, nome')
+                  .in('id', batch)
+                
+                if (batchError) {
+                  console.error(`❌ Erro ao buscar usuários no lote ${i + 1}/${batches.length}:`, batchError)
+                  usuariosError = batchError
+                } else if (batchUsuarios) {
+                  usuarios = [...usuarios, ...batchUsuarios]
+                  console.log(`✅ Lote ${i + 1}/${batches.length} processado: ${batchUsuarios.length} usuários`)
+                }
+              } catch (error) {
+                console.error(`❌ Erro ao processar lote ${i + 1}/${batches.length}:`, error)
+                usuariosError = error
+              }
+            }
+            
+            console.log(`✅ Total de usuários carregados em ${batches.length} lotes:`, usuarios.length)
+          } else {
+            // Se há poucos IDs, fazer busca direta
+            const { data: usuariosData, error: errorData } = await supabase
+              .from('users')
+              .select('id, nome')
+              .in('id', userIds)
+            
+            usuarios = usuariosData || []
+            usuariosError = errorData
+          }
 
           if (usuariosError) {
             console.warn('⚠️ Erro ao buscar usuários:', usuariosError)
@@ -237,15 +345,18 @@ export const useRelatoriosOptimized = () => {
 
           if (!usuariosError && usuarios) {
             nomesUsuarios = usuarios.reduce((acc, user: any) => {
-              acc[user.id] = user.nome
+              // CORREÇÃO: Garantir que a chave seja string
+              acc[String(user.id)] = user.nome || `Usuário ${user.id}`
               return acc
             }, {} as { [key: string]: string })
+            console.log('✅ Mapa de nomes de usuários criado com', Object.keys(nomesUsuarios).length, 'usuários')
           }
         }
 
         // CONSULTA EM LOTE: Buscar TODAS as notas de uma vez
-        console.log('🔍 Buscando notas na tabela relatorio_notas para relatórios:', relatorioIds)
-        console.log('🔍 Total de relatórios para buscar notas:', relatorioIds.length)
+        // CORREÇÃO: Usar IDs como strings para garantir compatibilidade
+        const relatorioIdsStrNotas = relatorioIds.map(id => String(id))
+        console.log('🔍 Buscando notas na tabela relatorio_notas para relatórios:', relatorioIdsStrNotas.slice(0, 5), '... (total:', relatorioIdsStrNotas.length, ')')
         
         // Primeiro, verificar se a tabela relatorio_notas existe
         const { data: tabelaExiste, error: erroTabela } = await supabase
@@ -266,12 +377,55 @@ export const useRelatoriosOptimized = () => {
         }
         
         console.log('🔍 Executando query para buscar notas na tabela relatorio_notas...')
-        console.log('🔍 Relatório IDs para buscar:', relatorioIds.slice(0, 5), '...')
+        console.log('🔍 Relatório IDs para buscar:', relatorioIdsStrNotas.slice(0, 5), '...')
         
-        const { data: todasNotas, error: notasError } = await supabase
-          .from('relatorio_notas')
-          .select('relatorio_id, nota_fiscal_id')
-          .in('relatorio_id', relatorioIds)
+        // CORREÇÃO: Dividir em lotes para evitar erro 400 (Bad Request) quando há muitos IDs
+        const BATCH_SIZE_NOTAS = 100
+        let todasNotas: any[] = []
+        let notasError: any = null
+        
+        if (relatorioIdsStrNotas.length > BATCH_SIZE_NOTAS) {
+          console.log(`🔍 Dividindo busca de notas em lotes de ${BATCH_SIZE_NOTAS} (total: ${relatorioIdsStrNotas.length})`)
+          const batches: string[][] = []
+          for (let i = 0; i < relatorioIdsStrNotas.length; i += BATCH_SIZE_NOTAS) {
+            batches.push(relatorioIdsStrNotas.slice(i, i + BATCH_SIZE_NOTAS))
+          }
+          
+          console.log(`🔍 Processando ${batches.length} lotes de notas...`)
+          
+          for (let i = 0; i < batches.length; i++) {
+            const batch = batches[i]
+            try {
+              const { data: batchNotas, error: batchError } = await supabase
+                .from('relatorio_notas')
+                .select('relatorio_id, nota_fiscal_id')
+                .in('relatorio_id', batch)
+              
+              if (batchError) {
+                console.error(`❌ Erro ao buscar notas no lote ${i + 1}/${batches.length}:`, batchError)
+                notasError = batchError
+                // Continuar com os outros lotes mesmo se um falhar
+              } else if (batchNotas) {
+                todasNotas = [...todasNotas, ...batchNotas]
+                console.log(`✅ Lote ${i + 1}/${batches.length} processado: ${batchNotas.length} notas`)
+              }
+            } catch (error) {
+              console.error(`❌ Erro ao processar lote ${i + 1}/${batches.length}:`, error)
+              notasError = error
+            }
+          }
+          
+          console.log(`✅ Total de notas carregadas em ${batches.length} lotes:`, todasNotas.length)
+        } else {
+          // Se há poucos IDs, fazer busca direta
+          const { data: notasData, error: errorData } = await supabase
+            .from('relatorio_notas')
+            .select('relatorio_id, nota_fiscal_id')
+            .in('relatorio_id', relatorioIdsStrNotas)
+          
+          todasNotas = notasData || []
+          notasError = errorData
+        }
 
         if (notasError) {
           console.warn('⚠️ Erro ao buscar notas:', notasError)
@@ -376,10 +530,52 @@ export const useRelatoriosOptimized = () => {
             return []
           }
           
-          const { data: notasFiscais, error: notasFiscaisError } = await supabase
-            .from('notas_fiscais')
-            .select('*')
-            .in('id', idsValidos)
+          // CORREÇÃO: Dividir em lotes para evitar erro 400 (Bad Request) quando há muitos IDs
+          const BATCH_SIZE_NOTAS_FISCAIS = 100
+          let notasFiscais: any[] = []
+          let notasFiscaisError: any = null
+          
+          if (idsValidos.length > BATCH_SIZE_NOTAS_FISCAIS) {
+            console.log(`🔍 Dividindo busca de notas fiscais em lotes de ${BATCH_SIZE_NOTAS_FISCAIS} (total: ${idsValidos.length})`)
+            const batches: any[][] = []
+            for (let i = 0; i < idsValidos.length; i += BATCH_SIZE_NOTAS_FISCAIS) {
+              batches.push(idsValidos.slice(i, i + BATCH_SIZE_NOTAS_FISCAIS))
+            }
+            
+            console.log(`🔍 Processando ${batches.length} lotes de notas fiscais...`)
+            
+            for (let i = 0; i < batches.length; i++) {
+              const batch = batches[i]
+              try {
+                const { data: batchNotas, error: batchError } = await supabase
+                  .from('notas_fiscais')
+                  .select('*')
+                  .in('id', batch)
+                
+                if (batchError) {
+                  console.error(`❌ Erro ao buscar notas fiscais no lote ${i + 1}/${batches.length}:`, batchError)
+                  notasFiscaisError = batchError
+                } else if (batchNotas) {
+                  notasFiscais = [...notasFiscais, ...batchNotas]
+                  console.log(`✅ Lote ${i + 1}/${batches.length} processado: ${batchNotas.length} notas fiscais`)
+                }
+              } catch (error) {
+                console.error(`❌ Erro ao processar lote ${i + 1}/${batches.length}:`, error)
+                notasFiscaisError = error
+              }
+            }
+            
+            console.log(`✅ Total de notas fiscais carregadas em ${batches.length} lotes:`, notasFiscais.length)
+          } else {
+            // Se há poucos IDs, fazer busca direta
+            const { data: notasData, error: errorData } = await supabase
+              .from('notas_fiscais')
+              .select('*')
+              .in('id', idsValidos)
+            
+            notasFiscais = notasData || []
+            notasFiscaisError = errorData
+          }
 
           if (notasFiscaisError) {
             console.warn('⚠️ Erro ao buscar notas fiscais:', notasFiscaisError)
@@ -467,10 +663,52 @@ export const useRelatoriosOptimized = () => {
             console.log('✅ Tabela divergencias existe')
           }
           
-          const { data: divergenciasData, error: divergenciasError } = await supabase
-            .from('divergencias')
-            .select('*')
-            .in('nota_fiscal_id', notaIds)
+          // CORREÇÃO: Dividir em lotes para evitar erro 400 (Bad Request) quando há muitos IDs
+          const BATCH_SIZE_DIVERGENCIAS = 100
+          let todasDivergencias: any[] = []
+          let divergenciasError: any = null
+          
+          if (notaIds.length > BATCH_SIZE_DIVERGENCIAS) {
+            console.log(`🔍 Dividindo busca de divergências em lotes de ${BATCH_SIZE_DIVERGENCIAS} (total: ${notaIds.length})`)
+            const batches: any[][] = []
+            for (let i = 0; i < notaIds.length; i += BATCH_SIZE_DIVERGENCIAS) {
+              batches.push(notaIds.slice(i, i + BATCH_SIZE_DIVERGENCIAS))
+            }
+            
+            console.log(`🔍 Processando ${batches.length} lotes de divergências...`)
+            
+            for (let i = 0; i < batches.length; i++) {
+              const batch = batches[i]
+              try {
+                const { data: batchDivergencias, error: batchError } = await supabase
+                  .from('divergencias')
+                  .select('*')
+                  .in('nota_fiscal_id', batch)
+                
+                if (batchError) {
+                  console.error(`❌ Erro ao buscar divergências no lote ${i + 1}/${batches.length}:`, batchError)
+                  divergenciasError = batchError
+                } else if (batchDivergencias) {
+                  todasDivergencias = [...todasDivergencias, ...batchDivergencias]
+                  console.log(`✅ Lote ${i + 1}/${batches.length} processado: ${batchDivergencias.length} divergências`)
+                }
+              } catch (error) {
+                console.error(`❌ Erro ao processar lote ${i + 1}/${batches.length}:`, error)
+                divergenciasError = error
+              }
+            }
+            
+            console.log(`✅ Total de divergências carregadas em ${batches.length} lotes:`, todasDivergencias.length)
+          } else {
+            // Se há poucos IDs, fazer busca direta
+            const { data: divergenciasData, error: errorData } = await supabase
+              .from('divergencias')
+              .select('*')
+              .in('nota_fiscal_id', notaIds)
+            
+            todasDivergencias = divergenciasData || []
+            divergenciasError = errorData
+          }
 
           if (divergenciasError) {
             console.warn('⚠️ Erro ao buscar divergências:', divergenciasError)
@@ -481,7 +719,6 @@ export const useRelatoriosOptimized = () => {
               code: divergenciasError.code
             })
           } else {
-            todasDivergencias = divergenciasData || []
             console.log('✅ Divergências carregadas:', todasDivergencias.length)
           }
         } else {
@@ -518,14 +755,37 @@ export const useRelatoriosOptimized = () => {
         const relatoriosCompletos = relatorios.map(relatorio => {
           console.log('🔍 Processando relatório:', relatorio.nome, 'Status original:', relatorio.status)
           // Buscar colaboradores deste relatório
-          const colaboradores = todosColaboradores
-            ?.filter(tc => tc.relatorio_id === relatorio.id)
-            ?.map((tc: any) => nomesUsuarios[tc.user_id] || `Usuário ${tc.user_id}`)
-            || []
+          // CORREÇÃO: Converter IDs para string para garantir comparação correta
+          const relatorioIdStr = String(relatorio.id)
+          const colaboradoresFiltrados = todosColaboradores
+            ?.filter(tc => String(tc.relatorio_id) === relatorioIdStr) || []
+          
+          console.log(`🔍 Relatório ${relatorioIdStr} - Colaboradores encontrados na tabela:`, colaboradoresFiltrados.length)
+          if (colaboradoresFiltrados.length > 0) {
+            console.log(`🔍 IDs dos colaboradores encontrados:`, colaboradoresFiltrados.map((tc: any) => tc.user_id))
+          }
+          
+          const colaboradores = colaboradoresFiltrados
+            .map((tc: any) => {
+              // CORREÇÃO: Garantir que a chave seja string
+              const userIdStr = String(tc.user_id)
+              const nomeUsuario = nomesUsuarios[userIdStr]
+              if (!nomeUsuario) {
+                console.warn(`⚠️ Usuário ${userIdStr} não encontrado no mapa de nomes. Chaves disponíveis:`, Object.keys(nomesUsuarios).slice(0, 5))
+              }
+              return nomeUsuario || `Usuário ${userIdStr}`
+            })
+          
+          if (colaboradores.length === 0 && todosColaboradores && todosColaboradores.length > 0) {
+            console.warn(`⚠️ Relatório ${relatorioIdStr} não tem colaboradores, mas há ${todosColaboradores.length} colaboradores no total`)
+            console.log(`🔍 Exemplo de relatorio_id na tabela:`, todosColaboradores[0]?.relatorio_id, `Tipo:`, typeof todosColaboradores[0]?.relatorio_id)
+            console.log(`🔍 ID do relatório atual:`, relatorio.id, `Tipo:`, typeof relatorio.id)
+          }
 
           // Buscar notas deste relatório
-          const notasRelatorio = todasNotas?.filter(tn => tn.relatorio_id === relatorio.id) || []
-          console.log(`🔍 Relatório ${relatorio.id} tem ${notasRelatorio.length} notas na tabela relatorio_notas`)
+          // CORREÇÃO: Converter IDs para string para garantir comparação correta
+          const notasRelatorio = todasNotas?.filter(tn => String(tn.relatorio_id) === relatorioIdStr) || []
+          console.log(`🔍 Relatório ${relatorioIdStr} tem ${notasRelatorio.length} notas na tabela relatorio_notas`)
           
           if (notasRelatorio.length === 0) {
             console.log(`⚠️ Relatório ${relatorio.id} não tem notas na tabela relatorio_notas`)

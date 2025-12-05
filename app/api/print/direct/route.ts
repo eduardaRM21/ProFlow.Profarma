@@ -97,6 +97,7 @@ export async function POST(req: Request) {
       quantidadePaletes,
       codigoCarga,
       idWMS,
+      printerServiceUrl,
     } = body
 
     if (!codigoPalete) {
@@ -104,6 +105,76 @@ export async function POST(req: Request) {
         { success: false, message: 'Código do palete é obrigatório' },
         { status: 400 }
       )
+    }
+
+    // Verificar se está rodando no Vercel (produção)
+    const isVercel = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined
+    const isProduction = process.env.NODE_ENV === 'production'
+    
+    // Se houver serviço intermediário configurado, usar como proxy
+    // No servidor, podemos ler NEXT_PUBLIC_* mas é melhor ter uma variável sem prefixo também
+    const serviceUrl = printerServiceUrl || process.env.PRINTER_SERVICE_URL || process.env.NEXT_PUBLIC_PRINTER_SERVICE_URL
+    if (serviceUrl) {
+      console.log(`🔄 [API Direct] Usando serviço intermediário como proxy: ${serviceUrl}`)
+      try {
+        // Limpar URL do serviço intermediário
+        let baseUrl = serviceUrl.replace(/\/api\/print\/?$/, '').replace(/\/print\/?$/, '').replace(/\/$/, '')
+        const fullServiceUrl = `${baseUrl}/print`
+        
+        console.log(`📡 [API Direct] Fazendo requisição para: ${fullServiceUrl}`)
+        const response = await fetch(fullServiceUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            codigoPalete,
+            quantidadeNFs,
+            totalVolumes,
+            destino,
+            posicoes,
+            quantidadePaletes,
+            codigoCarga,
+            idWMS
+          }),
+        })
+
+        const data = await response.json()
+        console.log('📦 [API Direct] Resposta do serviço intermediário:', data)
+
+        if (response.ok && data.success) {
+          return NextResponse.json(data)
+        } else {
+          return NextResponse.json(
+            { success: false, message: data.message || 'Erro no serviço intermediário' },
+            { status: response.status || 500 }
+          )
+        }
+      } catch (error) {
+        console.error('❌ [API Direct] Erro ao chamar serviço intermediário:', error)
+        const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
+        
+        // Se estiver no Vercel e o serviço intermediário falhar, não tentar impressão direta
+        if (isVercel || isProduction) {
+          return NextResponse.json(
+            {
+              success: false,
+              message: `Não foi possível conectar ao serviço intermediário de impressão (${serviceUrl}).
+
+🔧 SOLUÇÃO:
+1. Verifique se o serviço intermediário está rodando e acessível
+2. Se o serviço está em rede local, configure um túnel (ngrok, Cloudflare Tunnel, etc.)
+3. Configure a variável NEXT_PUBLIC_PRINTER_SERVICE_URL no Vercel com a URL pública do serviço
+4. Verifique se o firewall permite conexões externas na porta do serviço
+
+Erro técnico: ${errorMessage}`
+            },
+            { status: 500 }
+          )
+        }
+        // Em desenvolvimento, continuar para tentar impressão direta
+        console.log('🔄 [API Direct] Tentando impressão direta como fallback...')
+      }
     }
 
     const zpl = gerarZPL(codigoPalete, {
