@@ -114,6 +114,33 @@ export async function POST(req: Request) {
     // Se houver serviço intermediário configurado, usar como proxy
     // No servidor, podemos ler NEXT_PUBLIC_* mas é melhor ter uma variável sem prefixo também
     const serviceUrl = printerServiceUrl || process.env.PRINTER_SERVICE_URL || process.env.NEXT_PUBLIC_PRINTER_SERVICE_URL
+    
+    // NO VERCEL: TCP direto NÃO funciona (sem acesso à rede local)
+    // Deve usar APENAS serviço intermediário (Cloudflare Tunnel)
+    if (isVercel || isProduction) {
+      if (!serviceUrl) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `❌ Impressão TCP direta não funciona no Vercel (produção).
+
+🔧 SOLUÇÃO NECESSÁRIA:
+1. Configure um serviço intermediário de impressão na rede local
+2. Exponha o serviço via Cloudflare Tunnel (ou ngrok, etc.)
+3. Configure a variável NEXT_PUBLIC_PRINTER_SERVICE_URL no Vercel com a URL pública do túnel
+
+📋 Exemplo de configuração:
+- Serviço local: http://localhost:3002
+- Cloudflare Tunnel: https://seu-tunel.cloudflare.com
+- Variável no Vercel: NEXT_PUBLIC_PRINTER_SERVICE_URL=https://seu-tunel.cloudflare.com
+
+💡 Alternativa: Use Zebra Browser Print no cliente (navegador) para impressão direta.`
+          },
+          { status: 503 }
+        )
+      }
+    }
+    
     if (serviceUrl) {
       console.log(`🔄 [API Direct] Usando serviço intermediário como proxy: ${serviceUrl}`)
       try {
@@ -177,6 +204,22 @@ Erro técnico: ${errorMessage}`
       }
     }
 
+    // TCP direto só funciona em desenvolvimento local (não no Vercel)
+    // No Vercel, deve usar serviço intermediário (já verificado acima)
+    if (isVercel || isProduction) {
+      // Se chegou aqui, o serviço intermediário falhou ou não foi configurado
+      // Mas já retornamos erro acima se não houver serviceUrl
+      // Então isso não deveria acontecer, mas vamos garantir
+      return NextResponse.json(
+        {
+          success: false,
+          message: `TCP direto não está disponível no Vercel. Use um serviço intermediário (Cloudflare Tunnel) ou Zebra Browser Print no cliente.`,
+        },
+        { status: 503 }
+      )
+    }
+
+    // DESENVOLVIMENTO LOCAL: Tentar TCP direto
     const zpl = gerarZPL(codigoPalete, {
       quantidadeNFs: quantidadeNFs || 0,
       totalVolumes: totalVolumes || 0,
@@ -187,7 +230,7 @@ Erro técnico: ${errorMessage}`
       idWMS: idWMS || undefined,
     })
 
-    console.log(`🌐 [API Direct] Tentando imprimir via TCP raw: ${PRINTER_IP}`)
+    console.log(`🌐 [API Direct] Tentando imprimir via TCP raw (desenvolvimento local): ${PRINTER_IP}`)
     console.log(`📄 [API Direct] ZPL gerado (${zpl.length} caracteres)`)
 
     // Tentar porta 6101 primeiro (porta padrão configurada)

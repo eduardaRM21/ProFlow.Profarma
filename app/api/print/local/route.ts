@@ -523,21 +523,16 @@ public class RawPrinterHelper {
       console.log(`📝 [RAW API] Arquivo ZPL: ${tempFile}`)
       console.log(`📝 [RAW API] Script PowerShell: ${psScriptFile}`)
       
-      // Verificar se o arquivo existe antes de executar (não deletar!)
+      // Verificar se o arquivo existe antes de executar
       console.log(`🔍 [RAW API] Verificando arquivo antes de executar PowerShell:`)
       console.log(`   - Arquivo ZPL: ${tempFile}`)
       console.log(`   - Arquivo existe? ${fs.existsSync(tempFile)}`)
-      if (fs.existsSync(tempFile)) {
-        const stats = fs.statSync(tempFile)
-        console.log(`   - Tamanho: ${stats.size} bytes`)
-        console.log(`   - Modificado: ${stats.mtime}`)
-      } else {
-        throw new Error(`Arquivo ZPL não existe antes de executar PowerShell: ${tempFile}`)
-      }
       
-      // IMPORTANTE: NÃO deletar o arquivo antes do PowerShell acessá-lo!
+      // Aguardar um pouco para garantir que o arquivo foi escrito completamente
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
       if (!fs.existsSync(tempFile)) {
-        console.error(`❌ [DEBUG] Arquivo ZPL não existe: ${tempFile}`)
+        console.error(`❌ [DEBUG] Arquivo ZPL não existe após aguardar: ${tempFile}`)
         throw new Error(`Arquivo ZPL não encontrado: ${tempFile}`)
       }
       
@@ -555,10 +550,7 @@ public class RawPrinterHelper {
       console.log(`📊 [DEBUG] Conteúdo do arquivo (primeiros 100 chars): ${fileContent.substring(0, 100)}`)
       console.log(`📊 [DEBUG] Tamanho do conteúdo: ${fileContent.length} caracteres`)
       
-      // Aguardar um pouco para garantir que o arquivo foi escrito completamente
-      await new Promise(resolve => setTimeout(resolve, 200))
-      
-      // Verificar novamente se o arquivo ainda existe
+      // Verificar novamente se o arquivo ainda existe antes de executar
       if (!fs.existsSync(tempFile)) {
         throw new Error(`Arquivo ZPL foi deletado antes da execução: ${tempFile}`)
       }

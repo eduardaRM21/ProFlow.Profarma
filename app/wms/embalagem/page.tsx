@@ -1315,11 +1315,11 @@ export default function WMSEmbalagemPage() {
     setDadosEtiquetaPreview(null)
 
     // Aguardar e verificar se o script do Zebra Browser Print foi carregado
-    // Tentar até 5 vezes com intervalo de 1000ms (aumentado para coletor)
+    // Tentar até 10 vezes com intervalo maior (Zebra Browser Print pode demorar para inicializar)
     let tentativas = 0
-    const maxTentativas = 5
+    const maxTentativas = 10
     const isColetorCheck = isColetorZebra()
-    const intervaloEspera = isColetorCheck ? 1000 : 500 // Mais tempo para coletor
+    const intervaloEspera = isColetorCheck ? 1000 : 800 // Mais tempo para inicializar
     
     console.log(`⏳ [Modal] Aguardando Zebra Browser Print... (coletor: ${isColetorCheck})`)
     
@@ -1327,32 +1327,52 @@ export default function WMSEmbalagemPage() {
       await new Promise(resolve => setTimeout(resolve, intervaloEspera))
       tentativas++
       
-      // Verificação detalhada a cada tentativa
-      const windowAny = typeof window !== 'undefined' ? (window as any) : null
-      const hasBrowserPrint = windowAny?.BrowserPrint !== undefined
-      const hasBrowserPrintAPI = windowAny?.BrowserPrint?.BrowserPrint !== undefined
-      
-      console.log(`⏳ [Modal] Tentativa ${tentativas}/${maxTentativas}:`)
-      console.log(`   - window.BrowserPrint: ${hasBrowserPrint}`)
-      console.log(`   - BrowserPrint.BrowserPrint: ${hasBrowserPrintAPI}`)
-      console.log(`   - isZebraBrowserPrintAvailable(): ${isZebraBrowserPrintAvailable()}`)
+      // Log apenas a cada 2 tentativas para não poluir o console
+      if (tentativas % 2 === 0 || tentativas === maxTentativas) {
+        const windowAny = typeof window !== 'undefined' ? (window as any) : null
+        const hasBrowserPrint = windowAny?.BrowserPrint !== undefined
+        const hasBrowserPrintAPI = windowAny?.BrowserPrint?.BrowserPrint !== undefined
+        
+        console.log(`⏳ [Modal] Tentativa ${tentativas}/${maxTentativas}:`)
+        console.log(`   - window.BrowserPrint: ${hasBrowserPrint}`)
+        console.log(`   - BrowserPrint.BrowserPrint: ${hasBrowserPrintAPI}`)
+      }
     }
     
     if (!isZebraBrowserPrintAvailable()) {
       const windowAny = typeof window !== 'undefined' ? (window as any) : null
-      console.warn('⚠️ [Modal] Zebra Browser Print ainda não está disponível após aguardar')
-      console.warn('⚠️ [Modal] Verificações finais:')
-      console.warn(`   - window existe: ${typeof window !== 'undefined'}`)
-      console.warn(`   - window.BrowserPrint: ${windowAny?.BrowserPrint !== undefined}`)
-      console.warn(`   - BrowserPrint.BrowserPrint: ${windowAny?.BrowserPrint?.BrowserPrint !== undefined}`)
+      console.warn('⚠️ [Modal] Zebra Browser Print não está disponível após aguardar')
       
-      if (isColetorCheck) {
+      if (!isColetorCheck) {
+        console.warn('⚠️ [Modal] DESKTOP: O serviço está rodando mas a API não está disponível')
+        console.warn('⚠️ [Modal] Isso geralmente significa que falta a EXTENSÃO DO NAVEGADOR')
+        console.warn('⚠️ [Modal] Solução:')
+        console.warn('   1. Abra: edge://extensions/ ou chrome://extensions/')
+        console.warn('   2. Procure por "Zebra Browser Print"')
+        console.warn('   3. Se não existir, baixe a extensão do site da Zebra')
+        console.warn('   4. Ative a extensão')
+        console.warn('   5. REINICIE o navegador completamente (feche todas as janelas)')
+        console.warn('   6. Tente novamente')
+        
+        // Tentar carregar a API manualmente como último recurso
+        console.log('🔄 [Modal] Tentando carregar API manualmente...')
+        try {
+          const { tentarCarregarAPIManualmente } = await import('@/lib/zebra-browser-print')
+          const carregou = await tentarCarregarAPIManualmente()
+          if (carregou) {
+            console.log('✅ [Modal] API carregada manualmente com sucesso!')
+          } else {
+            console.warn('⚠️ [Modal] Não foi possível carregar a API manualmente')
+          }
+        } catch (error) {
+          console.warn('⚠️ [Modal] Erro ao tentar carregar API manualmente:', error)
+        }
+      } else {
         console.error('❌ [Modal] COLETOR: Zebra Browser Print não está disponível!')
         console.error('❌ [Modal] Verifique se:')
         console.error('   1. O Zebra Browser Print está instalado no coletor')
         console.error('   2. O coletor foi reiniciado após a instalação')
         console.error('   3. O navegador foi reiniciado após a instalação')
-        console.error('   4. O script foi carregado corretamente (verifique o console)')
       }
     } else {
       console.log('✅ [Modal] Zebra Browser Print está disponível!')
@@ -1823,171 +1843,44 @@ export default function WMSEmbalagemPage() {
         }
       }
 
-      // Imprimir cada palete
-      let sucessos = 0
-      let falhas = 0
-      const mensagens: string[] = []
-
-      // Se for desktop, verificar se usa Zebra Browser Print, impressora local ou PrinterService
-      if (!isColetor) {
-        const browserPrintDisponivel = isZebraBrowserPrintAvailable()
-        const usaBrowserPrint = browserPrintDisponivel && impressoraSelecionada !== 'Impressora via Servidor (API)'
-        const usaImpressoraLocal = !browserPrintDisponivel && impressoraSelecionada && impressoraSelecionada !== 'Impressora via Servidor (API)'
-        
-        if (usaBrowserPrint) {
-          // Desktop com Zebra Browser Print - usar impressora selecionada
-          console.log('💻 Desktop com Zebra Browser Print - usando impressora:', impressoraSelecionada)
-          for (const palete of paletes) {
-            const paleteTyped = palete as { id: string; codigo_palete: string | null | undefined }
-            const codigoPalete = paleteTyped.codigo_palete
-            if (!codigoPalete || typeof codigoPalete !== 'string') continue
-
-            try {
-              const resultado = await imprimirComZebraBrowserPrint(
-                codigoPalete,
-                dadosEtiqueta,
-                impressoraSelecionada
-              )
-
-              if (resultado.success) {
-                sucessos++
-                mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
-              } else {
-                falhas++
-                mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
-              }
-
-              // Delay entre impressões
-              if (paletes.indexOf(palete) < paletes.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 500))
-              }
-            } catch (error) {
-              falhas++
-              mensagens.push(`Palete ${codigoPalete}: Erro - ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
-            }
-          }
-        } else if (usaImpressoraLocal) {
-          // Desktop com impressora local selecionada - usar API local
-          console.log('💻 Desktop com impressora local - usando API local:', impressoraSelecionada)
-          for (const palete of paletes) {
-            const paleteTyped = palete as { id: string; codigo_palete: string | null | undefined }
-            const codigoPalete = paleteTyped.codigo_palete
-            if (!codigoPalete || typeof codigoPalete !== 'string') continue
-
-            try {
-                console.log('📤 [Frontend] Enviando requisição para API local:', {
-                  codigoPalete,
-                  printerName: impressoraSelecionada,
-                  dadosEtiqueta
-                })
-
-                const response = await fetch('/api/print/local', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    codigoPalete,
-                    ...dadosEtiqueta,
-                    printerName: impressoraSelecionada
-                  }),
-                })
-
-                console.log('📥 [Frontend] Resposta recebida:', {
-                  status: response.status,
-                  statusText: response.statusText,
-                  ok: response.ok
-                })
-
-                const resultado = await response.json()
-                
-                console.log('📋 [Frontend] Resultado da API:', resultado)
-
-                if (!response.ok) {
-                  console.error('❌ [Frontend] Erro na resposta da API:', {
-                    status: response.status,
-                    resultado
-                  })
-                }
-
-                if (resultado.success) {
-                  sucessos++
-                  mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
-                  console.log('✅ [Frontend] Impressão bem-sucedida:', codigoPalete)
-                } else {
-                  falhas++
-                  mensagens.push(`Palete ${codigoPalete}: ${resultado.message || 'Erro desconhecido'}`)
-                  console.error('❌ [Frontend] Impressão falhou:', resultado.message)
-                }
-
-                // Delay entre impressões
-                if (paletes.indexOf(palete) < paletes.length - 1) {
-                  await new Promise(resolve => setTimeout(resolve, 500))
-                }
-            } catch (error) {
-              falhas++
-              mensagens.push(`Palete ${codigoPalete}: Erro - ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
-            }
-          }
-        } else {
-          // Desktop sem Zebra Browser Print - usar PrinterService (API)
-          console.log('💻 Desktop sem Zebra Browser Print - usando PrinterService (API)')
-          const codigosPaletes = paletes
-            .map(p => {
-              const paleteTyped = p as { id: string; codigo_palete: string | null | undefined }
-              return paleteTyped.codigo_palete
-            })
-            .filter((codigo): codigo is string => typeof codigo === 'string' && codigo.length > 0)
-
-          if (codigosPaletes.length === 0) {
-            throw new Error("Nenhum código de palete válido encontrado")
-          }
-
-          const resultadoImpressao = await PrinterService.imprimirEtiquetasPaletes(codigosPaletes, dadosEtiqueta)
-          
-          if (resultadoImpressao.success) {
-            sucessos = resultadoImpressao.sucessos
-            falhas = resultadoImpressao.falhas
-            mensagens.push(...resultadoImpressao.mensagens)
-          } else {
-            sucessos = resultadoImpressao.sucessos
-            falhas = resultadoImpressao.falhas
-            mensagens.push(...resultadoImpressao.mensagens)
-          }
-        }
-      } else {
-        // Se for coletor, usar Zebra Browser Print
-        console.log('📱 Usando Zebra Browser Print para impressão no coletor')
-        for (const palete of paletes) {
-          const paleteTyped = palete as { id: string; codigo_palete: string | null | undefined }
-          const codigoPalete = paleteTyped.codigo_palete
-          if (!codigoPalete || typeof codigoPalete !== 'string') continue
-
-          try {
-            const resultado = await imprimirComZebraBrowserPrint(
-              codigoPalete,
-              dadosEtiqueta,
-              impressoraSelecionada
-            )
-
-            if (resultado.success) {
-              sucessos++
-              mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
-            } else {
-              falhas++
-              mensagens.push(`Palete ${codigoPalete}: ${resultado.message}`)
-            }
-
-            // Delay entre impressões
-            if (paletes.indexOf(palete) < paletes.length - 1) {
-              await new Promise(resolve => setTimeout(resolve, 500))
-            }
-          } catch (error) {
-            falhas++
-            mensagens.push(`Palete ${codigoPalete}: Erro - ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
-          }
+      // Imprimir cada palete usando método genérico (tenta todos os métodos automaticamente)
+      console.log('🖨️ [Impressão] Usando método genérico de impressão')
+      
+      const { imprimirMultiplasEtiquetas } = await import('@/lib/print-generic')
+      
+      // Preparar lista de paletes para impressão
+      const paletesParaImprimir: Array<{ codigoPalete: string; dados: DadosEtiqueta }> = []
+      
+      for (const palete of paletes) {
+        const paleteTyped = palete as { id: string; codigo_palete: string | null | undefined }
+        const codigoPalete = paleteTyped.codigo_palete
+        if (codigoPalete && typeof codigoPalete === 'string') {
+          paletesParaImprimir.push({ 
+            codigoPalete, 
+            dados: dadosEtiqueta as DadosEtiqueta 
+          })
         }
       }
+      
+      if (paletesParaImprimir.length === 0) {
+        throw new Error("Nenhum código de palete válido encontrado")
+      }
+      
+      // Usar nome da impressora apenas se não for "Impressora via Servidor (API)"
+      const nomeImpressoraParaUsar = impressoraSelecionada && impressoraSelecionada !== 'Impressora via Servidor (API)'
+        ? impressoraSelecionada
+        : undefined
+      
+      // Imprimir usando método genérico (tenta todos os métodos automaticamente)
+      const resultadoImpressao = await imprimirMultiplasEtiquetas(
+        paletesParaImprimir,
+        nomeImpressoraParaUsar,
+        500 // Delay de 500ms entre impressões
+      )
+      
+      const sucessos = resultadoImpressao.sucessos
+      const falhas = resultadoImpressao.falhas
+      const mensagens = resultadoImpressao.mensagens
 
       // Mostrar resultado
       if (sucessos > 0) {

@@ -292,19 +292,19 @@ export default function RecebimentoPage() {
       return { valido: false, erro: `Volumes deve ser um número válido maior que 0. Recebido: "${volumesStr}"` }
     }
 
-    console.log(`🔍 Validando NF ${numeroNF} com destino ${destino} e volume ${volumes}...`)
+    console.log(`🔍 Validando NF ${numeroNF} com fornecedor ${fornecedor} e volume ${volumes}...`)
 
-    // 1. Verificar se a nota já foi bipada na sessão atual com mesmo destino e volume (OTIMIZADO)
+    // 1. Verificar se a nota já foi bipada na sessão atual com mesmo fornecedor e volume (OTIMIZADO)
     const notaNaSessao = notas.find((nota) => 
       nota.numeroNF === numeroNF && 
-      nota.destino === destino && 
+      nota.fornecedor === fornecedor && 
       nota.volumes === volumes
     )
     if (notaNaSessao) {
-      console.log(`⚠️ NF ${numeroNF} já bipada na sessão atual com mesmo destino e volume`)
+      console.log(`⚠️ NF ${numeroNF} já bipada na sessão atual com mesmo fornecedor e volume`)
       return { 
         valido: false, 
-        erro: `NF ${numeroNF} já foi bipada nesta sessão com o mesmo destino (${destino}) e volume (${volumes}) em ${notaNaSessao.timestamp ? new Date(notaNaSessao.timestamp).toLocaleString('pt-BR') : 'agora'}. Duplicatas com mesmo destino e volume não são permitidas.` 
+        erro: `NF ${numeroNF} já foi bipada nesta sessão com o mesmo fornecedor (${fornecedor}) e volume (${volumes}) em ${notaNaSessao.timestamp ? new Date(notaNaSessao.timestamp).toLocaleString('pt-BR') : 'agora'}. Duplicatas com mesmo fornecedor e volume não são permitidas.` 
       }
     }
 
@@ -322,8 +322,10 @@ export default function RecebimentoPage() {
       const verificarDuplicataPromise = (async () => {
         const { data: notasBipadasExistentes, error: erroVerificacao } = await supabase
           .from('notas_bipadas')
-          .select('id, numero_nf, timestamp_bipagem, session_id, codigo_completo')
+          .select('id, numero_nf, timestamp_bipagem, session_id, fornecedor, volumes')
           .eq('numero_nf', numeroNF)
+          .eq('fornecedor', fornecedor)
+          .eq('volumes', volumes)
           .eq('area_origem', 'recebimento')
           .limit(5) // Reduzido de 10 para 5 para melhor performance
         
@@ -332,22 +334,8 @@ export default function RecebimentoPage() {
         }
         
         if (notasBipadasExistentes && notasBipadasExistentes.length > 0) {
-          // Verificar se alguma nota tem o mesmo destino e volume
-          const notaDuplicada = notasBipadasExistentes.find(nota => {
-            if (!nota.codigo_completo || typeof nota.codigo_completo !== 'string') return false
-            
-            // Extrair destino e volume do código completo da nota já bipada
-            const partes = nota.codigo_completo.split('|')
-            if (partes.length !== 7) return false
-            
-            const [, , volumesStr, destinoNota, , , ] = partes
-            const volumesNota = parseInt(volumesStr, 10)
-            
-            // Comparar destino e volume
-            return destinoNota === destino && volumesNota === volumes
-          })
-          
-          return notaDuplicada || null
+          // Nota duplicada encontrada (já filtrada pela query com numero_nf, fornecedor e volumes)
+          return notasBipadasExistentes[0] || null
         }
         
         return null
@@ -360,14 +348,14 @@ export default function RecebimentoPage() {
           ? new Date((notaBipadaExistente as any).timestamp_bipagem as string).toLocaleString('pt-BR')
           : 'agora'
         
-        console.log(`⚠️ NF ${numeroNF} já bipada com mesmo destino e volume (${timestampFormatado})`)
+        console.log(`⚠️ NF ${numeroNF} já bipada com mesmo fornecedor e volume (${timestampFormatado})`)
         return {
           valido: false,
-          erro: `NF ${numeroNF} já foi bipada com o mesmo destino (${destino}) e volume (${volumes}) em ${timestampFormatado}. Duplicatas com mesmo destino e volume não são permitidas.`
+          erro: `NF ${numeroNF} já foi bipada com o mesmo fornecedor (${fornecedor}) e volume (${volumes}) em ${timestampFormatado}. Duplicatas com mesmo fornecedor e volume não são permitidas.`
         }
       }
       
-      console.log(`✅ NF ${numeroNF} não encontrada com mesmo destino (${destino}) e volume (${volumes}) na tabela notas_bipadas`)
+      console.log(`✅ NF ${numeroNF} não encontrada com mesmo fornecedor (${fornecedor}) e volume (${volumes}) na tabela notas_bipadas`)
     } catch (error) {
       console.error(`❌ Erro ao verificar duplicata na tabela notas_bipadas:`, error)
       // Em caso de erro, continuar com a validação para não bloquear o usuário
@@ -386,15 +374,17 @@ export default function RecebimentoPage() {
       })
 
       const verificarRelatorioPromise = (async () => {
-        // Buscar diretamente na tabela notas_fiscais pelo numero_nf
+        // Buscar diretamente na tabela notas_fiscais pelo numero_nf, fornecedor e volumes
         const { data: notaFiscalData, error: notaFiscalError } = await supabase
           .from('notas_fiscais')
           .select('id')
           .eq('numero_nf', numeroNF)
+          .eq('fornecedor', fornecedor)
+          .eq('volumes', volumes)
           .limit(1)
         
         if (!notaFiscalError && notaFiscalData && notaFiscalData.length > 0) {
-          console.log(`⚠️ NF ${numeroNF} encontrada na tabela notas_fiscais`)
+          console.log(`⚠️ NF ${numeroNF} encontrada na tabela notas_fiscais com mesmo fornecedor e volume`)
           
           // Buscar o relatório relacionado através da tabela relatorio_notas
           const { data: relatorioNotaData, error: relatorioNotaError } = await supabase
@@ -419,16 +409,16 @@ export default function RecebimentoPage() {
               
               return {
                 valido: false,
-                erro: `NF ${numeroNF} já utilizada no relatório "${(relatorioData[0] as any).nome}" (${setorRelatorio}) em ${dataRelatorio}`,
+                erro: `NF ${numeroNF} já foi bipada com o mesmo fornecedor (${fornecedor}) e volume (${volumes}) e está no relatório "${(relatorioData[0] as any).nome}" (${setorRelatorio}) em ${dataRelatorio}`,
               }
             }
           }
           
           // Se não encontrar o relatório, mas a nota está na tabela notas_fiscais
-          console.log(`⚠️ NF ${numeroNF} encontrada na tabela notas_fiscais mas sem relatório associado`)
+          console.log(`⚠️ NF ${numeroNF} encontrada na tabela notas_fiscais com mesmo fornecedor e volume mas sem relatório associado`)
           return {
             valido: false,
-            erro: `NF ${numeroNF} já foi processada e está registrada no sistema.`,
+            erro: `NF ${numeroNF} já foi bipada com o mesmo fornecedor (${fornecedor}) e volume (${volumes}) e está registrada no sistema.`,
           }
         }
         
@@ -798,9 +788,10 @@ export default function RecebimentoPage() {
       )
 
       // Buscar notas já bipadas (liberadas) para esta transportadora
+      // IMPORTANTE: Buscar também fornecedor e volumes para comparação correta
       const { data: notasBipadasData, error: errorBipadas } = await supabase
         .from('notas_bipadas')
-        .select('numero_nf')
+        .select('numero_nf, fornecedor, volumes')
         .eq('area_origem', 'recebimento')
         .in('numero_nf', notasUnicas.map(n => n.numero_nf))
 
@@ -808,15 +799,19 @@ export default function RecebimentoPage() {
         console.warn('⚠️ Erro ao carregar notas bipadas:', errorBipadas)
       }
 
-      // Criar Set com números das notas já bipadas
+      // Criar Set com chave composta (numero_nf|fornecedor|volumes) das notas já bipadas
       const notasBipadasSet = new Set(
-        notasBipadasData?.map((item: any) => item.numero_nf) || []
+        notasBipadasData?.map((item: any) => 
+          `${item.numero_nf}|${item.fornecedor || ''}|${item.volumes || 0}`
+        ) || []
       )
 
       // Filtrar apenas as notas que ainda não foram bipadas
-      const notasRestantes = notasUnicas.filter(nota => 
-        !notasBipadasSet.has(nota.numero_nf)
-      )
+      // Comparar usando os três critérios: numero_nf, fornecedor e volumes
+      const notasRestantes = notasUnicas.filter(nota => {
+        const chaveNota = `${nota.numero_nf}|${nota.fornecedor || ''}|${nota.volumes || 0}`
+        return !notasBipadasSet.has(chaveNota)
+      })
 
       setNotasTransportadoraCache(notasRestantes)
       
@@ -2361,7 +2356,7 @@ export default function RecebimentoPage() {
           </Button>
 
           
-          {sessionData && (sessionData.colaboradores.includes("Elisangela") || sessionData.colaboradores.includes("Eduardarm") || sessionData.colaboradores.includes("Amanda Santos") || sessionData.colaboradores.includes("Ana Carolina") || sessionData.colaboradores.includes("João Victor") || sessionData.colaboradores.includes("Alexsandro") || sessionData.colaboradores.includes("Manuelane") || sessionData.colaboradores.includes("Rafael Lobo") || sessionData.colaboradores.includes("Marcela")) && (
+          {sessionData && (sessionData.colaboradores.includes("Elisangela") || sessionData.colaboradores.includes("Eduardarm") || sessionData.colaboradores.includes("Desenvolvedor") || sessionData.colaboradores.includes("Ana Carolina") || sessionData.colaboradores.includes("João Victor") || sessionData.colaboradores.includes("Alexsandro") || sessionData.colaboradores.includes("Manuelane") || sessionData.colaboradores.includes("Rafael Lobo") || sessionData.colaboradores.includes("Alessandro Pontes") || sessionData.colaboradores.includes("Rosania")) && (
             <Button
               onClick={() => setTelaAtiva("dar-entrada")}
               variant="outline"
