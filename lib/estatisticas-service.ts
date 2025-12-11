@@ -23,6 +23,21 @@ export interface EstatisticasPorPeriodo {
   produtividade_media: number
 }
 
+/**
+ * Normaliza datas vindas da tela.
+ * Aceita "10/12/2025" ou "2025-12-10" e sempre devolve "2025-12-10".
+ */
+function normalizarDataParaFiltro(data: string): string {
+  if (!data) return ''
+  // DD/MM/AAAA -> AAAA-MM-DD
+  if (data.includes('/')) {
+    const [dia, mes, ano] = data.split('/')
+    return `${ano}-${mes.padStart(2, '0')}-${dia.padStart(2, '0')}`
+  }
+  // Já está em formato ISO
+  return data
+}
+
 export class EstatisticasService {
   /**
    * Busca estatísticas de produtividade por turno para uma data específica
@@ -157,7 +172,7 @@ export class EstatisticasService {
         
         // Calcular produtividade por hora (carros por hora)
         if (stats.total_carros > 0) {
-          const horasTurno = turnos.indexOf(stats.turno) === 1 ? 8 : 8 // 8 horas por turno
+          const horasTurno = 8 // 8 horas por turno
           stats.produtividade_por_hora = Math.round((stats.total_carros / horasTurno) * 100) / 100
         }
       })
@@ -179,7 +194,94 @@ export class EstatisticasService {
   }
 
   /**
-   * Busca estatísticas de produtividade por período (últimos 7 dias, 30 dias, etc.)
+   * Método privado reutilizado tanto pelo "últimos X dias"
+   * quanto pelo período personalizado.
+   */
+  private static async obterEstatisticasPorIntervalo(
+    dataInicioISO: string,
+    dataFimISO?: string
+  ): Promise<EstatisticasPorPeriodo[]> {
+    // Buscar carros no intervalo
+    const { data: carrosData, error: carrosError } = await retryWithBackoff(async () => {
+      let query = getSupabase()
+        .from('carros_status')
+        .select('*')
+        .gte('data', dataInicioISO)
+
+      if (dataFimISO) {
+        query = query.lte('data', dataFimISO)
+      }
+
+      return await query.order('data', { ascending: false })
+    })
+
+    if (carrosError) throw carrosError
+
+    // Agrupar por data
+    const estatisticasPorData = new Map<string, EstatisticasPorPeriodo>()
+    
+    carrosData?.forEach((carro: any) => {
+      const data = String(carro.data)
+      if (!estatisticasPorData.has(data)) {
+        estatisticasPorData.set(data, {
+          periodo: data,
+          total_carros: 0,
+          total_notas: 0,
+          total_volumes: 0,
+          total_pallets: 0,
+          produtividade_media: 0
+        })
+      }
+      
+      const stats = estatisticasPorData.get(data)!
+      stats.total_carros++
+    })
+
+    // Buscar notas no intervalo
+    const { data: notasData, error: notasError } = await retryWithBackoff(async () => {
+      let query = getSupabase()
+        .from('embalagem_notas_bipadas')
+        .select('*')
+        .gte('data', dataInicioISO)
+
+      if (dataFimISO) {
+        query = query.lte('data', dataFimISO)
+      }
+
+      return await query.order('data', { ascending: false })
+    })
+
+    if (notasError) throw notasError
+
+    // Processar notas
+    notasData?.forEach((nota: any) => {
+      const data = String(nota.data)
+      const stats = estatisticasPorData.get(data)
+      if (stats) {
+        stats.total_notas++
+        stats.total_volumes += Number(nota.volumes || 0)
+      }
+    })
+
+    // Calcular pallets e produtividade
+    estatisticasPorData.forEach(stats => {
+      stats.total_pallets = Math.ceil(stats.total_volumes / 100)
+      stats.produtividade_media =
+        stats.total_carros > 0
+          ? Math.round((stats.total_notas / stats.total_carros) * 100) / 100
+          : 0
+    })
+
+    const estatisticas = Array.from(estatisticasPorData.values())
+      .sort((a, b) => b.periodo.localeCompare(a.periodo))
+
+    console.log('✅ Estatísticas por período calculadas (intervalo):', estatisticas)
+
+    return estatisticas
+  }
+
+  /**
+   * Busca estatísticas de produtividade por período (últimos X dias)
    */
   static async buscarEstatisticasPorPeriodo(dias: number = 7): Promise<{
     success: boolean
@@ -193,69 +295,7 @@ export class EstatisticasService {
       dataInicio.setDate(dataInicio.getDate() - dias)
       const dataInicioStr = dataInicio.toISOString().split('T')[0]
 
-      // Buscar carros dos últimos dias
-      const { data: carrosData, error: carrosError } = await retryWithBackoff(async () => {
-        return await getSupabase()
-          .from('carros_status')
-          .select('*')
-          .gte('data', dataInicioStr)
-          .order('data', { ascending: false })
-      })
-
-      if (carrosError) throw carrosError
-
-      // Agrupar por data
-      const estatisticasPorData = new Map<string, EstatisticasPorPeriodo>()
-      
-      carrosData?.forEach((carro: any) => {
-        const data = String(carro.data)
-        if (!estatisticasPorData.has(data)) {
-          estatisticasPorData.set(data, {
-            periodo: data,
-            total_carros: 0,
-            total_notas: 0,
-            total_volumes: 0,
-            total_pallets: 0,
-            produtividade_media: 0
-          })
-        }
-        
-        const stats = estatisticasPorData.get(data)!
-        stats.total_carros++
-      })
-
-      // Buscar notas dos últimos dias
-      const { data: notasData, error: notasError } = await retryWithBackoff(async () => {
-        return await getSupabase()
-          .from('embalagem_notas_bipadas')
-          .select('*')
-          .gte('data', dataInicioStr)
-          .order('data', { ascending: false })
-      })
-
-      if (notasError) throw notasError
-
-      // Processar notas
-      notasData?.forEach((nota: any) => {
-        const data = String(nota.data)
-        const stats = estatisticasPorData.get(data)
-        if (stats) {
-          stats.total_notas++
-          stats.total_volumes += Number(nota.volumes || 0)
-        }
-      })
-
-      // Calcular pallets e produtividade
-      estatisticasPorData.forEach(stats => {
-        stats.total_pallets = Math.ceil(stats.total_volumes / 100)
-        stats.produtividade_media = stats.total_carros > 0 ? 
-          Math.round((stats.total_notas / stats.total_carros) * 100) / 100 : 0
-      })
-
-      const estatisticas = Array.from(estatisticasPorData.values())
-        .sort((a, b) => b.periodo.localeCompare(a.periodo))
-
-      console.log('✅ Estatísticas por período calculadas:', estatisticas)
+      const estatisticas = await this.obterEstatisticasPorIntervalo(dataInicioStr)
 
       return {
         success: true,
@@ -266,6 +306,84 @@ export class EstatisticasService {
       return {
         success: false,
         error: `Erro ao buscar estatísticas por período: ${error}`
+      }
+    }
+  }
+
+  /**
+   * 🔥 NOVO: Busca estatísticas de produtividade para um período personalizado
+   * (ex.: de 10/12/2025 até 10/12/2025).
+   */
+  static async buscarEstatisticasPorPeriodoPersonalizado(
+    dataInicio: string,
+    dataFim: string
+  ): Promise<{
+    success: boolean
+    estatisticas?: EstatisticasPorPeriodo[]
+    resumo?: {
+      total_carros: number
+      total_notas: number
+      total_volumes: number
+      produtividade_media: number
+    }
+    error?: string
+  }> {
+    try {
+      const dataInicioISO = normalizarDataParaFiltro(dataInicio)
+      const dataFimISO = normalizarDataParaFiltro(dataFim)
+
+      console.log('📊 Buscando estatísticas de período PERSONALIZADO:', {
+        dataInicio,
+        dataFim,
+        dataInicioISO,
+        dataFimISO
+      })
+
+      const estatisticas = await this.obterEstatisticasPorIntervalo(
+        dataInicioISO,
+        dataFimISO
+      )
+
+      // Resumo geral para alimentar os cards de cima do dashboard
+      const resumo = estatisticas.reduce(
+        (acc, item) => {
+          acc.total_carros += item.total_carros
+          acc.total_notas += item.total_notas
+          acc.total_volumes += item.total_volumes
+          return acc
+        },
+        {
+          total_carros: 0,
+          total_notas: 0,
+          total_volumes: 0
+        }
+      )
+
+      const produtividade_media =
+        resumo.total_carros > 0
+          ? Math.round((resumo.total_volumes / resumo.total_carros) * 100) / 100
+          : 0
+
+      const resumoFinal = {
+        ...resumo,
+        produtividade_media
+      }
+
+      console.log('✅ Estatísticas PERSONALIZADAS calculadas:', {
+        estatisticas,
+        resumo: resumoFinal
+      })
+
+      return {
+        success: true,
+        estatisticas,
+        resumo: resumoFinal
+      }
+    } catch (error) {
+      console.error('❌ Erro ao buscar estatísticas por período personalizado:', error)
+      return {
+        success: false,
+        error: `Erro ao buscar estatísticas por período personalizado: ${error}`
       }
     }
   }
@@ -318,13 +436,21 @@ export class EstatisticasService {
       // Calcular estatísticas
       const totalCarros = carrosData?.length || 0
       const totalNotas = notasData?.length || 0
-      const totalVolumes = notasData?.reduce((sum, nota: any) => sum + Number(nota.volumes || 0), 0) || 0
+      const totalVolumes =
+        notasData?.reduce((sum, nota: any) => sum + Number(nota.volumes || 0), 0) ||
+        0
       
-      const carrosHoje = carrosData?.filter((c: any) => String(c.data) === hoje).length || 0
-      const carrosSemana = carrosData?.filter((c: any) => String(c.data) >= dataSemanaStr).length || 0
-      const carrosMes = carrosData?.filter((c: any) => String(c.data) >= dataMesStr).length || 0
+      const carrosHoje =
+        carrosData?.filter((c: any) => String(c.data) === hoje).length || 0
+      const carrosSemana =
+        carrosData?.filter((c: any) => String(c.data) >= dataSemanaStr).length || 0
+      const carrosMes =
+        carrosData?.filter((c: any) => String(c.data) >= dataMesStr).length || 0
       
-      const produtividadeMedia = totalCarros > 0 ? Math.round((totalNotas / totalCarros) * 100) / 100 : 0
+      const produtividadeMedia =
+        totalCarros > 0
+          ? Math.round((totalNotas / totalCarros) * 100) / 100
+          : 0
 
       const estatisticas = {
         total_carros_sistema: totalCarros,

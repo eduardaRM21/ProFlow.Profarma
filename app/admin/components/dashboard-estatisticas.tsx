@@ -1,15 +1,17 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { 
-  BarChart3, 
-  TrendingUp, 
-  Users, 
-  Clock, 
-  Award, 
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  BarChart3,
+  TrendingUp,
+  Users,
+  Clock,
+  Award,
   Target,
   Activity,
   Calendar,
@@ -20,7 +22,7 @@ import {
   ArrowDown,
   Minus,
   Truck,
-  Package
+  Package,
 } from "lucide-react"
 import { useEstatisticas } from "@/hooks/use-estatisticas"
 import { getSupabase } from "@/lib/supabase-client"
@@ -46,7 +48,19 @@ interface EstatisticasDashboard {
     noite: number
     madrugada: number
   }
+  volumes_por_turno: {
+    manha: number
+    tarde: number
+    noite: number
+    madrugada: number
+  }
   evolucao_semanal: Array<{
+    data: string
+    carros: number
+    notas: number
+    volumes: number
+  }>
+  evolucao_mensal: Array<{
     data: string
     carros: number
     notas: number
@@ -59,10 +73,13 @@ export default function DashboardEstatisticas() {
   const [dashboardData, setDashboardData] = useState<EstatisticasDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [periodoSelecionado, setPeriodoSelecionado] = useState<'hoje' | 'semana' | 'mes'>('hoje')
-  const [dataSelecionada, setDataSelecionada] = useState(new Date().toISOString().split('T')[0])
+  const [periodoSelecionado, setPeriodoSelecionado] = useState<"hoje" | "semana" | "mes" | "personalizado">("hoje")
+  const [dataSelecionada, setDataSelecionada] = useState(new Date().toISOString().split("T")[0])
+  const [dataFim, setDataFim] = useState(new Date().toISOString().split("T")[0])
+  const [visaoEvolucao, setVisaoEvolucao] = useState<"semanal" | "mensal">("semanal")
 
   const {
+    // deixei aqui caso você use depois
     estatisticasPorTurno,
     estatisticasPorPeriodo,
     estatisticasGerais,
@@ -70,465 +87,1096 @@ export default function DashboardEstatisticas() {
     error: errorEstatisticas,
     formatarTurno: formatarTurnoHook,
     formatarData: formatarDataHook,
-    calcularPorcentagem
+    calcularPorcentagem,
   } = useEstatisticas()
 
-  // Funções locais para formatação
+  // FORMATAÇÃO DE DATA (pra exibir dd/mm)
   const formatarData = (data: string) => {
-    return new Date(data).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit'
-    })
+    try {
+      if (!data) return ""
+
+      if (data.includes("-") && data.length >= 10) {
+        const partes = data.split("T")[0].split("-")
+        if (partes.length === 3) {
+          const [ano, mes, dia] = partes
+          if (!isNaN(Number(ano)) && !isNaN(Number(mes)) && !isNaN(Number(dia))) {
+            return `${dia.padStart(2, "0")}/${mes.padStart(2, "0")}`
+          }
+        }
+      }
+
+      const dataObj = new Date(data)
+      if (!isNaN(dataObj.getTime())) {
+        return dataObj.toLocaleDateString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+        })
+      }
+
+      return data
+    } catch {
+      return data
+    }
   }
 
   const formatarTurno = (turno: string) => {
     const turnos = {
-      manha: 'Manhã',
-      tarde: 'Tarde',
-      noite: 'Noite',
-      madrugada: 'Madrugada'
+      manha: "Manhã",
+      tarde: "Tarde",
+      noite: "Noite",
+      madrugada: "Madrugada",
     }
     return turnos[turno as keyof typeof turnos] || turno
   }
 
-  // Carregar dados do dashboard
+  /**
+   * REGRA DO DIA DE PRODUÇÃO:
+   * 1 dia = 06:00 até 05:59 do dia seguinte
+   * Implementação: data_producao = (timestamp - 6h).toISOString().split('T')[0]
+   */
+  const calcularDataCorreta = (
+    timestamp: string | Date | null | undefined,
+    dataOriginal: string
+  ): string => {
+    try {
+      if (!timestamp) return dataOriginal
+
+      const date = timestamp instanceof Date ? new Date(timestamp) : new Date(timestamp)
+      if (isNaN(date.getTime())) return dataOriginal
+
+      // tira 6h para alinhar o "dia de produção"
+      date.setHours(date.getHours() - 6)
+
+      return date.toISOString().split("T")[0] // YYYY-MM-DD
+    } catch {
+      return dataOriginal
+    }
+  }
+
   const carregarDashboardData = useCallback(async () => {
     try {
-      console.log('🔄 Iniciando carregamento dos dados do dashboard...')
-      console.log('📅 Período selecionado:', periodoSelecionado)
       setLoading(true)
       setError(null)
 
       const supabase = getSupabase()
-      
-      if (!supabase) {
-        throw new Error('Cliente Supabase não inicializado')
-      }
+      if (!supabase) throw new Error("Cliente Supabase não inicializado")
 
-      // Calcular período baseado na seleção
+      // 1) DEFINIR PERÍODO (datas em YYYY-MM-DD)
       let dataInicio: string
-      let dataFim: string
-      const hoje = new Date().toISOString().split('T')[0]
+      let dataFimCalculada: string
+      const hojeStr = new Date().toISOString().split("T")[0]
 
       switch (periodoSelecionado) {
-        case 'hoje':
-          dataInicio = hoje
-          dataFim = hoje
+        case "hoje":
+          dataInicio = dataSelecionada
+          dataFimCalculada = dataSelecionada
           break
-        case 'semana':
-          const inicioSemana = new Date()
-          inicioSemana.setDate(inicioSemana.getDate() - 7)
-          dataInicio = inicioSemana.toISOString().split('T')[0]
-          dataFim = hoje
+        case "semana": {
+          const d = new Date()
+          const fim = new Date()
+          d.setDate(d.getDate() - 6) // últimos 7 dias
+          dataInicio = d.toISOString().split("T")[0]
+          dataFimCalculada = fim.toISOString().split("T")[0]
           break
-        case 'mes':
-          const inicioMes = new Date()
-          inicioMes.setDate(inicioMes.getDate() - 30)
-          dataInicio = inicioMes.toISOString().split('T')[0]
-          dataFim = hoje
+        }
+        case "mes": {
+          const d = new Date()
+          const fim = new Date()
+          d.setDate(d.getDate() - 29) // últimos 30 dias
+          dataInicio = d.toISOString().split("T")[0]
+          dataFimCalculada = fim.toISOString().split("T")[0]
+          break
+        }
+        case "personalizado":
+          dataInicio = dataSelecionada
+          dataFimCalculada = dataFim
           break
         default:
-          dataInicio = hoje
-          dataFim = hoje
+          dataInicio = dataSelecionada
+          dataFimCalculada = dataSelecionada
       }
 
-      console.log('🔍 Período de busca:', { dataInicio, dataFim, periodoSelecionado })
-      console.log('📊 Filtros aplicados:', {
-        carros: `data >= ${dataInicio} AND data <= ${dataFim}`,
-        notas: `data >= ${dataInicio} AND data <= ${dataFim}`,
-        colaboradores: `data >= ${dataInicio} AND data <= ${dataFim}`
-      })
+      // para buscar no banco: de dataInicio até (dataFim + 1 dia)
+      const dataFimBuscaDate = new Date(dataFimCalculada)
+      dataFimBuscaDate.setDate(dataFimBuscaDate.getDate() + 1)
+      const dataFimBusca = dataFimBuscaDate.toISOString().split("T")[0]
+      const dataInicioBusca = dataInicio
+
+      // 2) BUSCAR CARROS ATIVOS (com paginação para evitar limite de 1000)
+      const pageSizeCarros = 1000
+      let offsetCarros = 0
+      let hasMoreCarros = true
+      const todosCarrosArray: any[] = []
       
-      // Buscar carros ativos do período
-      const { data: carrosHoje, error: errorCarros } = await supabase
-        .from('carros_status')
-        .select('*')
-        .gte('data', dataInicio)
-        .lte('data', dataFim)
-
-      if (errorCarros) {
-        console.error('❌ Erro ao buscar carros:', errorCarros)
-        console.log('⚠️ Continuando sem dados de carros...')
+      while (hasMoreCarros) {
+        const { data: carrosPage, error: errorCarrosPage } = await supabase
+          .from("carros_status")
+          .select("*")
+          .gte("created_at", `${dataInicioBusca}T00:00:00`)
+          .lte("created_at", `${dataFimBusca}T23:59:59`)
+          .range(offsetCarros, offsetCarros + pageSizeCarros - 1)
+          .order("created_at", { ascending: true })
+        
+        if (errorCarrosPage) throw errorCarrosPage
+        
+        if (carrosPage && carrosPage.length > 0) {
+          todosCarrosArray.push(...carrosPage)
+          offsetCarros += pageSizeCarros
+          hasMoreCarros = carrosPage.length === pageSizeCarros
+        } else {
+          hasMoreCarros = false
+        }
       }
-
-      // Buscar dados de notas bipadas do setor de embalagem
-      const { data: notasHoje, error: errorNotas } = await supabase
-        .from('embalagem_notas_bipadas')
-        .select('*')
-        .gte('data', dataInicio)
-        .lte('data', dataFim)
-
-      if (errorNotas) {
-        console.error('❌ Erro ao buscar notas:', errorNotas)
-        console.log('⚠️ Continuando sem dados de notas...')
-      }
-
-      // Buscar dados de carros finalizados do setor de embalagem
-      const { data: carrosFinalizados, error: errorCarrosFinalizados } = await supabase
-        .from('embalagem_carros_finalizados')
-        .select('carros, created_at')
-        .gte('created_at', dataInicio)
-        .lte('created_at', dataFim)
-
-      if (errorCarrosFinalizados) {
-        console.error('❌ Erro ao buscar carros finalizados:', errorCarrosFinalizados)
-        console.log('⚠️ Continuando sem dados de carros finalizados...')
-      }
-
-      // Processar carros e coletar IDs únicos
-      const carrosIdsUnicos = new Set<string>()
-      const carrosIdsAtivos: string[] = []
-      const carrosIdsFinalizados: string[] = []
       
-      // Adicionar carros ativos (carros_status) - apenas estes por enquanto
-      if (carrosHoje && carrosHoje.length > 0) {
-        carrosHoje.forEach(carro => {
-          if (carro.id) {
-            const id = String(carro.id)
-            carrosIdsUnicos.add(id)
-            carrosIdsAtivos.push(id)
+      const todosCarros = todosCarrosArray
+
+      // 3) BUSCAR NOTAS (com paginação para evitar limite de 1000)
+      // Buscar notas com range ampliado para incluir madrugada do dia seguinte
+      // Para período único dia: buscar de dataInicio até dataFimBusca (que já inclui dia seguinte)
+      const pageSizeNotas = 1000
+      let offsetNotas = 0
+      let hasMoreNotas = true
+      const todasNotasArray: any[] = []
+      
+      while (hasMoreNotas) {
+        const { data: notasPage, error: errorNotasPage } = await supabase
+          .from("embalagem_notas_bipadas")
+          .select("id, volumes, data, timestamp_bipagem, turno, colaboradores")
+          .gte("data", dataInicioBusca)
+          .lte("data", dataFimBusca)
+          .range(offsetNotas, offsetNotas + pageSizeNotas - 1)
+          .order("data", { ascending: true })
+        
+        if (errorNotasPage) throw errorNotasPage
+        
+        if (notasPage && notasPage.length > 0) {
+          todasNotasArray.push(...notasPage)
+          offsetNotas += pageSizeNotas
+          hasMoreNotas = notasPage.length === pageSizeNotas
+        } else {
+          hasMoreNotas = false
+        }
+      }
+      
+      const todasNotas = todasNotasArray
+
+      // 4) BUSCAR CARROS FINALIZADOS (com paginação para evitar limite de 1000)
+      let offsetCarrosFinalizados = 0
+      let hasMoreCarrosFinalizados = true
+      const todosCarrosFinalizadosArray: any[] = []
+      
+      while (hasMoreCarrosFinalizados) {
+        const { data: carrosFinalizadosPage, error: errorCarrosFinalizadosPage } = await supabase
+          .from("embalagem_carros_finalizados")
+          .select("carros, created_at")
+          .gte("created_at", `${dataInicio}T00:00:00`)
+          .lte("created_at", `${dataFimBusca}T23:59:59`)
+          .range(offsetCarrosFinalizados, offsetCarrosFinalizados + pageSizeCarros - 1)
+          .order("created_at", { ascending: true })
+        
+        if (errorCarrosFinalizadosPage) throw errorCarrosFinalizadosPage
+        
+        if (carrosFinalizadosPage && carrosFinalizadosPage.length > 0) {
+          todosCarrosFinalizadosArray.push(...carrosFinalizadosPage)
+          offsetCarrosFinalizados += pageSizeCarros
+          hasMoreCarrosFinalizados = carrosFinalizadosPage.length === pageSizeCarros
+        } else {
+          hasMoreCarrosFinalizados = false
+        }
+      }
+      
+      const todosCarrosFinalizados = todosCarrosFinalizadosArray
+
+      // 5) FILTRAR PELO DIA DE PRODUÇÃO (06h → 05:59)
+      // REGRA: Um dia vai das 06:00 até 05:59 do dia seguinte
+      // Exemplo: Dia 10/12 = carros criados das 06:00 de 10/12 até 05:59 de 11/12
+      const carrosHoje = (todosCarros || []).filter((carro) => {
+        const ts = (carro.created_at || carro.data_criacao || carro.data) as
+          | string
+          | Date
+          | null
+          | undefined
+        
+        if (!ts) {
+          // Se não tem timestamp, usar a data do carro diretamente
+          const dataCarro = carro.data as string
+          return dataCarro >= dataInicio && dataCarro <= dataFimCalculada
+        }
+
+        try {
+          const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+          if (isNaN(dataHora.getTime())) {
+            // Timestamp inválido, usar data do carro
+            const dataCarro = carro.data as string
+            return dataCarro >= dataInicio && dataCarro <= dataFimCalculada
           }
-        })
-      }
 
-      // Adicionar carros finalizados (embalagem_carros_finalizados) - apenas se não estiverem em carros_status
-      if (carrosFinalizados && carrosFinalizados.length > 0) {
-        carrosFinalizados.forEach(item => {
-          if (item.carros && Array.isArray(item.carros)) {
-            item.carros.forEach((carro: any) => {
-              if (carro.id) {
-                const id = String(carro.id)
-                // Só adicionar se não estiver já na lista de carros ativos
-                if (!carrosIdsAtivos.includes(id)) {
-                  carrosIdsUnicos.add(id)
-                  carrosIdsFinalizados.push(id)
+          const dataStr = dataHora.toISOString().split('T')[0]
+          const hora = dataHora.getUTCHours() // Usar UTC para evitar problemas de timezone
+
+          // Se o período for "hoje" ou "personalizado" com um único dia, aplicar regra de 06:00
+          const isPeriodoUnicoDia = periodoSelecionado === 'hoje' || (periodoSelecionado === 'personalizado' && dataSelecionada === dataFim)
+          
+          if (isPeriodoUnicoDia) {
+            // REGRA: Dia 10/12 = carros criados das 06:00 de 10/12 até 05:59 de 11/12
+            // Incluir carros criados:
+            // 1. No dia selecionado (dataSelecionada) entre 06:00-23:59
+            // 2. No dia seguinte (dataSelecionada + 1) entre 00:00-05:59
+            // EXCLUIR carros criados na madrugada do dia selecionado (00:00-05:59) - pertencem ao dia anterior
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+
+            if (dataStr === dataSelecionada) {
+              // Carro criado no dia selecionado
+              if (hora >= 6) {
+                return true // Após 06:00 - pertence ao dia selecionado
+              }
+              return false // Antes de 06:00 - pertence ao dia anterior (excluir)
+            }
+            if (dataStr === dataDiaSeguinteStr && hora < 6) {
+              return true // Carro criado na madrugada do dia seguinte (pertence ao dia selecionado)
+            }
+            return false // Excluir todos os outros (incluindo madrugada do dia selecionado)
+          }
+
+          // Para outros períodos, usar calcularDataCorreta
+          const dataProducao = calcularDataCorreta(ts, carro.data as string)
+          return dataProducao >= dataInicio && dataProducao <= dataFimCalculada
+        } catch {
+          // Em caso de erro, usar data do carro
+          const dataCarro = carro.data as string
+          return dataCarro >= dataInicio && dataCarro <= dataFimCalculada
+        }
+      })
+
+      // Log detalhado dos carros incluídos/excluídos
+      const carrosIncluidos: any[] = []
+      const carrosExcluidos: any[] = []
+      
+      todosCarros?.forEach(carro => {
+        const ts = (carro.created_at || carro.data_criacao || carro.data) as string | Date | null | undefined
+        if (ts) {
+          try {
+            const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+            if (!isNaN(dataHora.getTime())) {
+              const dataStr = dataHora.toISOString().split('T')[0]
+              const hora = dataHora.getUTCHours() // Usar UTC para evitar problemas de timezone
+              const isPeriodoUnicoDia = periodoSelecionado === 'hoje' || (periodoSelecionado === 'personalizado' && dataSelecionada === dataFim)
+              
+              if (isPeriodoUnicoDia) {
+                const dataDiaSeguinte = new Date(dataSelecionada)
+                dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+                const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+                
+                const incluido = (dataStr === dataSelecionada && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6)
+                
+                if (incluido) {
+                  carrosIncluidos.push({
+                    id: carro.id,
+                    created_at: carro.created_at,
+                    data: carro.data,
+                    data_str: dataStr,
+                    hora: hora,
+                    motivo: dataStr === dataSelecionada ? 'dia_selecionado_apos_06h' : 'madrugada_dia_seguinte'
+                  })
+                } else {
+                  carrosExcluidos.push({
+                    id: carro.id,
+                    created_at: carro.created_at,
+                    data: carro.data,
+                    data_str: dataStr,
+                    hora: hora,
+                    motivo: dataStr === dataSelecionada && hora < 6 ? 'madrugada_dia_selecionado' : 'outro_dia'
+                  })
                 }
               }
-            })
-          }
-        })
-      }
+            }
+          } catch {}
+        }
+      })
 
-      console.log('🔍 Debug - IDs de carros ativos:', carrosIdsAtivos)
-      console.log('🔍 Debug - IDs de carros finalizados:', carrosIdsFinalizados)
-      console.log('🔍 Debug - IDs únicos totais:', Array.from(carrosIdsUnicos))
+      console.log('📊 Debug - Filtro de carros detalhado:', {
+        total_buscado: todosCarros?.length || 0,
+        total_filtrado: carrosHoje.length,
+        periodo: periodoSelecionado,
+        data_inicio: dataInicio,
+        data_fim: dataFimCalculada,
+        data_selecionada: dataSelecionada,
+        carros_incluidos: carrosIncluidos.slice(0, 5),
+        carros_excluidos: carrosExcluidos.slice(0, 5),
+        total_incluidos: carrosIncluidos.length,
+        total_excluidos: carrosExcluidos.length
+      })
+
+      // Filtrar notas baseado na regra de 06:00
+      // REGRA: Um dia vai das 06:00 até 05:59 do dia seguinte
+      const notasHoje = (todasNotas || []).filter((nota) => {
+        const ts = (nota.timestamp_bipagem || nota.data) as string | Date | null | undefined
+        const notaData = nota.data as string
+        if (!notaData) return false
+
+        // Se o período for "hoje" ou "personalizado" com um único dia, aplicar regra de 06:00
+        const isPeriodoUnicoDia = periodoSelecionado === 'hoje' || (periodoSelecionado === 'personalizado' && dataSelecionada === dataFim)
+
+        if (!ts || ts === notaData) {
+          // Sem timestamp válido ou timestamp igual à data, usar apenas a data
+          // Para período único dia, incluir notas do dia selecionado e do dia seguinte
+          // (a busca já inclui o dia seguinte, então notas com data = dia seguinte podem ser da madrugada)
+          if (isPeriodoUnicoDia) {
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+            
+            // Incluir notas do dia selecionado ou do dia seguinte (podem ser da madrugada)
+            return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
+          }
+          // Para outros períodos, usar range normal
+          return notaData >= dataInicio && notaData <= dataFimCalculada
+        }
+
+        try {
+          const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+          if (isNaN(dataHora.getTime())) {
+            // Timestamp inválido, usar apenas a data
+            if (isPeriodoUnicoDia) {
+              const dataDiaSeguinte = new Date(dataSelecionada)
+              dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+              const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+              return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
+            }
+            return notaData >= dataInicio && notaData <= dataFimCalculada
+          }
+
+          const dataStr = dataHora.toISOString().split('T')[0]
+          const hora = dataHora.getUTCHours()
+
+          if (isPeriodoUnicoDia) {
+            // REGRA: Dia 10/12 = notas bipadas das 06:00 de 10/12 até 05:59 de 11/12
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+
+            if (dataStr === dataSelecionada && hora >= 6) {
+              return true // Nota bipada no dia selecionado após 06:00
+            }
+            if (dataStr === dataDiaSeguinteStr && hora < 6) {
+              return true // Nota bipada na madrugada do dia seguinte (pertence ao dia selecionado)
+            }
+            return false // Excluir todas as outras (incluindo madrugada do dia selecionado)
+          }
+
+          // Para períodos de múltiplos dias, aplicar regra de 06:00 para cada dia do range
+          // Incluir notas que pertencem a qualquer dia do período
+          for (let d = new Date(dataInicio); d <= new Date(dataFimCalculada); d.setDate(d.getDate() + 1)) {
+            const dataDia = d.toISOString().split('T')[0]
+            const dataDiaSeguinte = new Date(dataDia)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+
+            // Verificar se a nota pertence a este dia (06:00 até 05:59 do dia seguinte)
+            if ((dataStr === dataDia && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6)) {
+              return true
+            }
+          }
+          
+          return false // Não pertence a nenhum dia do período
+        } catch {
+          // Em caso de erro, usar apenas a data
+          if (isPeriodoUnicoDia) {
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+            return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
+          }
+          return notaData >= dataInicio && notaData <= dataFimCalculada
+        }
+      })
+
+
+      const carrosFinalizadosFiltrados =
+        (todosCarrosFinalizados || []).filter((item) => {
+          if (!item.created_at) return false
+          const ts = item.created_at as string | Date | null | undefined
+          if (!ts) return false
+          const dataOriginal =
+            typeof ts === "string" ? ts.split("T")[0] : ts.toISOString().split("T")[0]
+          const dataProducao = calcularDataCorreta(ts, dataOriginal)
+          return dataProducao >= dataInicio && dataProducao <= dataFimCalculada
+        }) || []
+
+      // 6) TOTAL DE CARROS (IDs ÚNICOS)
+      // IMPORTANTE: Contar apenas carros de carros_status (baseado em created_at)
+      // Não incluir carros finalizados para evitar duplicação
+      const carrosIdsUnicos = new Set<string>()
+
+      console.log('📊 Debug - Carros encontrados:', {
+        total_buscado: todosCarros?.length || 0,
+        total_filtrado: carrosHoje.length,
+        periodo: periodoSelecionado,
+        data_inicio: dataInicio,
+        data_fim: dataFimCalculada,
+        data_inicio_busca: dataInicioBusca,
+        data_fim_busca: dataFimBusca,
+        usando_apenas_carros_status: true
+      })
+
+      // Contar apenas carros de carros_status (não incluir carros finalizados)
+      carrosHoje.forEach((carro: any) => {
+        if (carro.id) carrosIdsUnicos.add(String(carro.id))
+      })
+
+      // NÃO adicionar carros finalizados para evitar duplicação
+      // Os carros já estão em carros_status quando são criados
+      // carrosFinalizadosFiltrados.forEach((item: any) => {
+      //   if (Array.isArray(item.carros)) {
+      //     item.carros.forEach((carro: any) => {
+      //       if (carro.id) carrosIdsUnicos.add(String(carro.id))
+      //     })
+      //   }
+      // })
 
       const totalCarrosHoje = carrosIdsUnicos.size
 
-      console.log('📊 Dados carregados:', {
+      console.log('📊 Debug - Contagem final de carros:', {
+        total_carros_unicos: totalCarrosHoje,
+        carros_de_status: carrosHoje.length,
+        carros_finalizados_ignorados: 'Não incluídos para evitar duplicação'
+      })
+
+      // 7) TOTAL DE NOTAS E VOLUMES
+      const totalNotasHoje = notasHoje.length
+      const totalVolumesHoje =
+        notasHoje.reduce((acc, n: any) => acc + (Number(n.volumes) || 0), 0) || 0
+
+      // Log detalhado das notas incluídas/excluídas
+      const notasIncluidas: any[] = []
+      const notasExcluidas: any[] = []
+      const notasSemTimestamp: any[] = []
+      
+      todasNotas?.forEach(nota => {
+        const ts = (nota.timestamp_bipagem || nota.data) as string | Date | null | undefined
+        const notaData = nota.data as string
+        if (!notaData) {
+          notasExcluidas.push({ motivo: 'sem_data', id: nota.id })
+          return
+        }
+
+        const isPeriodoUnicoDia = periodoSelecionado === 'hoje' || (periodoSelecionado === 'personalizado' && dataSelecionada === dataFim)
+        
+        if (isPeriodoUnicoDia) {
+          if (!ts) {
+            // Sem timestamp, verificar se a data está no range
+            const incluida = notaData >= dataInicio && notaData <= dataFimCalculada
+            if (incluida) {
+              notasSemTimestamp.push({
+                id: nota.id,
+                data: nota.data,
+                volumes: nota.volumes,
+                motivo: 'sem_timestamp_usando_data'
+              })
+            } else {
+              notasExcluidas.push({
+                id: nota.id,
+                data: nota.data,
+                volumes: nota.volumes,
+                motivo: 'sem_timestamp_fora_do_range'
+              })
+            }
+            return
+          }
+
+          try {
+            const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+            if (isNaN(dataHora.getTime())) {
+              notasExcluidas.push({
+                id: nota.id,
+                timestamp_bipagem: nota.timestamp_bipagem,
+                data: nota.data,
+                volumes: nota.volumes,
+                motivo: 'timestamp_invalido'
+              })
+              return
+            }
+
+            const dataStr = dataHora.toISOString().split('T')[0]
+            const hora = dataHora.getUTCHours()
+
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+
+            const incluida = (dataStr === dataSelecionada && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6)
+            
+            if (incluida) {
+              notasIncluidas.push({
+                id: nota.id,
+                timestamp_bipagem: nota.timestamp_bipagem,
+                data: nota.data,
+                data_str: dataStr,
+                hora: hora,
+                volumes: nota.volumes,
+                motivo: dataStr === dataSelecionada ? 'dia_selecionado_apos_06h' : 'madrugada_dia_seguinte'
+              })
+            } else {
+              notasExcluidas.push({
+                id: nota.id,
+                timestamp_bipagem: nota.timestamp_bipagem,
+                data: nota.data,
+                data_str: dataStr,
+                hora: hora,
+                volumes: nota.volumes,
+                motivo: dataStr === dataSelecionada && hora < 6 ? 'madrugada_dia_selecionado' : 
+                        dataStr === dataDiaSeguinteStr && hora >= 6 ? 'dia_seguinte_apos_06h' : 'outro_dia'
+              })
+            }
+          } catch (error) {
+            notasExcluidas.push({
+              id: nota.id,
+              timestamp_bipagem: nota.timestamp_bipagem,
+              data: nota.data,
+              volumes: nota.volumes,
+              motivo: 'erro_ao_processar'
+            })
+          }
+        }
+      })
+
+      console.log('📊 Debug - Notas encontradas:', {
+        total_buscado: todasNotas?.length || 0,
+        total_filtrado: notasHoje.length,
+        total_volumes: totalVolumesHoje,
         periodo: periodoSelecionado,
         data_inicio: dataInicio,
-        data_fim: dataFim,
-        carros_unicos: totalCarrosHoje,
-        carros_ativos: carrosHoje?.length || 0,
-        notas: notasHoje?.length || 0,
-        carros_finalizados: carrosFinalizados?.length || 0
+        data_fim: dataFimCalculada,
+        data_selecionada: dataSelecionada,
+        notas_incluidas: notasIncluidas.slice(0, 10),
+        notas_excluidas: notasExcluidas.slice(0, 10),
+        notas_sem_timestamp: notasSemTimestamp.slice(0, 10),
+        total_incluidas: notasIncluidas.length,
+        total_excluidas: notasExcluidas.length,
+        total_sem_timestamp: notasSemTimestamp.length,
+        resumo_excluidas: notasExcluidas.reduce((acc, n) => {
+          acc[n.motivo] = (acc[n.motivo] || 0) + 1
+          return acc
+        }, {} as Record<string, number>)
       })
-      
-      console.log('🔍 Debug - Carros encontrados no período:', carrosHoje?.map(c => ({ id: c.id, data: c.data })))
-      console.log('🔍 Debug - Notas encontradas no período:', notasHoje?.map(n => ({ id: n.id, data: n.data })))
 
-      // Debug detalhado dos carros
-      console.log('🔍 Debug - Carros ativos (carros_status):', carrosHoje?.map(c => ({ id: c.id, nome: c.nome_carro, data: c.data })))
-      console.log('🔍 Debug - Carros finalizados (embalagem_carros_finalizados):', carrosFinalizados)
-      
-      if (carrosFinalizados && carrosFinalizados.length > 0) {
-        carrosFinalizados.forEach((item, index) => {
-          console.log(`🔍 Debug - Item ${index} de carros finalizados:`, item.carros && Array.isArray(item.carros) ? item.carros.map((c: any) => ({ id: c.id, nome: c.nome_carro, data: c.data })) : 'Não é array')
-        })
-      }
-
-      // Debug: verificar turnos dos carros
-      if (carrosHoje && carrosHoje.length > 0) {
-        console.log('🔍 Debug - Turnos dos carros:', carrosHoje.map(c => ({ id: c.id, turno: c.turno, data: c.data })))
-      }
-
-      // Calcular estatísticas por turno
+      // 8) CARROS POR TURNO (sem loucura de "ontem/hoje")
       const carrosPorTurno = {
         manha: 0,
         tarde: 0,
         noite: 0,
-        madrugada: 0
+        madrugada: 0,
       }
 
-      console.log('🔍 Debug - Iniciando cálculo de turnos...')
+      // 8.1) VOLUMES POR TURNO
+      const volumesPorTurno = {
+        manha: 0,
+        tarde: 0,
+        noite: 0,
+        madrugada: 0,
+      }
 
-      // Processar carros ativos usando o campo turno da tabela
-      carrosHoje?.forEach(carro => {
-        const turno = String(carro.turno || 'A').toUpperCase()
+      const carrosProcessadosPorTurno = new Set<string>()
+
+      const marcarTurno = (turnoRaw: string | null | undefined, id: string | null) => {
+        if (!id) return
+        if (carrosProcessadosPorTurno.has(id)) return
+        carrosProcessadosPorTurno.add(id)
+
+        const turno = String(turnoRaw || "A").toUpperCase()
         switch (turno) {
-          case 'A':
+          case "A":
             carrosPorTurno.manha++
             break
-          case 'B':
+          case "B":
             carrosPorTurno.tarde++
             break
-          case 'C':
+          case "C":
             carrosPorTurno.noite++
             break
-          case 'D':
+          case "D":
             carrosPorTurno.madrugada++
             break
           default:
-            // Fallback para turnos não reconhecidos - usar hora como backup
-            const dataCarro = carro.data as string
-            const hora = new Date(dataCarro).getHours()
-            if (hora >= 6 && hora < 12) carrosPorTurno.manha++
-            else if (hora >= 12 && hora < 18) carrosPorTurno.tarde++
-            else if (hora >= 18 && hora < 24) carrosPorTurno.noite++
-            else carrosPorTurno.madrugada++
+            carrosPorTurno.manha++
+        }
+      }
+
+      // Contar turnos apenas dos carros de carros_status (não incluir carros finalizados)
+      carrosHoje.forEach((carro: any) => {
+        if (!carro.id) return
+        marcarTurno(carro.turno, String(carro.id))
+      })
+
+      // Calcular volumes por turno baseado nas notas
+      notasHoje.forEach((nota: any) => {
+        const turnoNota = String(nota.turno || "A").toUpperCase()
+        const volumesNota = Number(nota.volumes) || 0
+        
+        switch (turnoNota) {
+          case "A":
+            volumesPorTurno.manha += volumesNota
+            break
+          case "B":
+            volumesPorTurno.tarde += volumesNota
+            break
+          case "C":
+            volumesPorTurno.noite += volumesNota
+            break
+          case "D":
+            volumesPorTurno.madrugada += volumesNota
+            break
+          default:
+            volumesPorTurno.manha += volumesNota
         }
       })
 
-      // Processar carros finalizados usando o campo turno
-      if (carrosFinalizados && carrosFinalizados.length > 0) {
-        carrosFinalizados.forEach(item => {
-          if (item.carros && Array.isArray(item.carros)) {
-            item.carros.forEach((carro: any) => {
-              const turno = String(carro.turno || 'A').toUpperCase()
-              switch (turno) {
-                case 'A':
-                  carrosPorTurno.manha++
-                  break
-                case 'B':
-                  carrosPorTurno.tarde++
-                  break
-                case 'C':
-                  carrosPorTurno.noite++
-                  break
-                case 'D':
-                  carrosPorTurno.madrugada++
-                  break
-                default:
-                  // Fallback para turnos não reconhecidos - usar hora como backup
-                  const dataCarro = carro.data || carro.data_criacao
-                  if (dataCarro) {
-                    const hora = new Date(dataCarro).getHours()
-                    if (hora >= 6 && hora < 12) carrosPorTurno.manha++
-                    else if (hora >= 12 && hora < 18) carrosPorTurno.tarde++
-                    else if (hora >= 18 && hora < 24) carrosPorTurno.noite++
-                    else carrosPorTurno.madrugada++
-                  }
-              }
-            })
+      // NÃO adicionar carros finalizados para evitar duplicação
+      // carrosFinalizadosFiltrados.forEach((item: any) => {
+      //   if (Array.isArray(item.carros)) {
+      //     item.carros.forEach((carro: any) => {
+      //       if (!carro.id) return
+      //       marcarTurno(carro.turno, String(carro.id))
+      //     })
+      //   }
+      // })
+
+      // 9) EVOLUÇÃO SEMANAL (sempre últimos 7 dias)
+      const evolucaoSemanal: EstatisticasDashboard["evolucao_semanal"] = []
+      const hojeEvolucao = new Date()
+      const dataFimEvolucaoSemanal = hojeEvolucao.toISOString().split("T")[0]
+      const dataInicioEvolucaoSemanal = new Date(hojeEvolucao)
+      dataInicioEvolucaoSemanal.setDate(dataInicioEvolucaoSemanal.getDate() - 6)
+      const dataInicioEvolucaoSemanalStr = dataInicioEvolucaoSemanal.toISOString().split("T")[0]
+
+      // Buscar dados adicionais para evolução semanal (últimos 7 dias)
+      const dataFimBuscaEvolucaoSemanal = new Date(dataFimEvolucaoSemanal)
+      dataFimBuscaEvolucaoSemanal.setDate(dataFimBuscaEvolucaoSemanal.getDate() + 1)
+      const dataFimBuscaEvolucaoSemanalStr = dataFimBuscaEvolucaoSemanal.toISOString().split("T")[0]
+
+      const { data: carrosEvolucaoSemanal } = await supabase
+        .from("carros_status")
+        .select("*")
+        .gte("created_at", `${dataInicioEvolucaoSemanalStr}T00:00:00`)
+        .lte("created_at", `${dataFimBuscaEvolucaoSemanalStr}T23:59:59`)
+
+      // Buscar todas as notas com paginação para evolução semanal
+      const pageSize = 1000
+      let offset = 0
+      let hasMore = true
+      const todasNotasEvolucaoSemanal: any[] = []
+      
+      while (hasMore) {
+        const { data: notasPage, error: errorNotasPage } = await supabase
+          .from("embalagem_notas_bipadas")
+          .select("id, volumes, data, timestamp_bipagem, turno, colaboradores")
+          .gte("data", dataInicioEvolucaoSemanalStr)
+          .lte("data", dataFimBuscaEvolucaoSemanalStr)
+          .range(offset, offset + pageSize - 1)
+          .order("data", { ascending: true })
+        
+        if (errorNotasPage) throw errorNotasPage
+        
+        if (notasPage && notasPage.length > 0) {
+          todasNotasEvolucaoSemanal.push(...notasPage)
+          offset += pageSize
+          hasMore = notasPage.length === pageSize
+        } else {
+          hasMore = false
+        }
+      }
+      
+      const notasEvolucaoSemanal = todasNotasEvolucaoSemanal
+
+      for (let i = 6; i >= 0; i--) {
+        const data = new Date(hojeEvolucao)
+        data.setDate(data.getDate() - i)
+        const dataStr = data.toISOString().split("T")[0]
+        const dataDiaSeguinte = new Date(data)
+        dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+        const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split("T")[0]
+
+        const carrosIdsDia = new Set<string>()
+
+        // carros ativos dos últimos 7 dias - aplicar regra de 06:00
+        ;(carrosEvolucaoSemanal || []).forEach((carro: any) => {
+          if (!carro.id) return
+          const ts = (carro.created_at || carro.data_criacao || carro.data) as
+            | string
+            | Date
+            | null
+            | undefined
+          
+          if (!ts) {
+            const dataCarro = carro.data as string
+            if (dataCarro === dataStr) carrosIdsDia.add(String(carro.id))
+            return
           }
+
+          try {
+            const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+            if (isNaN(dataHora.getTime())) {
+              const dataCarro = carro.data as string
+              if (dataCarro === dataStr) carrosIdsDia.add(String(carro.id))
+              return
+            }
+
+            const dataStrCarro = dataHora.toISOString().split('T')[0]
+            const hora = dataHora.getUTCHours()
+
+            // REGRA: Dia X = carros criados das 06:00 de X até 05:59 de X+1
+            if ((dataStrCarro === dataStr && hora >= 6) || (dataStrCarro === dataDiaSeguinteStr && hora < 6)) {
+              carrosIdsDia.add(String(carro.id))
+            }
+          } catch {
+            const dataCarro = carro.data as string
+            if (dataCarro === dataStr) carrosIdsDia.add(String(carro.id))
+          }
+        })
+
+        const carrosDia = carrosIdsDia.size
+
+        // Notas - aplicar regra de 06:00
+        const notasDia = (notasEvolucaoSemanal || []).filter((n: any) => {
+          const ts = (n.timestamp_bipagem || n.data) as string | Date | null | undefined
+          const notaData = n.data as string
+          if (!notaData) return false
+
+          if (!ts || ts === notaData) {
+            // Sem timestamp válido, verificar se a data está no range
+            return notaData === dataStr || notaData === dataDiaSeguinteStr
+          }
+
+          try {
+            const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+            if (isNaN(dataHora.getTime())) {
+              return notaData === dataStr || notaData === dataDiaSeguinteStr
+            }
+
+            const dataStrNota = dataHora.toISOString().split('T')[0]
+            const hora = dataHora.getUTCHours()
+
+            // REGRA: Dia X = notas bipadas das 06:00 de X até 05:59 de X+1
+            return (dataStrNota === dataStr && hora >= 6) || (dataStrNota === dataDiaSeguinteStr && hora < 6)
+          } catch {
+            return notaData === dataStr || notaData === dataDiaSeguinteStr
+          }
+        })
+
+        const notasCountDia = notasDia.length
+        const volumesDia =
+          notasDia.reduce((acc, n: any) => {
+            const vol = Number(n.volumes) || 0
+            if (isNaN(vol)) {
+              console.warn('⚠️ Volume inválido na nota:', n.id, n.volumes)
+              return acc
+            }
+            return acc + vol
+          }, 0)
+
+        evolucaoSemanal.push({
+          data: dataStr,
+          carros: Number(carrosDia) || 0,
+          notas: Number(notasCountDia) || 0,
+          volumes: volumesDia,
         })
       }
 
-      console.log('🔍 Debug - Carros por turno calculados:', carrosPorTurno)
+      console.log('📊 Debug - Evolução Semanal:', {
+        total_notas_buscadas: notasEvolucaoSemanal?.length || 0,
+        dias: evolucaoSemanal.map(d => ({
+          data: d.data,
+          notas: d.notas,
+          volumes: d.volumes
+        })),
+        total_volumes_semanal: evolucaoSemanal.reduce((acc, d) => acc + d.volumes, 0)
+      })
 
-      // Buscar colaboradores que se destacaram no período selecionado
-      let colaboradoresData: any[] = []
-      try {
-        const { data: colaboradoresResult, error: errorColaboradores } = await supabase
-          .from('embalagem_notas_bipadas')
-          .select('colaboradores, data, volumes, timestamp_bipagem')
-          .gte('data', dataInicio)
-          .lte('data', dataFim)
+      // 9.1) EVOLUÇÃO MENSAL (sempre últimos 30 dias)
+      const evolucaoMensal: EstatisticasDashboard["evolucao_mensal"] = []
+      const dataInicioEvolucaoMensal = new Date(hojeEvolucao)
+      dataInicioEvolucaoMensal.setDate(dataInicioEvolucaoMensal.getDate() - 29)
+      const dataInicioEvolucaoMensalStr = dataInicioEvolucaoMensal.toISOString().split("T")[0]
 
-        if (errorColaboradores) {
-          console.error('❌ Erro ao buscar colaboradores:', errorColaboradores)
-          colaboradoresData = []
+      // Buscar dados adicionais para evolução mensal (últimos 30 dias)
+      const dataFimBuscaEvolucaoMensal = new Date(dataFimEvolucaoSemanal)
+      dataFimBuscaEvolucaoMensal.setDate(dataFimBuscaEvolucaoMensal.getDate() + 1)
+      const dataFimBuscaEvolucaoMensalStr = dataFimBuscaEvolucaoMensal.toISOString().split("T")[0]
+
+      const { data: carrosEvolucaoMensal } = await supabase
+        .from("carros_status")
+        .select("*")
+        .gte("created_at", `${dataInicioEvolucaoMensalStr}T00:00:00`)
+        .lte("created_at", `${dataFimBuscaEvolucaoMensalStr}T23:59:59`)
+
+      // Buscar todas as notas com paginação para evolução mensal
+      offset = 0
+      hasMore = true
+      const todasNotasEvolucaoMensal: any[] = []
+      
+      while (hasMore) {
+        const { data: notasPage, error: errorNotasPage } = await supabase
+          .from("embalagem_notas_bipadas")
+          .select("id, volumes, data, timestamp_bipagem, turno, colaboradores")
+          .gte("data", dataInicioEvolucaoMensalStr)
+          .lte("data", dataFimBuscaEvolucaoMensalStr)
+          .range(offset, offset + pageSize - 1)
+          .order("data", { ascending: true })
+        
+        if (errorNotasPage) throw errorNotasPage
+        
+        if (notasPage && notasPage.length > 0) {
+          todasNotasEvolucaoMensal.push(...notasPage)
+          offset += pageSize
+          hasMore = notasPage.length === pageSize
         } else {
-          colaboradoresData = colaboradoresResult || []
+          hasMore = false
         }
-      } catch (err) {
-        console.error('❌ Erro ao processar colaboradores:', err)
-        colaboradoresData = []
+      }
+      
+      const notasEvolucaoMensal = todasNotasEvolucaoMensal
+
+      for (let i = 29; i >= 0; i--) {
+        const data = new Date(hojeEvolucao)
+        data.setDate(data.getDate() - i)
+        const dataStr = data.toISOString().split("T")[0]
+        const dataDiaSeguinte = new Date(data)
+        dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+        const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split("T")[0]
+
+        const carrosIdsDia = new Set<string>()
+
+        // carros ativos dos últimos 30 dias - aplicar regra de 06:00
+        ;(carrosEvolucaoMensal || []).forEach((carro: any) => {
+          if (!carro.id) return
+          const ts = (carro.created_at || carro.data_criacao || carro.data) as
+            | string
+            | Date
+            | null
+            | undefined
+          
+          if (!ts) {
+            const dataCarro = carro.data as string
+            if (dataCarro === dataStr) carrosIdsDia.add(String(carro.id))
+            return
+          }
+
+          try {
+            const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+            if (isNaN(dataHora.getTime())) {
+              const dataCarro = carro.data as string
+              if (dataCarro === dataStr) carrosIdsDia.add(String(carro.id))
+              return
+            }
+
+            const dataStrCarro = dataHora.toISOString().split('T')[0]
+            const hora = dataHora.getUTCHours()
+
+            // REGRA: Dia X = carros criados das 06:00 de X até 05:59 de X+1
+            if ((dataStrCarro === dataStr && hora >= 6) || (dataStrCarro === dataDiaSeguinteStr && hora < 6)) {
+              carrosIdsDia.add(String(carro.id))
+            }
+          } catch {
+            const dataCarro = carro.data as string
+            if (dataCarro === dataStr) carrosIdsDia.add(String(carro.id))
+          }
+        })
+
+        const carrosDia = carrosIdsDia.size
+
+        // Notas - aplicar regra de 06:00
+        const notasDia = (notasEvolucaoMensal || []).filter((n: any) => {
+          const ts = (n.timestamp_bipagem || n.data) as string | Date | null | undefined
+          const notaData = n.data as string
+          if (!notaData) return false
+
+          if (!ts || ts === notaData) {
+            // Sem timestamp válido, verificar se a data está no range
+            return notaData === dataStr || notaData === dataDiaSeguinteStr
+          }
+
+          try {
+            const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+            if (isNaN(dataHora.getTime())) {
+              return notaData === dataStr || notaData === dataDiaSeguinteStr
+            }
+
+            const dataStrNota = dataHora.toISOString().split('T')[0]
+            const hora = dataHora.getUTCHours()
+
+            // REGRA: Dia X = notas bipadas das 06:00 de X até 05:59 de X+1
+            return (dataStrNota === dataStr && hora >= 6) || (dataStrNota === dataDiaSeguinteStr && hora < 6)
+          } catch {
+            return notaData === dataStr || notaData === dataDiaSeguinteStr
+          }
+        })
+
+        const notasCountDia = notasDia.length
+        const volumesDia =
+          notasDia.reduce((acc, n: any) => {
+            const vol = Number(n.volumes) || 0
+            if (isNaN(vol)) {
+              console.warn('⚠️ Volume inválido na nota:', n.id, n.volumes)
+              return acc
+            }
+            return acc + vol
+          }, 0)
+
+        evolucaoMensal.push({
+          data: dataStr,
+          carros: Number(carrosDia) || 0,
+          notas: Number(notasCountDia) || 0,
+          volumes: volumesDia,
+        })
       }
 
-      // Processar dados dos colaboradores
-      const colaboradoresMap = new Map<string, {
-        nome: string
-        carros_processados: number
-        notas_processadas: number
-        volumes_processados: number
-        turno: string
-        data: string
-      }>()
+      // 10) COLABORADORES DESTAQUE (baseado em notasHoje)
+      const colaboradoresMap = new Map<
+        string,
+        {
+          nome: string
+          carros_processados: number
+          notas_processadas: number
+          volumes_processados: number
+          turno: string
+          data: string
+        }
+      >()
 
-      colaboradoresData.forEach(nota => {
-        // Processar array de colaboradores
-        const colaboradores = Array.isArray(nota.colaboradores) ? nota.colaboradores : [nota.colaboradores || 'Colaborador']
-        const data = nota.data
-        
-        // Usar o campo turno do banco de dados
-        let turno = 'manha' // Default
-        const turnoNota = String(nota.turno || 'A').toUpperCase()
+      notasHoje.forEach((nota: any) => {
+        const colaboradores = Array.isArray(nota.colaboradores)
+          ? nota.colaboradores
+          : [nota.colaboradores || "Colaborador"]
+
+        const ts = (nota.timestamp_bipagem || nota.data) as
+          | string
+          | Date
+          | null
+          | undefined
+        const dataProducao = calcularDataCorreta(ts, nota.data)
+
+        let turno = "manha"
+        const turnoNota = String(nota.turno || "A").toUpperCase()
         switch (turnoNota) {
-          case 'A':
-            turno = 'manha'
+          case "A":
+            turno = "manha"
             break
-          case 'B':
-            turno = 'tarde'
+          case "B":
+            turno = "tarde"
             break
-          case 'C':
-            turno = 'noite'
+          case "C":
+            turno = "noite"
             break
-          case 'D':
-            turno = 'madrugada'
+          case "D":
+            turno = "madrugada"
             break
-          default:
-            // Fallback para turnos não reconhecidos - usar hora como backup
-            const hora = new Date(nota.timestamp_bipagem).getHours()
-            if (hora >= 12 && hora < 18) turno = 'tarde'
-            else if (hora >= 18 && hora < 24) turno = 'noite'
-            else if (hora >= 0 && hora < 6) turno = 'madrugada'
-            else turno = 'manha'
         }
 
-        colaboradores.forEach((colaborador: string) => {
-          if (!colaboradoresMap.has(colaborador)) {
-            colaboradoresMap.set(colaborador, {
-              nome: colaborador,
+        colaboradores.forEach((colabNome: string) => {
+          if (!colabNome) return
+          if (!colaboradoresMap.has(colabNome)) {
+            colaboradoresMap.set(colabNome, {
+              nome: colabNome,
               carros_processados: 0,
               notas_processadas: 0,
               volumes_processados: 0,
               turno,
-              data
+              data: dataProducao,
             })
           }
-
-          const colab = colaboradoresMap.get(colaborador)!
+          const colab = colaboradoresMap.get(colabNome)!
           colab.notas_processadas++
-          colab.volumes_processados += nota.volumes || 1
+          colab.volumes_processados += nota.volumes ?? 1
         })
       })
 
-      // Calcular carros processados por colaborador (aproximação)
-      colaboradoresMap.forEach((colab, nome) => {
-        colab.carros_processados = Math.ceil(colab.notas_processadas / 10) // Aproximação: 10 notas por carro
+      colaboradoresMap.forEach((colab) => {
+        // aproximação: 10 notas por carro
+        colab.carros_processados = Math.ceil(colab.notas_processadas / 10)
       })
 
-      // Ordenar colaboradores por produtividade baseada no tempo
-      const colaboradoresDestaque = Array.from(colaboradoresMap.values())
-        .map(colab => {
-          // Calcular produtividade baseada no tempo de trabalho
-          const horasTrabalhadas = 7 * 8 // 7 dias * 8 horas por dia (assumindo 8h por turno)
-          const produtividadePorHora = colab.volumes_processados / horasTrabalhadas
-          
+      const colaboradoresDestaque: ColaboradorDestaque[] = Array.from(
+        colaboradoresMap.values()
+      )
+        .map((colab) => {
+          // produtividade simples: volumes / 6h (um turno)
+          const horasTrabalho = 6
+          const produtividade = colab.volumes_processados / horasTrabalho
           return {
             ...colab,
-            produtividade_media: Math.round(produtividadePorHora * 100) / 100
+            produtividade_media: Math.round(produtividade * 100) / 100,
           }
         })
         .sort((a, b) => b.produtividade_media - a.produtividade_media)
         .slice(0, 5)
 
-      // Buscar evolução do período
-      const evolucaoSemanal = []
-      const diasDiferenca = Math.ceil((new Date(dataFim).getTime() - new Date(dataInicio).getTime()) / (1000 * 60 * 60 * 24))
-      const diasParaMostrar = Math.min(diasDiferenca + 1, 7) // Máximo 7 dias
-      
-      for (let i = diasParaMostrar - 1; i >= 0; i--) {
-        const data = new Date(dataFim)
-        data.setDate(data.getDate() - i)
-        const dataStr = data.toISOString().split('T')[0]
-        
-        // Coletar IDs únicos de carros do dia
-        const carrosIdsDia = new Set<string>()
-        
-        // Carros ativos do dia
-        if (carrosHoje) {
-          carrosHoje.forEach(carro => {
-            if ((carro.data as string) === dataStr && carro.id) {
-              carrosIdsDia.add(String(carro.id))
-            }
-          })
-        }
-        
-        // Carros finalizados do dia
-        if (carrosFinalizados && carrosFinalizados.length > 0) {
-          carrosFinalizados.forEach(item => {
-            if (item.carros && Array.isArray(item.carros)) {
-              item.carros.forEach((carro: any) => {
-                const dataCarro = carro.data || carro.data_criacao
-                if (dataCarro && dataCarro.startsWith(dataStr) && carro.id) {
-                  carrosIdsDia.add(String(carro.id))
-                }
-              })
-            }
-          })
-        }
-        
-        const carrosDia = carrosIdsDia.size
-        const notasDia = notasHoje?.filter(n => n.data === dataStr).length || 0
-        const volumesDia = notasHoje?.filter(n => n.data === dataStr)
-          .reduce((acc, n) => acc + ((n.volumes as number) || 1), 0) || 0
-
-        evolucaoSemanal.push({
-          data: dataStr,
-          carros: carrosDia,
-          notas: notasDia,
-          volumes: volumesDia
-        })
-      }
-
-      const totalNotasHoje = notasHoje?.length || 0
-      const totalVolumesHoje = notasHoje?.reduce((acc, n) => acc + ((n.volumes as number) || 1), 0) || 0
-
-      // Calcular produtividade baseada no período
+      // 11) PRODUTIVIDADE MÉDIA (volumes/hora)
       const calcularProdutividadePorTempo = () => {
-        if (totalNotasHoje === 0) return 0
-        
-        if (periodoSelecionado === 'hoje') {
-          // Para hoje: calcular baseado nas horas trabalhadas
-          const agora = new Date()
-          const horaAtual = agora.getHours()
-          
-          let horasTrabalhadas = 0
-          
-          // Determinar turno atual e calcular horas trabalhadas
-          if (horaAtual >= 6 && horaAtual < 12) {
-            // Turno manhã (6h às 12h)
-            horasTrabalhadas = Math.max(0, horaAtual - 6)
-          } else if (horaAtual >= 12 && horaAtual < 18) {
-            // Turno tarde (12h às 18h)
-            horasTrabalhadas = Math.max(0, horaAtual - 12)
-          } else if (horaAtual >= 18 && horaAtual < 24) {
-            // Turno noite (18h às 24h)
-            horasTrabalhadas = Math.max(0, horaAtual - 18)
-          } else {
-            // Turno madrugada (0h às 6h)
-            horasTrabalhadas = Math.max(0, horaAtual + 6)
-          }
-          
-          // Se for início do dia, assumir 1 hora para evitar divisão por zero
-          if (horasTrabalhadas === 0) {
-            horasTrabalhadas = 1
-          }
-          
-          // Produtividade = notas por hora
-          const produtividade = totalNotasHoje / horasTrabalhadas
-          return Math.round(produtividade * 100) / 100
-        } else {
-          // Para semana/mês: calcular baseado no número de dias
-          const diasDiferenca = Math.ceil((new Date(dataFim).getTime() - new Date(dataInicio).getTime()) / (1000 * 60 * 60 * 24)) + 1
-          const produtividade = totalNotasHoje / diasDiferenca
-          return Math.round(produtividade * 100) / 100
+        if (totalVolumesHoje === 0) return 0
+
+        // período único (hoje ou personalizado com mesma data)
+        const isPeriodoUnicoDia =
+          periodoSelecionado === "hoje" ||
+          (periodoSelecionado === "personalizado" && dataSelecionada === dataFim)
+
+        if (isPeriodoUnicoDia) {
+          if (notasHoje.length === 0) return 0
+
+          const timestamps = notasHoje
+            .map((n: any) => {
+              try {
+                const ts = (n.timestamp_bipagem || n.data) as
+                  | string
+                  | Date
+                  | null
+                  | undefined
+                return ts ? new Date(ts).getTime() : null
+              } catch {
+                return null
+              }
+            })
+            .filter((ts): ts is number => ts !== null)
+            .sort((a, b) => a - b)
+
+          if (timestamps.length === 0) return 0
+
+          const primeiro = timestamps[0]
+          const ultimo = timestamps[timestamps.length - 1]
+          const diffHoras = (ultimo - primeiro) / (1000 * 60 * 60)
+          const horasTrabalhadas = Math.max(1, diffHoras + 1)
+
+          return Math.round((totalVolumesHoje / horasTrabalhadas) * 100) / 100
         }
+
+        // período maior (semana, mês, personalizado intervalo)
+        const diffMs2 =
+          new Date(dataFimCalculada).getTime() - new Date(dataInicio).getTime()
+        const dias = Math.floor(diffMs2 / (1000 * 60 * 60 * 24)) + 1
+        const horasEstimadas = dias * 6 // 6h por dia
+        const horas = Math.max(1, horasEstimadas)
+        return Math.round((totalVolumesHoje / horas) * 100) / 100
       }
 
       const produtividadeMediaHoje = calcularProdutividadePorTempo()
 
-      const dashboardData: EstatisticasDashboard = {
+      const novoDashboardData: EstatisticasDashboard = {
         total_carros_hoje: totalCarrosHoje,
         total_notas_hoje: totalNotasHoje,
         total_volumes_hoje: totalVolumesHoje,
         produtividade_media_hoje: produtividadeMediaHoje,
         carros_por_turno: carrosPorTurno,
+        volumes_por_turno: volumesPorTurno,
         evolucao_semanal: evolucaoSemanal,
-        colaboradores_destaque: colaboradoresDestaque
+        evolucao_mensal: evolucaoMensal,
+        colaboradores_destaque: colaboradoresDestaque,
       }
 
-      console.log('✅ Dashboard data criado:', dashboardData)
-      console.log('🔍 Debug - Total de carros hoje:', totalCarrosHoje)
-      setDashboardData(dashboardData)
+      setDashboardData(novoDashboardData)
     } catch (err) {
-      console.error('❌ Erro ao carregar dados do dashboard:', err)
-      
-      // Criar dados de fallback em caso de erro
-      const fallbackData: EstatisticasDashboard = {
+      console.error("Erro ao carregar dados do dashboard:", err)
+      setDashboardData({
         total_carros_hoje: 0,
         total_notas_hoje: 0,
         total_volumes_hoje: 0,
@@ -537,23 +1185,31 @@ export default function DashboardEstatisticas() {
           manha: 0,
           tarde: 0,
           noite: 0,
-          madrugada: 0
+          madrugada: 0,
+        },
+        volumes_por_turno: {
+          manha: 0,
+          tarde: 0,
+          noite: 0,
+          madrugada: 0,
         },
         evolucao_semanal: [],
-        colaboradores_destaque: []
-      }
-      
-      setDashboardData(fallbackData)
-      setError(`Erro ao carregar dados: ${err instanceof Error ? err.message : 'Erro desconhecido'}`)
+        evolucao_mensal: [],
+        colaboradores_destaque: [],
+      })
+      setError(
+        `Erro ao carregar dados: ${
+          err instanceof Error ? err.message : "Erro desconhecido"
+        }`
+      )
     } finally {
       setLoading(false)
     }
-  }, [periodoSelecionado])
+  }, [periodoSelecionado, dataSelecionada, dataFim])
 
   useEffect(() => {
-    console.log('🔄 useEffect executado, periodoSelecionado:', periodoSelecionado)
     carregarDashboardData()
-  }, [periodoSelecionado, carregarDashboardData])
+  }, [periodoSelecionado, dataSelecionada, dataFim, carregarDashboardData])
 
   const getVariacaoIcon = (valor: number, comparacao: number) => {
     if (valor > comparacao) return <ArrowUp className="h-4 w-4 text-green-500" />
@@ -577,19 +1233,19 @@ export default function DashboardEstatisticas() {
           <Button onClick={carregarDashboardData} variant="outline">
             Tentar Novamente
           </Button>
-          <Button 
+          <Button
             onClick={async () => {
               try {
                 const supabase = getSupabase()
-                console.log('🔍 Testando conexão com Supabase...')
-                const { data, error } = await supabase.from('carros_status').select('count').limit(1)
-                console.log('📊 Teste de conexão:', { data, error })
-                alert(`Conexão: ${error ? 'ERRO - ' + error.message : 'OK'}`)
+                const { data, error } = await supabase
+                  .from("carros_status")
+                  .select("count")
+                  .limit(1)
+                alert(`Conexão: ${error ? "ERRO - " + error.message : "OK"}`)
               } catch (err) {
-                console.error('❌ Erro no teste:', err)
-                alert('Erro no teste de conexão')
+                alert("Erro no teste de conexão")
               }
-            }} 
+            }}
             variant="secondary"
           >
             Testar Conexão
@@ -604,34 +1260,104 @@ export default function DashboardEstatisticas() {
       {/* Header do Dashboard */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">Dashboard de Estatísticas</h1>
-          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">Visão geral da produtividade e performance do sistema</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
+            Dashboard de Estatísticas
+          </h1>
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
+            Visão geral da produtividade e performance do sistema
+          </p>
         </div>
-        <div className="flex space-x-2">
-          <Button
-            variant={periodoSelecionado === 'hoje' ? 'default' : 'outline'}
-            onClick={() => setPeriodoSelecionado('hoje')}
-            size="sm"
-            className="text-xs sm:text-sm"
-          >
-            Hoje
-          </Button>
-          <Button
-            variant={periodoSelecionado === 'semana' ? 'default' : 'outline'}
-            onClick={() => setPeriodoSelecionado('semana')}
-            size="sm"
-            className="text-xs sm:text-sm"
-          >
-            Semana
-          </Button>
-          <Button
-            variant={periodoSelecionado === 'mes' ? 'default' : 'outline'}
-            onClick={() => setPeriodoSelecionado('mes')}
-            size="sm"
-            className="text-xs sm:text-sm"
-          >
-            Mês
-          </Button>
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+          <div className="flex space-x-2">
+            <Button
+              variant={periodoSelecionado === "hoje" ? "default" : "outline"}
+              onClick={() => {
+                setPeriodoSelecionado("hoje")
+                setDataSelecionada(new Date().toISOString().split("T")[0])
+              }}
+              size="sm"
+              className="text-xs sm:text-sm"
+            >
+              Hoje
+            </Button>
+            <Button
+              variant={periodoSelecionado === "semana" ? "default" : "outline"}
+              onClick={() => setPeriodoSelecionado("semana")}
+              size="sm"
+              className="text-xs sm:text-sm"
+            >
+              Semana
+            </Button>
+            <Button
+              variant={periodoSelecionado === "mes" ? "default" : "outline"}
+              onClick={() => setPeriodoSelecionado("mes")}
+              size="sm"
+              className="text-xs sm:text-sm"
+            >
+              Mês
+            </Button>
+            <Button
+              variant={periodoSelecionado === "personalizado" ? "default" : "outline"}
+              onClick={() => setPeriodoSelecionado("personalizado")}
+              size="sm"
+              className="text-xs sm:text-sm"
+            >
+              Personalizado
+            </Button>
+          </div>
+
+          {periodoSelecionado === "hoje" && (
+            <div className="flex items-center gap-2">
+              <Label htmlFor="data-filtro" className="text-xs sm:text-sm whitespace-nowrap">
+                Data:
+              </Label>
+              <Input
+                id="data-filtro"
+                type="date"
+                value={dataSelecionada}
+                onChange={(e) => setDataSelecionada(e.target.value)}
+                className="h-8 sm:h-9 text-xs sm:text-sm w-32 sm:w-40"
+                max={new Date().toISOString().split("T")[0]}
+              />
+            </div>
+          )}
+
+          {periodoSelecionado === "personalizado" && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <Label htmlFor="data-inicio" className="text-xs sm:text-sm whitespace-nowrap">
+                  De:
+                </Label>
+                <Input
+                  id="data-inicio"
+                  type="date"
+                  value={dataSelecionada}
+                  onChange={(e) => {
+                    setDataSelecionada(e.target.value)
+                    if (e.target.value > dataFim) {
+                      setDataFim(e.target.value)
+                    }
+                  }}
+                  className="h-8 sm:h-9 text-xs sm:text-sm w-32 sm:w-40"
+                  max={new Date().toISOString().split("T")[0]}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="data-fim" className="text-xs sm:text-sm whitespace-nowrap">
+                  Até:
+                </Label>
+                <Input
+                  id="data-fim"
+                  type="date"
+                  value={dataFim}
+                  onChange={(e) => setDataFim(e.target.value)}
+                  className="h-8 sm:h-9 text-xs sm:text-sm w-32 sm:w-40"
+                  min={dataSelecionada}
+                  max={new Date().toISOString().split("T")[0]}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -641,14 +1367,22 @@ export default function DashboardEstatisticas() {
           <CardContent className="p-3 sm:p-6">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-blue-100 text-xs sm:text-sm font-medium truncate">Carros Processados</p>
-                <p className="text-xl sm:text-3xl font-bold">{dashboardData?.total_carros_hoje || 0}</p>
-                <p className="text-blue-200 text-xs mt-1 truncate">
-                  {periodoSelecionado === 'hoje' ? 'Hoje' : 
-                   periodoSelecionado === 'semana' ? 'Última Semana' : 
-                   'Último Mês'}
+                <p className="text-blue-100 text-xs sm:text-sm font-medium truncate">
+                  Carros Processados
                 </p>
-              </div> 
+                <p className="text-xl sm:text-3xl font-bold">
+                  {dashboardData?.total_carros_hoje || 0}
+                </p>
+                <p className="text-blue-200 text-xs mt-1 truncate">
+                  {periodoSelecionado === "hoje"
+                    ? "Hoje"
+                    : periodoSelecionado === "semana"
+                    ? "Última Semana"
+                    : periodoSelecionado === "mes"
+                    ? "Último Mês"
+                    : `${formatarData(dataSelecionada)} - ${formatarData(dataFim)}`}
+                </p>
+              </div>
               <Truck className="h-6 w-6 sm:h-12 sm:w-12 text-blue-200 flex-shrink-0" />
             </div>
           </CardContent>
@@ -658,12 +1392,20 @@ export default function DashboardEstatisticas() {
           <CardContent className="p-3 sm:p-6">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-green-100 text-xs sm:text-sm font-medium truncate">Notas Bipadas</p>
-                <p className="text-xl sm:text-3xl font-bold">{dashboardData?.total_notas_hoje || 0}</p>
+                <p className="text-green-100 text-xs sm:text-sm font-medium truncate">
+                  Notas Bipadas
+                </p>
+                <p className="text-xl sm:text-3xl font-bold">
+                  {dashboardData?.total_notas_hoje || 0}
+                </p>
                 <p className="text-green-200 text-xs mt-1 truncate">
-                  {periodoSelecionado === 'hoje' ? 'Hoje' : 
-                   periodoSelecionado === 'semana' ? 'Última Semana' : 
-                   'Último Mês'}
+                  {periodoSelecionado === "hoje"
+                    ? "Hoje"
+                    : periodoSelecionado === "semana"
+                    ? "Última Semana"
+                    : periodoSelecionado === "mes"
+                    ? "Último Mês"
+                    : `${formatarData(dataSelecionada)} - ${formatarData(dataFim)}`}
                 </p>
               </div>
               <Activity className="h-6 w-6 sm:h-12 sm:w-12 text-green-200 flex-shrink-0" />
@@ -675,12 +1417,20 @@ export default function DashboardEstatisticas() {
           <CardContent className="p-3 sm:p-6">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-purple-100 text-xs sm:text-sm font-medium truncate">Volumes Processados</p>
-                <p className="text-xl sm:text-3xl font-bold">{dashboardData?.total_volumes_hoje || 0}</p>
+                <p className="text-purple-100 text-xs sm:text-sm font-medium truncate">
+                  Volumes Processados
+                </p>
+                <p className="text-xl sm:text-3xl font-bold">
+                  {dashboardData?.total_volumes_hoje || 0}
+                </p>
                 <p className="text-purple-200 text-xs mt-1 truncate">
-                  {periodoSelecionado === 'hoje' ? 'Hoje' : 
-                   periodoSelecionado === 'semana' ? 'Última Semana' : 
-                   'Último Mês'}
+                  {periodoSelecionado === "hoje"
+                    ? "Hoje"
+                    : periodoSelecionado === "semana"
+                    ? "Última Semana"
+                    : periodoSelecionado === "mes"
+                    ? "Último Mês"
+                    : `${formatarData(dataSelecionada)} - ${formatarData(dataFim)}`}
                 </p>
               </div>
               <Package className="h-6 w-6 sm:h-12 sm:w-12 text-purple-200 flex-shrink-0" />
@@ -692,13 +1442,13 @@ export default function DashboardEstatisticas() {
           <CardContent className="p-3 sm:p-6">
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1">
-                <p className="text-orange-100 text-xs sm:text-sm font-medium truncate">Produtividade Média</p>
-                <p className="text-xl sm:text-3xl font-bold">{dashboardData?.produtividade_media_hoje || 0}</p>
-                <p className="text-orange-200 text-xs mt-1 truncate">
-                  {periodoSelecionado === 'hoje' ? 'Notas/Hora' : 
-                   periodoSelecionado === 'semana' ? 'Notas/Dia' : 
-                   'Notas/Dia'}
+                <p className="text-orange-100 text-xs sm:text-sm font-medium truncate">
+                  Produtividade Média
                 </p>
+                <p className="text-xl sm:text-3xl font-bold">
+                  {dashboardData?.produtividade_media_hoje || 0}
+                </p>
+                <p className="text-orange-200 text-xs mt-1 truncate">Caixas/Hora</p>
               </div>
               <Target className="h-6 w-6 sm:h-12 sm:w-12 text-orange-200 flex-shrink-0" />
             </div>
@@ -716,34 +1466,55 @@ export default function DashboardEstatisticas() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            {Object.entries(dashboardData?.carros_por_turno || {}).map(([turno, quantidade]) => (
-              <div key={turno} className="bg-gray-50 dark:bg-gray-800 p-3 sm:p-4 rounded-lg border dark:border-gray-700">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm sm:text-base">{formatarTurno(turno)}</h4>
-                  <Badge variant="outline" className="text-xs">
-                    {quantidade} carros
-                  </Badge>
-                </div>
-                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                  <div 
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                    style={{ 
-                      width: `${(() => {
-                        const valores = Object.values(dashboardData?.carros_por_turno || {})
-                        const maxValor = Math.max(...valores, 1) // Evitar divisão por zero
-                        return Math.min((quantidade / maxValor) * 100, 100)
-                      })()}%` 
-                    }}
-                  ></div>
-                </div>
-                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
-                  {(() => {
-                    const total = dashboardData?.total_carros_hoje || 0
-                    return total > 0 ? Math.round((quantidade / total) * 100) : 0
-                  })()}% do total
-                </p>
-              </div>
-            ))}
+            {Object.entries(dashboardData?.carros_por_turno || {}).map(
+              ([turno, quantidade]) => {
+                const volumesTurno = dashboardData?.volumes_por_turno?.[turno as keyof typeof dashboardData.volumes_por_turno] || 0
+                return (
+                  <div
+                    key={turno}
+                    className="bg-gray-50 dark:bg-gray-800 p-3 sm:p-4 rounded-lg border dark:border-gray-700"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-800 dark:text-gray-200 text-sm sm:text-base">
+                        {formatarTurno(turno)}
+                      </h4>
+                      <Badge variant="outline" className="text-xs">
+                        {quantidade} carros
+                      </Badge>
+                    </div>
+                    <div className="mb-2">
+                      <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-1">
+                        <span>Volumes</span>
+                        <span className="font-semibold text-gray-800 dark:text-gray-200">{volumesTurno.toLocaleString('pt-BR')}</span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${(() => {
+                            const valores = Object.values(
+                              dashboardData?.carros_por_turno || {}
+                            )
+                            const maxValor = Math.max(...valores, 1)
+                            return Math.min((quantidade / maxValor) * 100, 100)
+                          })()}%`,
+                        }}
+                      ></div>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                      {(() => {
+                        const total = dashboardData?.total_carros_hoje || 0
+                        return total > 0
+                          ? Math.round((quantidade / total) * 100)
+                          : 0
+                      })()}
+                      % do total
+                    </p>
+                  </div>
+                )
+              }
+            )}
           </div>
         </CardContent>
       </Card>
@@ -751,135 +1522,232 @@ export default function DashboardEstatisticas() {
       {/* Evolução da Produtividade */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
-            <span className="text-lg sm:text-xl">
-              <span className="hidden sm:inline">Evolução da Produtividade ({periodoSelecionado === 'hoje' ? 'Hoje' : periodoSelecionado === 'semana' ? 'Última Semana' : 'Último Mês'})</span>
-              <span className="sm:hidden">Evolução ({periodoSelecionado === 'hoje' ? 'Hoje' : periodoSelecionado === 'semana' ? 'Semana' : 'Mês'})</span>
-            </span>
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center space-x-2">
+              <TrendingUp className="h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
+              <span className="text-lg sm:text-xl">
+                <span className="hidden sm:inline">
+                  Evolução da Produtividade (
+                  {periodoSelecionado === "hoje"
+                    ? "Hoje"
+                    : periodoSelecionado === "semana"
+                    ? "Última Semana"
+                    : "Último Mês"}
+                  )
+                </span>
+                <span className="sm:hidden">
+                  Evolução (
+                  {periodoSelecionado === "hoje"
+                    ? "Hoje"
+                    : periodoSelecionado === "semana"
+                    ? "Semana"
+                    : "Mês"}
+                  )
+                </span>
+              </span>
+            </CardTitle>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant={visaoEvolucao === "semanal" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setVisaoEvolucao("semanal")}
+              >
+                Semanal
+              </Button>
+              <Button
+                variant={visaoEvolucao === "mensal" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setVisaoEvolucao("mensal")}
+              >
+                Mensal
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* Gráfico de linha simples */}
             <div className="bg-gray-50 dark:bg-gray-800 p-3 sm:p-6 rounded-lg">
-              <div className="h-48 sm:h-64 relative">
-                <svg className="w-full h-full" viewBox="0 0 800 200" preserveAspectRatio="xMidYMid meet">
-                  {/* Grid lines */}
+              <div className="h-64 sm:h-96 relative">
+                <svg
+                  className="w-full h-full"
+                  viewBox="0 0 800 300"
+                  preserveAspectRatio="xMidYMid meet"
+                >
                   <defs>
-                    <pattern id="grid" width="100" height="40" patternUnits="userSpaceOnUse">
-                      <path d="M 100 0 L 0 0 0 40" fill="none" stroke="#e5e7eb" strokeWidth="1"/>
+                    <pattern
+                      id="grid"
+                      width="100"
+                      height="40"
+                      patternUnits="userSpaceOnUse"
+                    >
+                      <path
+                        d="M 100 0 L 0 0 0 40"
+                        fill="none"
+                        stroke="#e5e7eb"
+                        strokeWidth="1"
+                      />
                     </pattern>
                   </defs>
                   <rect width="100%" height="100%" fill="url(#grid)" />
-                  
-                  {/* Chart area */}
-                  <rect x="80" y="20" width="640" height="160" fill="white" stroke="#e5e7eb" strokeWidth="1" rx="4"/>
 
-                  
-                  {/* Data points and lines */}
-                  {dashboardData?.evolucao_semanal.map((dia, index) => {
-                    const x = 100 + (index * 90)
-                    const maxCarros = Math.max(...(dashboardData?.evolucao_semanal.map(d => d.carros) || [1]))
-                    const y = 180 - (dia.carros / maxCarros) * 140
-                    
+                  <rect
+                    x="90"
+                    y="20"
+                    width="700"
+                    height="240"
+                    fill="white"
+                    stroke="#e5e7eb"
+                    strokeWidth="1"
+                    rx="4"
+                  />
+
+                  {(() => {
+                    const dadosEvolucao = visaoEvolucao === "semanal" 
+                      ? dashboardData?.evolucao_semanal || []
+                      : dashboardData?.evolucao_mensal || []
+                    const numDados = dadosEvolucao.length
+                    const larguraDisponivel = 640
+                    const espacamento = numDados > 0 ? larguraDisponivel / Math.max(numDados - 1, 1) : 90
+                    const maxVolumes = Math.max(
+                      ...(dadosEvolucao.map((d) => Number(d.volumes) || 0) || [1])
+                    ) || 1
+
                     return (
-                      <g key={index}>
-                        {/* Data point */}
-                        <circle
-                          cx={x}
-                          cy={y}
-                          r="4"
-                          fill="#3b82f6"
-                          stroke="white dark:stroke-gray-400"
-                          strokeWidth="2"
-                        />
-                        {/* Value label */}
-                        <text
-                          x={x}
-                          y={y - 10}
-                          className="text-xs fill-gray-600 dark:fill-gray-400"
-                          textAnchor="middle"
-                        >
-                          {dia.carros}
-                        </text>
-                        {/* Date label */}
-                        <text
-                          x={x}
-                          y="195"
-                          className="text-xs fill-gray-500 dark:fill-gray-400"
-                          textAnchor="middle"
-                        >
-                          {formatarData(dia.data)}
-                        </text>
-                        {/* Line to next point */}
-                        {index < (dashboardData?.evolucao_semanal.length || 0) - 1 && (
-                          <line
-                            x1={x}
-                            y1={y}
-                            x2={x + 90}
-                            y2={180 - ((dashboardData?.evolucao_semanal[index + 1]?.carros || 0) / maxCarros) * 140}
-                            stroke="#3b82f6"
-                            strokeWidth="2"
-                          />
-                        )}
-                      </g>
+                      <>
+                        {dadosEvolucao.map((dia, index) => {
+                          const x = 100 + index * espacamento
+                          const volumesDia = Number(dia.volumes) || 0
+                          const y = 260 - (volumesDia / maxVolumes) * 220
+
+                          return (
+                            <g key={index}>
+                              <circle
+                                cx={x}
+                                cy={y}
+                                r="5"
+                                fill="#3b82f6"
+                                stroke="white"
+                                strokeWidth="2"
+                              />
+                              {/* Value label - apenas para semanal ou se houver espaço */}
+                              {visaoEvolucao === "semanal" && (
+                                <text
+                                  x={x}
+                                  y={y - 12}
+                                  className="text-xs fill-gray-600"
+                                  textAnchor="middle"
+                                >
+                                  {volumesDia.toLocaleString('pt-BR')}
+                                </text>
+                              )}
+                              {/* Date label */}
+                              <text
+                                x={x}
+                                y="285"
+                                className="text-xs fill-gray-500"
+                                textAnchor="middle"
+                              >
+                                {visaoEvolucao === "semanal" 
+                                  ? formatarData(dia.data)
+                                  : new Date(dia.data).getDate().toString()}
+                              </text>
+                              {index < dadosEvolucao.length - 1 && (
+                                <line
+                                  x1={x}
+                                  y1={y}
+                                  x2={x + espacamento}
+                                  y2={
+                                    260 -
+                                    ((Number(dadosEvolucao[index + 1]?.volumes) || 0) /
+                                      maxVolumes) *
+                                      220
+                                  }
+                                  stroke="#3b82f6"
+                                  strokeWidth="2"
+                                />
+                              )}
+                            </g>
+                          )
+                        })}
+
+                        {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
+                          const value = Math.round(maxVolumes * ratio)
+                          return (
+                            <text
+                              key={index}
+                              x="75"
+                              y={260 - ratio * 220}
+                              className="text-xs fill-gray-600"
+                              textAnchor="end"
+                            >
+                              {value.toLocaleString('pt-BR')}
+                            </text>
+                          )
+                        })}
+                      </>
                     )
-                  })}
-                  
-                  {/* Y-axis labels */}
-                  {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
-                    const value = Math.round((Math.max(...(dashboardData?.evolucao_semanal.map(d => d.carros) || [1])) * ratio))
-                    return (
-                      <text
-                        key={index}
-                        x="75"
-                        y={180 - (ratio * 140)}
-                        className="text-xs fill-gray-600 dark:fill-gray-400"
-                        textAnchor="end"
-                      >
-                        {value}
-                      </text>
-                    )
-                  })}
-                  
-                  {/* Chart title */}
+                  })()}
+
                   <text
                     x="400"
                     y="15"
-                    className="text-sm fill-gray-800 font-semibold dark:fill-gray-300"
+                    className="text-sm fill-gray-800 font-semibold"
                     textAnchor="middle"
                   >
-                    Carros Processados por Dia
+                    Volumes Processados por Dia
                   </text>
                 </svg>
               </div>
             </div>
 
-            {/* Tabela de dados - Desktop */}
+            {/* Tabela Desktop */}
             <div className="hidden sm:block overflow-x-auto dark:bg-gray-800">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 dark:bg-gray-800">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Data</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Carros</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Notas</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Volumes</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider dark:text-gray-400">Produtividade</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Data
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Carros
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Notas
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Volumes
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Produtividade
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200 dark:bg-gray-800 dark:divide-gray-700">
-                  {dashboardData?.evolucao_semanal.map((dia, index) => (
-                    <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                  {(visaoEvolucao === "semanal" 
+                    ? dashboardData?.evolucao_semanal || []
+                    : dashboardData?.evolucao_mensal || []
+                  ).map((dia, index) => (
+                    <tr
+                      key={index}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-300">
                         {formatarData(dia.data)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">{dia.carros}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">{dia.notas}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">{dia.volumes}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                        {dia.carros}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                        {dia.notas}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                        {dia.volumes.toLocaleString('pt-BR')}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200">
-                          {dia.carros > 0 ? Math.round((dia.notas / dia.carros) * 100) / 100 : 0}
+                          {(Number(dia.carros) || 0) > 0
+                            ? Math.round(((Number(dia.notas) || 0) / (Number(dia.carros) || 1)) * 100) / 100
+                            : 0}
                         </span>
                       </td>
                     </tr>
@@ -888,28 +1756,50 @@ export default function DashboardEstatisticas() {
               </table>
             </div>
 
-            {/* Cards de dados - Mobile */}
+            {/* Cards Mobile */}
             <div className="sm:hidden space-y-3">
-              {dashboardData?.evolucao_semanal.map((dia, index) => (
-                <div key={index} className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+              {(visaoEvolucao === "semanal" 
+                ? dashboardData?.evolucao_semanal || []
+                : dashboardData?.evolucao_mensal || []
+              ).map((dia, index) => (
+                <div
+                  key={index}
+                  className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700"
+                >
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-semibold text-gray-900 dark:text-gray-300">{formatarData(dia.data)}</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-300">
+                      {formatarData(dia.data)}
+                    </h4>
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200">
-                      {dia.carros > 0 ? Math.round((dia.notas / dia.carros) * 100) / 100 : 0}
+                      {dia.carros > 0
+                        ? Math.round((dia.notas / dia.carros) * 100) / 100
+                        : 0}
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div>
-                      <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{dia.carros}</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">Carros</p>
+                      <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                        {dia.carros}
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        Carros
+                      </p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">{dia.notas}</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">Notas</p>
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                        {dia.notas}
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        Notas
+                      </p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{dia.volumes}</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">Volumes</p>
+                      <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                        {dia.volumes.toLocaleString('pt-BR')}
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        Volumes
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -926,81 +1816,132 @@ export default function DashboardEstatisticas() {
             <Award className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-600 dark:text-yellow-400" />
             <span className="text-lg sm:text-xl">Colaboradores que se Destacaram</span>
           </CardTitle>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Top 5 colaboradores com maior produtividade {periodoSelecionado === 'hoje' ? 'hoje' : periodoSelecionado === 'semana' ? 'na última semana' : 'no último mês'}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Top 5 colaboradores com maior produtividade{" "}
+            {periodoSelecionado === "hoje"
+              ? "hoje"
+              : periodoSelecionado === "semana"
+              ? "na última semana"
+              : "no último mês"}
+          </p>
         </CardHeader>
         <CardContent>
           <div className="space-y-3 sm:space-y-4">
             {dashboardData?.colaboradores_destaque.map((colaborador, index) => (
-              <div key={index} className="p-3 sm:p-4 bg-gray-50 rounded-lg border dark:bg-gray-800 dark:border-gray-700">
-                {/* Layout Desktop */}
+              <div
+                key={index}
+                className="p-3 sm:p-4 bg-gray-50 rounded-lg border dark:bg-gray-800 dark:border-gray-700"
+              >
+                {/* Desktop */}
                 <div className="hidden sm:flex items-center justify-between">
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 text-white font-bold">
-                      {index === 0 ? <Trophy className="h-5 w-5" /> : 
-                       index === 1 ? <Award className="h-5 w-5" /> :
-                       index === 2 ? <Star className="h-5 w-5" /> : index + 1}
+                      {index === 0 ? (
+                        <Trophy className="h-5 w-5" />
+                      ) : index === 1 ? (
+                        <Award className="h-5 w-5" />
+                      ) : index === 2 ? (
+                        <Star className="h-5 w-5" />
+                      ) : (
+                        index + 1
+                      )}
                     </div>
                     <div>
-                      <h4 className="font-semibold text-gray-900 dark:text-gray-300">{colaborador.nome}</h4>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Turno {formatarTurno(colaborador.turno)}</p>
+                      <h4 className="font-semibold text-gray-900 dark:text-gray-300">
+                        {colaborador.nome}
+                      </h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Turno {formatarTurno(colaborador.turno)}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-6">
                     <div className="text-center">
-                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{colaborador.carros_processados}</p>
+                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                        {colaborador.carros_processados}
+                      </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">Carros</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-lg font-bold text-green-600 dark:text-green-400">{colaborador.notas_processadas}</p>
+                      <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                        {colaborador.notas_processadas}
+                      </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">Notas</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-lg font-bold text-purple-600 dark:text-purple-400">{colaborador.volumes_processados}</p>
+                      <p className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                        {colaborador.volumes_processados}
+                      </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">Volumes</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{Math.round(colaborador.produtividade_media * 100) / 100}</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">Volumes/Hora</p>
+                      <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                        {Math.round(colaborador.produtividade_media * 100) / 100}
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        Volumes/Hora
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Layout Mobile */}
+                {/* Mobile */}
                 <div className="sm:hidden space-y-3">
                   <div className="flex items-center space-x-3">
                     <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 text-white font-bold text-sm">
-                      {index === 0 ? <Trophy className="h-4 w-4" /> : 
-                       index === 1 ? <Award className="h-4 w-4" /> :
-                       index === 2 ? <Star className="h-4 w-4" /> : index + 1}
+                      {index === 0 ? (
+                        <Trophy className="h-4 w-4" />
+                      ) : index === 1 ? (
+                        <Award className="h-4 w-4" />
+                      ) : index === 2 ? (
+                        <Star className="h-4 w-4" />
+                      ) : (
+                        index + 1
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-semibold text-gray-900 dark:text-gray-300 text-sm truncate">{colaborador.nome}</h4>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">Turno {formatarTurno(colaborador.turno)}</p>
+                      <h4 className="font-semibold text-gray-900 dark:text-gray-300 text-sm truncate">
+                        {colaborador.nome}
+                      </h4>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        Turno {formatarTurno(colaborador.turno)}
+                      </p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="text-center p-2 bg-white dark:bg-gray-700 rounded">
-                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{colaborador.carros_processados}</p>
+                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                        {colaborador.carros_processados}
+                      </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">Carros</p>
                     </div>
                     <div className="text-center p-2 bg-white dark:bg-gray-700 rounded">
-                      <p className="text-lg font-bold text-green-600 dark:text-green-400">{colaborador.notas_processadas}</p>
+                      <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                        {colaborador.notas_processadas}
+                      </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">Notas</p>
                     </div>
                     <div className="text-center p-2 bg-white dark:bg-gray-700 rounded">
-                      <p className="text-lg font-bold text-purple-600 dark:text-purple-400">{colaborador.volumes_processados}</p>
+                      <p className="text-lg font-bold text-purple-600 dark:text-purple-400">
+                        {colaborador.volumes_processados}
+                      </p>
                       <p className="text-xs text-gray-600 dark:text-gray-400">Volumes</p>
                     </div>
                     <div className="text-center p-2 bg-white dark:bg-gray-700 rounded">
-                      <p className="text-lg font-bold text-orange-600 dark:text-orange-400">{Math.round(colaborador.produtividade_media * 100) / 100}</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">Produtividade</p>
+                      <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                        {Math.round(colaborador.produtividade_media * 100) / 100}
+                      </p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                        Produtividade
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
             ))}
-            
-            {(!dashboardData?.colaboradores_destaque || dashboardData.colaboradores_destaque.length === 0) && (
+
+            {(!dashboardData?.colaboradores_destaque ||
+              dashboardData.colaboradores_destaque.length === 0) && (
               <div className="text-center py-8 text-gray-500">
                 <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
                 <p>Nenhum dado de colaboradores disponível</p>

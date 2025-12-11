@@ -52,6 +52,7 @@ import { useSession } from "@/hooks/use-database";
 // import { useTheme } from "@/contexts/theme-context";
 import ChangePasswordModal from "@/components/admin/change-password-modal";
 import { Loader } from "@/components/ui/loader";
+import { getSupabase } from "@/lib/supabase-client";
 
 interface KPIData {
   id: string;
@@ -91,6 +92,8 @@ export default function CRDKPage() {
   const [selectedPeriod, setSelectedPeriod] = useState("30");
   const [selectedCD, setSelectedCD] = useState("todos");
   const [activeTab, setActiveTab] = useState("visao-geral");
+  const [kpiDataReal, setKpiDataReal] = useState<KPIData[]>([]);
+  const [loadingKPIs, setLoadingKPIs] = useState(true);
   const router = useRouter();
   const { getSession } = useSession();
   
@@ -108,77 +111,371 @@ export default function CRDKPage() {
     console.log('Theme context not available during build');
   }
 
-  // Dados dos KPIs - Dashboard Central ProFlow
-  const kpiData: KPIData[] = [
+  // Função para calcular data de produção (06:00 até 05:59 do dia seguinte)
+  const calcularDataProducao = (timestamp: string | Date | null | undefined): string => {
+    try {
+      if (!timestamp) return new Date().toISOString().split("T")[0];
+      const date = timestamp instanceof Date ? new Date(timestamp) : new Date(timestamp);
+      if (isNaN(date.getTime())) return new Date().toISOString().split("T")[0];
+      date.setHours(date.getHours() - 6);
+      return date.toISOString().split("T")[0];
+    } catch {
+      return new Date().toISOString().split("T")[0];
+    }
+  };
+
+  // Função para carregar dados reais dos KPIs
+  const carregarKPIs = async () => {
+    try {
+      setLoadingKPIs(true);
+      const supabase = getSupabase();
+      if (!supabase) throw new Error("Cliente Supabase não inicializado");
+
+      const hoje = new Date();
+      const hojeStr = hoje.toISOString().split("T")[0];
+      
+      // Calcular data de ontem
+      const ontem = new Date(hoje);
+      ontem.setDate(ontem.getDate() - 1);
+      const ontemStr = ontem.toISOString().split("T")[0];
+
+      // Buscar notas de hoje (com regra de 06:00)
+      const dataFimBusca = new Date(hoje);
+      dataFimBusca.setDate(dataFimBusca.getDate() + 1);
+      const dataFimBuscaStr = dataFimBusca.toISOString().split("T")[0];
+
+      // Buscar todas as notas (hoje e ontem)
+      const { data: notasHoje } = await supabase
+        .from("embalagem_notas_bipadas")
+        .select("id, volumes, data, timestamp_bipagem")
+        .gte("data", hojeStr)
+        .lte("data", dataFimBuscaStr);
+
+      const { data: notasOntem } = await supabase
+        .from("embalagem_notas_bipadas")
+        .select("id, volumes, data, timestamp_bipagem")
+        .gte("data", ontemStr)
+        .lte("data", hojeStr);
+
+      // Filtrar notas de hoje pela regra de 06:00
+      const notasHojeFiltradas = (notasHoje || []).filter((nota) => {
+        const ts = nota.timestamp_bipagem || nota.data;
+        if (!ts) return nota.data === hojeStr;
+        try {
+          const dataHora = new Date(ts);
+          const dataStr = dataHora.toISOString().split('T')[0];
+          const hora = dataHora.getUTCHours();
+          const dataDiaSeguinte = new Date(hojeStr);
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1);
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0];
+          return (dataStr === hojeStr && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6);
+        } catch {
+          return nota.data === hojeStr;
+        }
+      });
+
+      // Filtrar notas de ontem pela regra de 06:00
+      const notasOntemFiltradas = (notasOntem || []).filter((nota) => {
+        const ts = nota.timestamp_bipagem || nota.data;
+        if (!ts) return nota.data === ontemStr;
+        try {
+          const dataHora = new Date(ts);
+          const dataStr = dataHora.toISOString().split('T')[0];
+          const hora = dataHora.getUTCHours();
+          const dataDiaSeguinte = new Date(ontemStr);
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1);
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0];
+          return (dataStr === ontemStr && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6);
+        } catch {
+          return nota.data === ontemStr;
+        }
+      });
+
+      // Buscar carros de hoje
+      const { data: carrosHoje } = await supabase
+        .from("carros_status")
+        .select("id, created_at, data, status_carro")
+        .gte("created_at", `${hojeStr}T00:00:00`)
+        .lte("created_at", `${dataFimBuscaStr}T23:59:59`);
+
+      // Filtrar carros de hoje pela regra de 06:00
+      const carrosHojeFiltrados = (carrosHoje || []).filter((carro) => {
+        const ts = carro.created_at || carro.data;
+        if (!ts) return carro.data === hojeStr;
+        try {
+          const dataHora = new Date(ts);
+          const dataStr = dataHora.toISOString().split('T')[0];
+          const hora = dataHora.getUTCHours();
+          const dataDiaSeguinte = new Date(hojeStr);
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1);
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0];
+          return (dataStr === hojeStr && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6);
+        } catch {
+          return carro.data === hojeStr;
+        }
+      });
+
+      // Buscar carros de ontem
+      const { data: carrosOntem } = await supabase
+        .from("carros_status")
+        .select("id, created_at, data, status_carro")
+        .gte("created_at", `${ontemStr}T00:00:00`)
+        .lte("created_at", `${hojeStr}T23:59:59`);
+
+      // Filtrar carros de ontem pela regra de 06:00
+      const carrosOntemFiltrados = (carrosOntem || []).filter((carro) => {
+        const ts = carro.created_at || carro.data;
+        if (!ts) return carro.data === ontemStr;
+        try {
+          const dataHora = new Date(ts);
+          const dataStr = dataHora.toISOString().split('T')[0];
+          const hora = dataHora.getUTCHours();
+          const dataDiaSeguinte = new Date(ontemStr);
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1);
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0];
+          return (dataStr === ontemStr && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6);
+        } catch {
+          return carro.data === ontemStr;
+        }
+      });
+
+      // Calcular métricas
+      const nfsHoje = notasHojeFiltradas.length;
+      const nfsOntem = notasOntemFiltradas.length;
+      const nfsDiff = nfsHoje - nfsOntem;
+
+      const carrosHojeCount = new Set(carrosHojeFiltrados.map(c => c.id)).size;
+      const carrosOntemCount = new Set(carrosOntemFiltrados.map(c => c.id)).size;
+      const carrosDiff = carrosHojeCount - carrosOntemCount;
+
+      const volumesHoje = notasHojeFiltradas.reduce((acc, n) => acc + (Number(n.volumes) || 0), 0);
+      const volumesOntem = notasOntemFiltradas.reduce((acc, n) => acc + (Number(n.volumes) || 0), 0);
+      const volumesDiff = volumesHoje - volumesOntem;
+
+      // Buscar sessões ativas (colaboradores únicos de hoje)
+      const colaboradoresHoje = new Set<string>();
+      notasHojeFiltradas.forEach((nota: any) => {
+        if (nota.colaboradores && Array.isArray(nota.colaboradores)) {
+          nota.colaboradores.forEach((colab: string) => colaboradoresHoje.add(colab));
+        }
+      });
+      const sessoesHoje = colaboradoresHoje.size;
+
+      // Buscar sessões de ontem
+      const colaboradoresOntem = new Set<string>();
+      notasOntemFiltradas.forEach((nota: any) => {
+        if (nota.colaboradores && Array.isArray(nota.colaboradores)) {
+          nota.colaboradores.forEach((colab: string) => colaboradoresOntem.add(colab));
+        }
+      });
+      const sessoesOntem = colaboradoresOntem.size;
+      const sessoesDiff = sessoesHoje - sessoesOntem;
+
+      // Calcular taxa de divergências (estimativa baseada em carros com status divergente)
+      const carrosDivergentesHoje = carrosHojeFiltrados.filter(c => c.status_carro === 'divergencia').length;
+      const taxaDivergenciasHoje = carrosHojeCount > 0 ? (carrosDivergentesHoje / carrosHojeCount) * 100 : 0;
+      const carrosDivergentesOntem = carrosOntemFiltrados.filter(c => c.status_carro === 'divergencia').length;
+      const taxaDivergenciasOntem = carrosOntemCount > 0 ? (carrosDivergentesOntem / carrosOntemCount) * 100 : 0;
+      const taxaDivergenciasDiff = taxaDivergenciasHoje - taxaDivergenciasOntem;
+
+      // Calcular tempo médio de processo (estimativa)
+      const tempoMedioHoje = notasHojeFiltradas.length > 0 ? (notasHojeFiltradas.length * 2) / 60 : 0;
+      const tempoMedioOntem = notasOntemFiltradas.length > 0 ? (notasOntemFiltradas.length * 2) / 60 : 0;
+      const tempoMedioDiff = tempoMedioHoje - tempoMedioOntem;
+
+      // Calcular NFs pendentes (carros em embalagem)
+      const nfsPendentesHoje = carrosHojeFiltrados.filter(c => c.status_carro === 'embalando' || c.status_carro === 'aguardando_lancamento').length;
+      const nfsPendentesOntem = carrosOntemFiltrados.filter(c => c.status_carro === 'embalando' || c.status_carro === 'aguardando_lancamento').length;
+      const nfsPendentesDiff = nfsPendentesHoje - nfsPendentesOntem;
+
+      // Calcular eficiência operacional (baseada em carros finalizados)
+      const carrosFinalizadosHoje = carrosHojeFiltrados.filter(c => c.status_carro === 'finalizado').length;
+      const eficienciaHoje = carrosHojeCount > 0 ? (carrosFinalizadosHoje / carrosHojeCount) * 100 : 0;
+      const carrosFinalizadosOntem = carrosOntemFiltrados.filter(c => c.status_carro === 'finalizado').length;
+      const eficienciaOntem = carrosOntemCount > 0 ? (carrosFinalizadosOntem / carrosOntemCount) * 100 : 0;
+      const eficienciaDiff = eficienciaHoje - eficienciaOntem;
+
+      // Criar array de KPIs com dados reais
+      const kpis: KPIData[] = [
+        {
+          id: "nfs-recebidas",
+          title: "NFs Recebidas Hoje",
+          value: nfsHoje.toLocaleString('pt-BR'),
+          description: "notas fiscais",
+          trend: { 
+            value: `${nfsDiff >= 0 ? '+' : ''}${nfsDiff} vs ontem`, 
+            isPositive: nfsDiff >= 0 
+          },
+          icon: <Truck className="h-6 w-6" />,
+          color: "text-blue-600",
+        },
+        {
+          id: "carros-produzidos",
+          title: "Carros Produzidos",
+          value: carrosHojeCount.toString(),
+          description: "hoje",
+          trend: { 
+            value: `${carrosDiff >= 0 ? '+' : ''}${carrosDiff} vs ontem`, 
+            isPositive: carrosDiff >= 0 
+          },
+          icon: <Package className="h-6 w-6" />,
+          color: "text-green-600",
+        },
+        {
+          id: "taxa-divergencias",
+          title: "Taxa de Divergências",
+          value: `${taxaDivergenciasHoje.toFixed(1)}%`,
+          description: "",
+          trend: { 
+            value: `${taxaDivergenciasDiff >= 0 ? '+' : ''}${taxaDivergenciasDiff.toFixed(1)}% vs ontem`, 
+            isPositive: taxaDivergenciasDiff < 0 
+          },
+          icon: <AlertTriangle className="h-6 w-6" />,
+          color: "text-yellow-600",
+        },
+        {
+          id: "sessoes-ativas",
+          title: "Sessões Ativas",
+          value: sessoesHoje.toString(),
+          description: "colaboradores",
+          trend: { 
+            value: `${sessoesDiff >= 0 ? '+' : ''}${sessoesDiff} vs ontem`, 
+            isPositive: sessoesDiff >= 0 
+          },
+          icon: <Users className="h-6 w-6" />,
+          color: "text-purple-600",
+        },
+        {
+          id: "volumes-processados",
+          title: "Volumes Processados",
+          value: volumesHoje.toLocaleString('pt-BR'),
+          description: "hoje",
+          trend: { 
+            value: `${volumesDiff >= 0 ? '+' : ''}${volumesDiff} vs ontem`, 
+            isPositive: volumesDiff >= 0 
+          },
+          icon: <Warehouse className="h-6 w-6" />,
+          color: "text-orange-600",
+        },
+        {
+          id: "tempo-medio-processo",
+          title: "Tempo Médio Processo",
+          value: `${tempoMedioHoje.toFixed(1)}h`,
+          description: "",
+          trend: { 
+            value: `${tempoMedioDiff >= 0 ? '+' : ''}${tempoMedioDiff.toFixed(1)}h vs ontem`, 
+            isPositive: tempoMedioDiff < 0 
+          },
+          icon: <Clock className="h-6 w-6" />,
+          color: "text-blue-600",
+        },
+        {
+          id: "nfs-pendentes",
+          title: "NFs Pendentes",
+          value: nfsPendentesHoje.toString(),
+          description: "",
+          trend: { 
+            value: `${nfsPendentesDiff >= 0 ? '+' : ''}${nfsPendentesDiff} vs ontem`, 
+            isPositive: nfsPendentesDiff < 0 
+          },
+          icon: <AlertTriangle className="h-6 w-6" />,
+          color: "text-red-600",
+        },
+        {
+          id: "eficiencia-operacional",
+          title: "Eficiência Operacional",
+          value: `${eficienciaHoje.toFixed(1)}%`,
+          description: "",
+          trend: { 
+            value: `${eficienciaDiff >= 0 ? '+' : ''}${eficienciaDiff.toFixed(1)}% vs ontem`, 
+            isPositive: eficienciaDiff >= 0 
+          },
+          icon: <BarChart3 className="h-6 w-6" />,
+          color: "text-green-600",
+        },
+      ];
+
+      setKpiDataReal(kpis);
+    } catch (error) {
+      console.error("Erro ao carregar KPIs:", error);
+      // Em caso de erro, usar dados padrão
+      setKpiDataReal([]);
+    } finally {
+      setLoadingKPIs(false);
+    }
+  };
+
+  // Dados dos KPIs - Dashboard Central ProFlow (fallback)
+  const kpiData: KPIData[] = kpiDataReal.length > 0 ? kpiDataReal : [
     {
       id: "nfs-recebidas",
       title: "NFs Recebidas Hoje",
-      value: "247",
+      value: "0",
       description: "notas fiscais",
-      trend: { value: "+12 vs ontem", isPositive: true },
+      trend: { value: "Carregando...", isPositive: true },
       icon: <Truck className="h-6 w-6" />,
       color: "text-blue-600",
     },
     {
       id: "carros-produzidos",
       title: "Carros Produzidos",
-      value: "18",
+      value: "0",
       description: "hoje",
-      trend: { value: "+3 vs ontem", isPositive: true },
+      trend: { value: "Carregando...", isPositive: true },
       icon: <Package className="h-6 w-6" />,
       color: "text-green-600",
     },
     {
       id: "taxa-divergencias",
       title: "Taxa de Divergências",
-      value: "2.1%",
+      value: "0%",
       description: "",
-      trend: { value: "-0.5% vs ontem", isPositive: false },
+      trend: { value: "Carregando...", isPositive: false },
       icon: <AlertTriangle className="h-6 w-6" />,
       color: "text-yellow-600",
     },
     {
       id: "sessoes-ativas",
       title: "Sessões Ativas",
-      value: "12",
+      value: "0",
       description: "colaboradores",
-      trend: { value: "+2 vs ontem", isPositive: true },
+      trend: { value: "Carregando...", isPositive: true },
       icon: <Users className="h-6 w-6" />,
       color: "text-purple-600",
     },
     {
       id: "volumes-processados",
       title: "Volumes Processados",
-      value: "1.847",
+      value: "0",
       description: "hoje",
-      trend: { value: "+156 vs ontem", isPositive: true },
+      trend: { value: "Carregando...", isPositive: true },
       icon: <Warehouse className="h-6 w-6" />,
       color: "text-orange-600",
     },
     {
       id: "tempo-medio-processo",
       title: "Tempo Médio Processo",
-      value: "4.2h",
+      value: "0h",
       description: "",
-      trend: { value: "-0.3h vs ontem", isPositive: false },
+      trend: { value: "Carregando...", isPositive: false },
       icon: <Clock className="h-6 w-6" />,
       color: "text-blue-600",
     },
     {
       id: "nfs-pendentes",
       title: "NFs Pendentes",
-      value: "23",
+      value: "0",
       description: "",
-      trend: { value: "-5 vs ontem", isPositive: false },
+      trend: { value: "Carregando...", isPositive: false },
       icon: <AlertTriangle className="h-6 w-6" />,
       color: "text-red-600",
     },
     {
       id: "eficiencia-operacional",
       title: "Eficiência Operacional",
-      value: "94.2%",
+      value: "0%",
       description: "",
-      trend: { value: "+2.1% vs ontem", isPositive: true },
+      trend: { value: "Carregando...", isPositive: true },
       icon: <BarChart3 className="h-6 w-6" />,
       color: "text-green-600",
     },
@@ -786,6 +1083,11 @@ export default function CRDKPage() {
     };
 
     verificarSessao();
+    carregarKPIs();
+    
+    // Atualizar KPIs a cada 30 segundos
+    const interval = setInterval(carregarKPIs, 30000);
+    return () => clearInterval(interval);
   }, [router, getSession]);
 
   const handleLogout = () => {
@@ -1121,50 +1423,70 @@ export default function CRDKPage() {
 
             {/* Cards de KPIs */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3 sm:gap-6">
-              {kpiData.map((kpi) => (
-                <Card key={kpi.id} className="hover:shadow-lg transition-shadow duration-200">
-                  <CardContent className="p-3 sm:p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">
-                          {kpi.title}
-                        </p>
-                        <div className="mt-2">
-                          <p className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
-                            {kpi.value}
+              {loadingKPIs && kpiDataReal.length === 0 ? (
+                // Mostrar cards de carregamento
+                Array.from({ length: 8 }).map((_, index) => (
+                  <Card key={`loading-${index}`} className="hover:shadow-lg transition-shadow duration-200">
+                    <CardContent className="p-3 sm:p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2 animate-pulse"></div>
+                          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mb-2 animate-pulse"></div>
+                          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-2/3 animate-pulse"></div>
+                        </div>
+                        <div className="p-2 sm:p-3 rounded-lg bg-gray-50 dark:bg-gray-800 animate-pulse">
+                          <div className="h-6 w-6 bg-gray-200 dark:bg-gray-700 rounded"></div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                kpiData.map((kpi) => (
+                  <Card key={kpi.id} className="hover:shadow-lg transition-shadow duration-200">
+                    <CardContent className="p-3 sm:p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400">
+                            {kpi.title}
                           </p>
-                          {kpi.description && (
-                            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                              {kpi.description}
+                          <div className="mt-2">
+                            <p className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">
+                              {kpi.value}
                             </p>
-                          )}
+                            {kpi.description && (
+                              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                                {kpi.description}
+                              </p>
+                            )}
+                          </div>
+                          <div className="mt-2 sm:mt-3 flex items-center">
+                            {kpi.trend.isPositive ? (
+                              <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-green-500 mr-1" />
+                            ) : (
+                              <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4 text-red-500 mr-1" />
+                            )}
+                            <span
+                              className={`text-xs sm:text-sm font-medium ${
+                                kpi.trend.isPositive
+                                  ? "text-green-600 dark:text-green-400"
+                                  : "text-red-600 dark:text-red-400"
+                              }`}
+                            >
+                              {kpi.trend.value}
+                            </span>
+                          </div>
                         </div>
-                        <div className="mt-2 sm:mt-3 flex items-center">
-                          {kpi.trend.isPositive ? (
-                            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 text-green-500 mr-1" />
-                          ) : (
-                            <TrendingDown className="h-3 w-3 sm:h-4 sm:w-4 text-red-500 mr-1" />
-                          )}
-                          <span
-                            className={`text-xs sm:text-sm font-medium ${
-                              kpi.trend.isPositive
-                                ? "text-green-600 dark:text-green-400"
-                                : "text-red-600 dark:text-red-400"
-                            }`}
-                          >
-                            {kpi.trend.value}
-                          </span>
+                        <div className={`p-2 sm:p-3 rounded-lg bg-gray-50 dark:bg-gray-800 ${kpi.color}`}>
+                          <div className="h-4 w-4 sm:h-6 sm:w-6">
+                            {kpi.icon}
+                          </div>
                         </div>
                       </div>
-                      <div className={`p-2 sm:p-3 rounded-lg bg-gray-50 dark:bg-gray-800 ${kpi.color}`}>
-                        <div className="h-4 w-4 sm:h-6 sm:w-6">
-                          {kpi.icon}
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </div>
 
             {/* Gráfico e Alertas */}
