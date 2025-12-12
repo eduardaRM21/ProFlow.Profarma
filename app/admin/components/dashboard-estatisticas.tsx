@@ -409,65 +409,69 @@ export default function DashboardEstatisticas() {
         total_excluidos: carrosExcluidos.length
       })
 
-      // Filtrar notas baseado na regra de 06:00
-      // REGRA: Um dia vai das 06:00 até 05:59 do dia seguinte
+      // Filtrar notas - para período único dia, contar todas as notas bipadas no dia (sem regra de 06:00)
+      // Para períodos maiores, aplicar regra de 06:00
       const notasHoje = (todasNotas || []).filter((nota) => {
         const ts = (nota.timestamp_bipagem || nota.data) as string | Date | null | undefined
         const notaData = nota.data as string
         if (!notaData) return false
 
-        // Se o período for "hoje" ou "personalizado" com um único dia, aplicar regra de 06:00
+        // Se o período for "hoje" ou "personalizado" com um único dia, contar todas as notas do dia
         const isPeriodoUnicoDia = periodoSelecionado === 'hoje' || (periodoSelecionado === 'personalizado' && dataSelecionada === dataFim)
 
-        if (!ts || ts === notaData) {
-          // Sem timestamp válido ou timestamp igual à data, usar apenas a data
-          // Para período único dia, incluir notas do dia selecionado e do dia seguinte
-          // (a busca já inclui o dia seguinte, então notas com data = dia seguinte podem ser da madrugada)
-          if (isPeriodoUnicoDia) {
+        if (isPeriodoUnicoDia) {
+          // Para período único dia, aplicar regra de 06:00 (igual à evolução semanal)
+          // REGRA: Dia X = notas bipadas das 06:00 de X até 05:59 de X+1
+          if (!ts || ts === notaData) {
+            // Sem timestamp válido, usar campo data
+            // Incluir notas do dia selecionado ou do dia seguinte (podem ser da madrugada)
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+            return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
+          }
+          
+          try {
+            const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+            if (isNaN(dataHora.getTime())) {
+              const dataDiaSeguinte = new Date(dataSelecionada)
+              dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+              const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+              return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
+            }
+            
+            const dataStr = dataHora.toISOString().split('T')[0]
+            const hora = dataHora.getUTCHours()
             const dataDiaSeguinte = new Date(dataSelecionada)
             dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
             const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
             
-            // Incluir notas do dia selecionado ou do dia seguinte (podem ser da madrugada)
+            // REGRA: Dia X = notas bipadas das 06:00 de X até 05:59 de X+1
+            return (dataStr === dataSelecionada && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6)
+          } catch {
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
             return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
           }
-          // Para outros períodos, usar range normal
+        }
+
+        // Para períodos maiores, aplicar regra de 06:00
+        if (!ts || ts === notaData) {
+          // Sem timestamp válido, usar apenas a data
           return notaData >= dataInicio && notaData <= dataFimCalculada
         }
 
         try {
           const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
           if (isNaN(dataHora.getTime())) {
-            // Timestamp inválido, usar apenas a data
-            if (isPeriodoUnicoDia) {
-              const dataDiaSeguinte = new Date(dataSelecionada)
-              dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
-              const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
-              return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
-            }
             return notaData >= dataInicio && notaData <= dataFimCalculada
           }
 
           const dataStr = dataHora.toISOString().split('T')[0]
           const hora = dataHora.getUTCHours()
 
-          if (isPeriodoUnicoDia) {
-            // REGRA: Dia 10/12 = notas bipadas das 06:00 de 10/12 até 05:59 de 11/12
-            const dataDiaSeguinte = new Date(dataSelecionada)
-            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
-            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
-
-            if (dataStr === dataSelecionada && hora >= 6) {
-              return true // Nota bipada no dia selecionado após 06:00
-            }
-            if (dataStr === dataDiaSeguinteStr && hora < 6) {
-              return true // Nota bipada na madrugada do dia seguinte (pertence ao dia selecionado)
-            }
-            return false // Excluir todas as outras (incluindo madrugada do dia selecionado)
-          }
-
           // Para períodos de múltiplos dias, aplicar regra de 06:00 para cada dia do range
-          // Incluir notas que pertencem a qualquer dia do período
           for (let d = new Date(dataInicio); d <= new Date(dataFimCalculada); d.setDate(d.getDate() + 1)) {
             const dataDia = d.toISOString().split('T')[0]
             const dataDiaSeguinte = new Date(dataDia)
@@ -480,15 +484,8 @@ export default function DashboardEstatisticas() {
             }
           }
           
-          return false // Não pertence a nenhum dia do período
+          return false
         } catch {
-          // Em caso de erro, usar apenas a data
-          if (isPeriodoUnicoDia) {
-            const dataDiaSeguinte = new Date(dataSelecionada)
-            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
-            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
-            return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
-          }
           return notaData >= dataInicio && notaData <= dataFimCalculada
         }
       })
@@ -545,9 +542,33 @@ export default function DashboardEstatisticas() {
       })
 
       // 7) TOTAL DE NOTAS E VOLUMES
-      const totalNotasHoje = notasHoje.length
+      // Remover duplicatas por ID antes de contar
+      const notasHojeUnicas = Array.from(
+        new Map(notasHoje.map((nota: any) => [nota.id, nota])).values()
+      )
+      
+      const totalNotasHoje = notasHojeUnicas.length
       const totalVolumesHoje =
-        notasHoje.reduce((acc, n: any) => acc + (Number(n.volumes) || 0), 0) || 0
+        notasHojeUnicas.reduce((acc, n: any) => {
+          const vol = Number(n.volumes) || 0
+          if (isNaN(vol)) {
+            console.warn('⚠️ Volume inválido na nota:', n.id, n.volumes)
+            return acc
+          }
+          return acc + vol
+        }, 0) || 0
+
+      // Debug: Log para verificar contagem
+      console.log('📊 Debug Dashboard - Notas e Volumes:', {
+        total_notas_filtradas: notasHoje.length,
+        total_notas_unicas: notasHojeUnicas.length,
+        total_volumes: totalVolumesHoje,
+        periodo: periodoSelecionado,
+        data_selecionada: dataSelecionada,
+        data_fim: dataFim,
+        exemplo_nota: notasHojeUnicas[0],
+        soma_volumes_manual: notasHojeUnicas.slice(0, 10).reduce((acc, n: any) => acc + (Number(n.volumes) || 0), 0)
+      })
 
       // Log detalhado das notas incluídas/excluídas
       const notasIncluidas: any[] = []
@@ -865,9 +886,14 @@ export default function DashboardEstatisticas() {
           }
         })
 
-        const notasCountDia = notasDia.length
+        // Remover duplicatas por ID antes de contar
+        const notasDiaUnicas = Array.from(
+          new Map(notasDia.map((nota: any) => [nota.id, nota])).values()
+        )
+        
+        const notasCountDia = notasDiaUnicas.length
         const volumesDia =
-          notasDia.reduce((acc, n: any) => {
+          notasDiaUnicas.reduce((acc, n: any) => {
             const vol = Number(n.volumes) || 0
             if (isNaN(vol)) {
               console.warn('⚠️ Volume inválido na nota:', n.id, n.volumes)
@@ -1013,9 +1039,14 @@ export default function DashboardEstatisticas() {
           }
         })
 
-        const notasCountDia = notasDia.length
+        // Remover duplicatas por ID antes de contar
+        const notasDiaUnicas = Array.from(
+          new Map(notasDia.map((nota: any) => [nota.id, nota])).values()
+        )
+        
+        const notasCountDia = notasDiaUnicas.length
         const volumesDia =
-          notasDia.reduce((acc, n: any) => {
+          notasDiaUnicas.reduce((acc, n: any) => {
             const vol = Number(n.volumes) || 0
             if (isNaN(vol)) {
               console.warn('⚠️ Volume inválido na nota:', n.id, n.volumes)
@@ -1161,10 +1192,31 @@ export default function DashboardEstatisticas() {
 
       const produtividadeMediaHoje = calcularProdutividadePorTempo()
 
+      // Para período único dia, usar os valores da evolução semanal para garantir consistência
+      const isPeriodoUnicoDia = periodoSelecionado === 'hoje' || (periodoSelecionado === 'personalizado' && dataSelecionada === dataFim)
+      let totalNotasFinal = totalNotasHoje
+      let totalVolumesFinal = totalVolumesHoje
+      
+      if (isPeriodoUnicoDia) {
+        // Buscar o valor correto da evolução semanal para o dia selecionado
+        const diaEvolucao = evolucaoSemanal.find(d => d.data === dataSelecionada)
+        if (diaEvolucao) {
+          totalNotasFinal = diaEvolucao.notas
+          totalVolumesFinal = diaEvolucao.volumes
+          console.log('📊 Usando valores da evolução semanal para período único dia:', {
+            data: dataSelecionada,
+            notas: totalNotasFinal,
+            volumes: totalVolumesFinal,
+            notas_calculadas: totalNotasHoje,
+            volumes_calculados: totalVolumesHoje
+          })
+        }
+      }
+
       const novoDashboardData: EstatisticasDashboard = {
         total_carros_hoje: totalCarrosHoje,
-        total_notas_hoje: totalNotasHoje,
-        total_volumes_hoje: totalVolumesHoje,
+        total_notas_hoje: totalNotasFinal,
+        total_volumes_hoje: totalVolumesFinal,
         produtividade_media_hoje: produtividadeMediaHoje,
         carros_por_turno: carrosPorTurno,
         volumes_por_turno: volumesPorTurno,

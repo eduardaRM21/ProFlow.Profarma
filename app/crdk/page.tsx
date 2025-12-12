@@ -139,71 +139,106 @@ export default function CRDKPage() {
       ontem.setDate(ontem.getDate() - 1);
       const ontemStr = ontem.toISOString().split("T")[0];
 
-      // Buscar notas de hoje (com regra de 06:00)
+      // Buscar TODAS as notas recebidas (status = "recebida") dos últimos 2 dias
+      // Usar UTC para garantir que capturamos todas as notas do dia
+      // Implementar paginação para evitar limite de 1000 registros
+      const dataInicioBusca = new Date(ontem);
+      dataInicioBusca.setUTCHours(0, 0, 0, 0);
       const dataFimBusca = new Date(hoje);
       dataFimBusca.setDate(dataFimBusca.getDate() + 1);
-      const dataFimBuscaStr = dataFimBusca.toISOString().split("T")[0];
+      dataFimBusca.setUTCHours(0, 0, 0, 0);
+      
+      const pageSizeNotasRecebidas = 1000;
+      let offsetNotasRecebidas = 0;
+      let hasMoreNotasRecebidas = true;
+      const todasNotasRecebidasArray: any[] = [];
+      
+      while (hasMoreNotasRecebidas) {
+        const { data: notasPage, error: errorNotasPage } = await supabase
+          .from("notas_consolidado")
+          .select("id, volumes, data_entrada, status, usuario")
+          .eq("status", "recebida")
+          .gte("data_entrada", dataInicioBusca.toISOString())
+          .lt("data_entrada", dataFimBusca.toISOString())
+          .range(offsetNotasRecebidas, offsetNotasRecebidas + pageSizeNotasRecebidas - 1)
+          .order("data_entrada", { ascending: true });
+        
+        if (errorNotasPage) {
+          console.error("Erro ao buscar notas recebidas:", errorNotasPage);
+          break;
+        }
+        
+        if (notasPage && notasPage.length > 0) {
+          todasNotasRecebidasArray.push(...notasPage);
+          offsetNotasRecebidas += pageSizeNotasRecebidas;
+          hasMoreNotasRecebidas = notasPage.length === pageSizeNotasRecebidas;
+        } else {
+          hasMoreNotasRecebidas = false;
+        }
+      }
+      
+      const todasNotasRecebidas = todasNotasRecebidasArray;
 
-      // Buscar todas as notas (hoje e ontem)
-      const { data: notasHoje } = await supabase
-        .from("embalagem_notas_bipadas")
-        .select("id, volumes, data, timestamp_bipagem")
-        .gte("data", hojeStr)
-        .lte("data", dataFimBuscaStr);
-
-      const { data: notasOntem } = await supabase
-        .from("embalagem_notas_bipadas")
-        .select("id, volumes, data, timestamp_bipagem")
-        .gte("data", ontemStr)
-        .lte("data", hojeStr);
-
-      // Filtrar notas de hoje pela regra de 06:00
-      const notasHojeFiltradas = (notasHoje || []).filter((nota) => {
-        const ts = nota.timestamp_bipagem || nota.data;
-        if (!ts) return nota.data === hojeStr;
+      // Filtrar notas de hoje - verificar se a data de entrada é exatamente hoje
+      // Usar UTC para extrair a data e garantir consistência
+      const notasHojeFiltradas = (todasNotasRecebidas || []).filter((nota) => {
+        const ts = nota.data_entrada as string | Date | null | undefined;
+        if (!ts) return false;
         try {
-          const dataHora = new Date(ts);
-          const dataStr = dataHora.toISOString().split('T')[0];
-          const hora = dataHora.getUTCHours();
-          const dataDiaSeguinte = new Date(hojeStr);
-          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1);
-          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0];
-          return (dataStr === hojeStr && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6);
+          const dataHora = ts instanceof Date ? ts : new Date(ts);
+          if (isNaN(dataHora.getTime())) return false;
+          
+          // Extrair a data no formato YYYY-MM-DD usando UTC
+          const ano = dataHora.getUTCFullYear();
+          const mes = String(dataHora.getUTCMonth() + 1).padStart(2, '0');
+          const dia = String(dataHora.getUTCDate()).padStart(2, '0');
+          const dataStr = `${ano}-${mes}-${dia}`;
+          
+          return dataStr === hojeStr;
         } catch {
-          return nota.data === hojeStr;
+          return false;
         }
       });
 
-      // Filtrar notas de ontem pela regra de 06:00
-      const notasOntemFiltradas = (notasOntem || []).filter((nota) => {
-        const ts = nota.timestamp_bipagem || nota.data;
-        if (!ts) return nota.data === ontemStr;
+      // Filtrar notas de ontem - verificar se a data de entrada é exatamente ontem
+      const notasOntemFiltradas = (todasNotasRecebidas || []).filter((nota) => {
+        const ts = nota.data_entrada as string | Date | null | undefined;
+        if (!ts) return false;
         try {
-          const dataHora = new Date(ts);
-          const dataStr = dataHora.toISOString().split('T')[0];
-          const hora = dataHora.getUTCHours();
-          const dataDiaSeguinte = new Date(ontemStr);
-          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1);
-          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0];
-          return (dataStr === ontemStr && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6);
+          const dataHora = ts instanceof Date ? ts : new Date(ts);
+          if (isNaN(dataHora.getTime())) return false;
+          
+          // Extrair a data no formato YYYY-MM-DD usando UTC
+          const ano = dataHora.getUTCFullYear();
+          const mes = String(dataHora.getUTCMonth() + 1).padStart(2, '0');
+          const dia = String(dataHora.getUTCDate()).padStart(2, '0');
+          const dataStr = `${ano}-${mes}-${dia}`;
+          
+          return dataStr === ontemStr;
         } catch {
-          return nota.data === ontemStr;
+          return false;
         }
       });
 
       // Buscar carros de hoje
+      const dataFimBuscaCarros = new Date(hoje);
+      dataFimBuscaCarros.setDate(dataFimBuscaCarros.getDate() + 1);
+      dataFimBuscaCarros.setHours(0, 0, 0, 0);
+      const dataFimBuscaCarrosStr = dataFimBuscaCarros.toISOString().split("T")[0];
+      
       const { data: carrosHoje } = await supabase
         .from("carros_status")
         .select("id, created_at, data, status_carro")
         .gte("created_at", `${hojeStr}T00:00:00`)
-        .lte("created_at", `${dataFimBuscaStr}T23:59:59`);
+        .lte("created_at", `${dataFimBuscaCarrosStr}T23:59:59`);
 
       // Filtrar carros de hoje pela regra de 06:00
       const carrosHojeFiltrados = (carrosHoje || []).filter((carro) => {
-        const ts = carro.created_at || carro.data;
+        const ts = (carro.created_at || carro.data) as string | Date | null | undefined;
         if (!ts) return carro.data === hojeStr;
         try {
-          const dataHora = new Date(ts);
+          const dataHora = ts instanceof Date ? ts : new Date(ts);
+          if (isNaN(dataHora.getTime())) return carro.data === hojeStr;
           const dataStr = dataHora.toISOString().split('T')[0];
           const hora = dataHora.getUTCHours();
           const dataDiaSeguinte = new Date(hojeStr);
@@ -224,10 +259,11 @@ export default function CRDKPage() {
 
       // Filtrar carros de ontem pela regra de 06:00
       const carrosOntemFiltrados = (carrosOntem || []).filter((carro) => {
-        const ts = carro.created_at || carro.data;
+        const ts = (carro.created_at || carro.data) as string | Date | null | undefined;
         if (!ts) return carro.data === ontemStr;
         try {
-          const dataHora = new Date(ts);
+          const dataHora = ts instanceof Date ? ts : new Date(ts);
+          if (isNaN(dataHora.getTime())) return carro.data === ontemStr;
           const dataStr = dataHora.toISOString().split('T')[0];
           const hora = dataHora.getUTCHours();
           const dataDiaSeguinte = new Date(ontemStr);
@@ -239,9 +275,31 @@ export default function CRDKPage() {
         }
       });
 
-      // Calcular métricas
-      const nfsHoje = notasHojeFiltradas.length;
-      const nfsOntem = notasOntemFiltradas.length;
+      // Remover duplicatas por ID antes de contar
+      const notasHojeUnicas = Array.from(
+        new Map(notasHojeFiltradas.map((nota: any) => [nota.id, nota])).values()
+      );
+      const notasOntemUnicas = Array.from(
+        new Map(notasOntemFiltradas.map((nota: any) => [nota.id, nota])).values()
+      );
+
+      // Debug: Log para verificar contagem
+      console.log('📊 Debug NFs Recebidas:', {
+        total_buscado: todasNotasRecebidas?.length || 0,
+        notas_hoje_filtradas: notasHojeFiltradas.length,
+        notas_hoje_unicas: notasHojeUnicas.length,
+        notas_ontem_filtradas: notasOntemFiltradas.length,
+        notas_ontem_unicas: notasOntemUnicas.length,
+        hoje_str: hojeStr,
+        ontem_str: ontemStr,
+        exemplo_data_entrada: notasHojeUnicas[0]?.data_entrada,
+        data_inicio_busca: dataInicioBusca.toISOString(),
+        data_fim_busca: dataFimBusca.toISOString()
+      });
+
+      // Calcular métricas (usar notas únicas após remover duplicatas)
+      const nfsHoje = notasHojeUnicas.length;
+      const nfsOntem = notasOntemUnicas.length;
       const nfsDiff = nfsHoje - nfsOntem;
 
       const carrosHojeCount = new Set(carrosHojeFiltrados.map(c => c.id)).size;
@@ -252,11 +310,11 @@ export default function CRDKPage() {
       const volumesOntem = notasOntemFiltradas.reduce((acc, n) => acc + (Number(n.volumes) || 0), 0);
       const volumesDiff = volumesHoje - volumesOntem;
 
-      // Buscar sessões ativas (colaboradores únicos de hoje)
+      // Buscar sessões ativas (usuários únicos de hoje)
       const colaboradoresHoje = new Set<string>();
       notasHojeFiltradas.forEach((nota: any) => {
-        if (nota.colaboradores && Array.isArray(nota.colaboradores)) {
-          nota.colaboradores.forEach((colab: string) => colaboradoresHoje.add(colab));
+        if (nota.usuario) {
+          colaboradoresHoje.add(nota.usuario);
         }
       });
       const sessoesHoje = colaboradoresHoje.size;
@@ -264,28 +322,401 @@ export default function CRDKPage() {
       // Buscar sessões de ontem
       const colaboradoresOntem = new Set<string>();
       notasOntemFiltradas.forEach((nota: any) => {
-        if (nota.colaboradores && Array.isArray(nota.colaboradores)) {
-          nota.colaboradores.forEach((colab: string) => colaboradoresOntem.add(colab));
+        if (nota.usuario) {
+          colaboradoresOntem.add(nota.usuario);
         }
       });
       const sessoesOntem = colaboradoresOntem.size;
       const sessoesDiff = sessoesHoje - sessoesOntem;
 
-      // Calcular taxa de divergências (estimativa baseada em carros com status divergente)
-      const carrosDivergentesHoje = carrosHojeFiltrados.filter(c => c.status_carro === 'divergencia').length;
-      const taxaDivergenciasHoje = carrosHojeCount > 0 ? (carrosDivergentesHoje / carrosHojeCount) * 100 : 0;
-      const carrosDivergentesOntem = carrosOntemFiltrados.filter(c => c.status_carro === 'divergencia').length;
-      const taxaDivergenciasOntem = carrosOntemCount > 0 ? (carrosDivergentesOntem / carrosOntemCount) * 100 : 0;
+      // Calcular volumes bipados (notas bipadas na embalagem)
+      // Buscar todas as notas bipadas dos últimos 2 dias
+      // Usar range amplo no campo data para garantir que capturamos todas
+      const dataInicioBuscaBipadas = new Date(ontem);
+      dataInicioBuscaBipadas.setHours(0, 0, 0, 0);
+      const dataFimBuscaBipadas = new Date(hoje);
+      dataFimBuscaBipadas.setDate(dataFimBuscaBipadas.getDate() + 1);
+      dataFimBuscaBipadas.setHours(0, 0, 0, 0);
+      
+      // Buscar por data (campo data da tabela) com range ampliado
+      const { data: todasNotasBipadas, error: errorBipadas } = await supabase
+        .from("embalagem_notas_bipadas")
+        .select("id, volumes, data, timestamp_bipagem")
+        .gte("data", dataInicioBuscaBipadas.toISOString().split('T')[0])
+        .lte("data", dataFimBuscaBipadas.toISOString().split('T')[0]);
+
+      if (errorBipadas) {
+        console.error("Erro ao buscar notas bipadas:", errorBipadas);
+      }
+
+      // Filtrar notas bipadas de hoje - aplicar regra de 06:00 (igual ao Dashboard de Estatísticas)
+      // REGRA: Dia X = notas bipadas das 06:00 de X até 05:59 de X+1
+      const notasBipadasHoje = (todasNotasBipadas || []).filter((nota: any) => {
+        const ts = (nota.timestamp_bipagem || nota.data) as string | Date | null | undefined
+        const notaData = nota.data as string
+        if (!notaData) return false
+
+        if (!ts || ts === notaData) {
+          // Sem timestamp válido, usar campo data
+          // Incluir notas do dia selecionado ou do dia seguinte (podem ser da madrugada)
+          const dataDiaSeguinte = new Date(hojeStr)
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+          return notaData === hojeStr || notaData === dataDiaSeguinteStr
+        }
+
+        try {
+          const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+          if (isNaN(dataHora.getTime())) {
+            const dataDiaSeguinte = new Date(hojeStr)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+            return notaData === hojeStr || notaData === dataDiaSeguinteStr
+          }
+
+          const dataStr = dataHora.toISOString().split('T')[0]
+          const hora = dataHora.getUTCHours()
+          const dataDiaSeguinte = new Date(hojeStr)
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+
+          // REGRA: Dia X = notas bipadas das 06:00 de X até 05:59 de X+1
+          return (dataStr === hojeStr && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6)
+        } catch {
+          const dataDiaSeguinte = new Date(hojeStr)
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+          return notaData === hojeStr || notaData === dataDiaSeguinteStr
+        }
+      });
+
+      // Filtrar notas bipadas de ontem - aplicar regra de 06:00
+      const notasBipadasOntem = (todasNotasBipadas || []).filter((nota: any) => {
+        const ts = (nota.timestamp_bipagem || nota.data) as string | Date | null | undefined
+        const notaData = nota.data as string
+        if (!notaData) return false
+
+        if (!ts || ts === notaData) {
+          const dataDiaSeguinte = new Date(ontemStr)
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+          return notaData === ontemStr || notaData === dataDiaSeguinteStr
+        }
+
+        try {
+          const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+          if (isNaN(dataHora.getTime())) {
+            const dataDiaSeguinte = new Date(ontemStr)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+            return notaData === ontemStr || notaData === dataDiaSeguinteStr
+          }
+
+          const dataStr = dataHora.toISOString().split('T')[0]
+          const hora = dataHora.getUTCHours()
+          const dataDiaSeguinte = new Date(ontemStr)
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+
+          // REGRA: Dia X = notas bipadas das 06:00 de X até 05:59 de X+1
+          return (dataStr === ontemStr && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6)
+        } catch {
+          const dataDiaSeguinte = new Date(ontemStr)
+          dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+          const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+          return notaData === ontemStr || notaData === dataDiaSeguinteStr
+        }
+      });
+
+      // Remover duplicatas por ID (caso haja)
+      const notasBipadasHojeUnicas = Array.from(
+        new Map(notasBipadasHoje.map((nota: any) => [nota.id, nota])).values()
+      );
+      const notasBipadasOntemUnicas = Array.from(
+        new Map(notasBipadasOntem.map((nota: any) => [nota.id, nota])).values()
+      );
+
+      const volumesBipadosHoje = notasBipadasHojeUnicas.reduce((acc, n: any) => {
+        const vol = Number(n.volumes) || 0
+        if (isNaN(vol)) {
+          console.warn('⚠️ Volume inválido na nota bipada:', n.id, n.volumes)
+          return acc
+        }
+        return acc + vol
+      }, 0);
+      const volumesBipadosOntem = notasBipadasOntemUnicas.reduce((acc, n: any) => {
+        const vol = Number(n.volumes) || 0
+        if (isNaN(vol)) {
+          console.warn('⚠️ Volume inválido na nota bipada:', n.id, n.volumes)
+          return acc
+        }
+        return acc + vol
+      }, 0);
+      const volumesBipadosDiff = volumesBipadosHoje - volumesBipadosOntem;
+
+      // Debug: Log para verificar contagem de volumes bipados
+      console.log('📊 Debug Volumes Bipados:', {
+        total_buscado: todasNotasBipadas?.length || 0,
+        notas_hoje_filtradas: notasBipadasHoje.length,
+        notas_hoje_unicas: notasBipadasHojeUnicas.length,
+        volumes_bipados_hoje: volumesBipadosHoje,
+        notas_ontem_filtradas: notasBipadasOntem.length,
+        notas_ontem_unicas: notasBipadasOntemUnicas.length,
+        volumes_bipados_ontem: volumesBipadosOntem,
+        hoje_str: hojeStr,
+        exemplo_nota: notasBipadasHojeUnicas[0],
+        soma_volumes_manual: notasBipadasHojeUnicas.slice(0, 10).reduce((acc, n: any) => acc + (Number(n.volumes) || 0), 0)
+      });
+
+      // Calcular taxa de divergências baseada em notas_fiscais bipadas com divergência
+      // Buscar notas bipadas com numero_nf para relacionar com notas_fiscais
+      const pageSizeNotasBipadasCompleta = 1000;
+      let offsetNotasBipadasCompleta = 0;
+      let hasMoreNotasBipadasCompleta = true;
+      const todasNotasBipadasCompletaArray: any[] = [];
+      
+      while (hasMoreNotasBipadasCompleta) {
+        const { data: notasPage, error: errorPage } = await supabase
+          .from("embalagem_notas_bipadas")
+          .select("id, numero_nf")
+          .gte("data", dataInicioBuscaBipadas.toISOString().split('T')[0])
+          .lte("data", dataFimBuscaBipadas.toISOString().split('T')[0])
+          .range(offsetNotasBipadasCompleta, offsetNotasBipadasCompleta + pageSizeNotasBipadasCompleta - 1)
+          .order("data", { ascending: true });
+        
+        if (errorPage) {
+          console.error("Erro ao buscar notas bipadas completas:", errorPage);
+          break;
+        }
+        
+        if (notasPage && notasPage.length > 0) {
+          todasNotasBipadasCompletaArray.push(...notasPage);
+          offsetNotasBipadasCompleta += pageSizeNotasBipadasCompleta;
+          hasMoreNotasBipadasCompleta = notasPage.length === pageSizeNotasBipadasCompleta;
+        } else {
+          hasMoreNotasBipadasCompleta = false;
+        }
+      }
+      
+      // Obter números de NF únicos das notas bipadas de hoje e ontem
+      const numerosNFBipadasHoje = new Set<string>();
+      const numerosNFBipadasOntem = new Set<string>();
+      
+      notasBipadasHojeUnicas.forEach((nota: any) => {
+        const notaCompleta = todasNotasBipadasCompletaArray.find((n: any) => n.id === nota.id);
+        if (notaCompleta && notaCompleta.numero_nf) {
+          numerosNFBipadasHoje.add(notaCompleta.numero_nf);
+        }
+      });
+      
+      notasBipadasOntemUnicas.forEach((nota: any) => {
+        const notaCompleta = todasNotasBipadasCompletaArray.find((n: any) => n.id === nota.id);
+        if (notaCompleta && notaCompleta.numero_nf) {
+          numerosNFBipadasOntem.add(notaCompleta.numero_nf);
+        }
+      });
+      
+      // Buscar notas fiscais que foram bipadas hoje e ontem
+      const numerosNFBipadasHojeArray = Array.from(numerosNFBipadasHoje);
+      const numerosNFBipadasOntemArray = Array.from(numerosNFBipadasOntem);
+      
+      // Buscar notas fiscais de hoje com paginação
+      const notasFiscaisBipadasHojeIds = new Set<string>();
+      if (numerosNFBipadasHojeArray.length > 0) {
+        const pageSizeNotasFiscais = 1000;
+        let offsetNotasFiscais = 0;
+        let hasMoreNotasFiscais = true;
+        
+        while (hasMoreNotasFiscais && offsetNotasFiscais < numerosNFBipadasHojeArray.length) {
+          const numerosNFPage = numerosNFBipadasHojeArray.slice(offsetNotasFiscais, offsetNotasFiscais + pageSizeNotasFiscais);
+          
+          const { data: notasFiscaisPage, error: errorNotasFiscaisPage } = await supabase
+            .from("notas_fiscais")
+            .select("id, numero_nf")
+            .in("numero_nf", numerosNFPage);
+          
+          if (errorNotasFiscaisPage) {
+            console.error("Erro ao buscar notas fiscais de hoje:", errorNotasFiscaisPage);
+            break;
+          }
+          
+          if (notasFiscaisPage && notasFiscaisPage.length > 0) {
+            notasFiscaisPage.forEach((nf: any) => {
+              notasFiscaisBipadasHojeIds.add(nf.id);
+            });
+          }
+          
+          offsetNotasFiscais += pageSizeNotasFiscais;
+          hasMoreNotasFiscais = offsetNotasFiscais < numerosNFBipadasHojeArray.length;
+        }
+      }
+      
+      // Buscar notas fiscais de ontem com paginação
+      const notasFiscaisBipadasOntemIds = new Set<string>();
+      if (numerosNFBipadasOntemArray.length > 0) {
+        const pageSizeNotasFiscais = 1000;
+        let offsetNotasFiscais = 0;
+        let hasMoreNotasFiscais = true;
+        
+        while (hasMoreNotasFiscais && offsetNotasFiscais < numerosNFBipadasOntemArray.length) {
+          const numerosNFPage = numerosNFBipadasOntemArray.slice(offsetNotasFiscais, offsetNotasFiscais + pageSizeNotasFiscais);
+          
+          const { data: notasFiscaisPage, error: errorNotasFiscaisPage } = await supabase
+            .from("notas_fiscais")
+            .select("id, numero_nf")
+            .in("numero_nf", numerosNFPage);
+          
+          if (errorNotasFiscaisPage) {
+            console.error("Erro ao buscar notas fiscais de ontem:", errorNotasFiscaisPage);
+            break;
+          }
+          
+          if (notasFiscaisPage && notasFiscaisPage.length > 0) {
+            notasFiscaisPage.forEach((nf: any) => {
+              notasFiscaisBipadasOntemIds.add(nf.id);
+            });
+          }
+          
+          offsetNotasFiscais += pageSizeNotasFiscais;
+          hasMoreNotasFiscais = offsetNotasFiscais < numerosNFBipadasOntemArray.length;
+        }
+      }
+      
+      // Buscar divergências dos últimos 2 dias
+      const dataInicioBuscaDivergencias = new Date(ontem);
+      dataInicioBuscaDivergencias.setUTCHours(0, 0, 0, 0);
+      const dataFimBuscaDivergencias = new Date(hoje);
+      dataFimBuscaDivergencias.setDate(dataFimBuscaDivergencias.getDate() + 1);
+      dataFimBuscaDivergencias.setUTCHours(0, 0, 0, 0);
+      
+      // Buscar divergências com paginação
+      const pageSizeDivergencias = 1000;
+      let offsetDivergencias = 0;
+      let hasMoreDivergencias = true;
+      const todasDivergenciasArray: any[] = [];
+      
+      while (hasMoreDivergencias) {
+        const { data: divergenciasPage, error: errorDivergenciasPage } = await supabase
+          .from("divergencias")
+          .select("id, nota_fiscal_id, created_at")
+          .gte("created_at", dataInicioBuscaDivergencias.toISOString())
+          .lt("created_at", dataFimBuscaDivergencias.toISOString())
+          .range(offsetDivergencias, offsetDivergencias + pageSizeDivergencias - 1)
+          .order("created_at", { ascending: true });
+        
+        if (errorDivergenciasPage) {
+          console.error("Erro ao buscar divergências:", errorDivergenciasPage);
+          break;
+        }
+        
+        if (divergenciasPage && divergenciasPage.length > 0) {
+          todasDivergenciasArray.push(...divergenciasPage);
+          offsetDivergencias += pageSizeDivergencias;
+          hasMoreDivergencias = divergenciasPage.length === pageSizeDivergencias;
+        } else {
+          hasMoreDivergencias = false;
+        }
+      }
+      
+      // Obter IDs das notas fiscais com divergência
+      const notasFiscaisComDivergenciaIds = new Set(
+        todasDivergenciasArray
+          .map((d: any) => d.nota_fiscal_id)
+          .filter((id: any) => id != null)
+      );
+      
+      // Calcular taxa de divergências: (notas fiscais bipadas com divergência / total de notas fiscais bipadas) * 100
+      const totalNotasFiscaisBipadasHoje = notasFiscaisBipadasHojeIds.size;
+      const totalNotasFiscaisBipadasOntem = notasFiscaisBipadasOntemIds.size;
+      
+      const notasFiscaisBipadasHojeComDivergencia = Array.from(notasFiscaisBipadasHojeIds).filter(id => 
+        notasFiscaisComDivergenciaIds.has(id)
+      ).length;
+      
+      const notasFiscaisBipadasOntemComDivergencia = Array.from(notasFiscaisBipadasOntemIds).filter(id => 
+        notasFiscaisComDivergenciaIds.has(id)
+      ).length;
+      
+      const taxaDivergenciasHoje = totalNotasFiscaisBipadasHoje > 0 
+        ? (notasFiscaisBipadasHojeComDivergencia / totalNotasFiscaisBipadasHoje) * 100 
+        : 0;
+      const taxaDivergenciasOntem = totalNotasFiscaisBipadasOntem > 0 
+        ? (notasFiscaisBipadasOntemComDivergencia / totalNotasFiscaisBipadasOntem) * 100 
+        : 0;
       const taxaDivergenciasDiff = taxaDivergenciasHoje - taxaDivergenciasOntem;
+      
+      // Debug: Log para verificar cálculo de divergências
+      console.log('📊 Debug Taxa de Divergências:', {
+        total_notas_fiscais_bipadas_hoje: totalNotasFiscaisBipadasHoje,
+        notas_fiscais_bipadas_hoje_com_divergencia: notasFiscaisBipadasHojeComDivergencia,
+        taxa_divergencias_hoje: taxaDivergenciasHoje,
+        total_notas_fiscais_bipadas_ontem: totalNotasFiscaisBipadasOntem,
+        notas_fiscais_bipadas_ontem_com_divergencia: notasFiscaisBipadasOntemComDivergencia,
+        taxa_divergencias_ontem: taxaDivergenciasOntem,
+        total_divergencias_buscadas: todasDivergenciasArray.length
+      });
 
-      // Calcular tempo médio de processo (estimativa)
-      const tempoMedioHoje = notasHojeFiltradas.length > 0 ? (notasHojeFiltradas.length * 2) / 60 : 0;
-      const tempoMedioOntem = notasOntemFiltradas.length > 0 ? (notasOntemFiltradas.length * 2) / 60 : 0;
-      const tempoMedioDiff = tempoMedioHoje - tempoMedioOntem;
+      // Calcular NFs pendentes (notas com status "deu entrada")
+      // Buscar todas as notas com status "deu entrada" dos últimos 2 dias
+      const dataInicioBuscaPendentes = new Date(ontem);
+      dataInicioBuscaPendentes.setHours(0, 0, 0, 0);
+      const dataFimBuscaPendentes = new Date(hoje);
+      dataFimBuscaPendentes.setDate(dataFimBuscaPendentes.getDate() + 1);
+      dataFimBuscaPendentes.setHours(0, 0, 0, 0);
+      
+      const { data: todasNotasPendentes, error: errorPendentes } = await supabase
+        .from("notas_consolidado")
+        .select("id, volumes, data_entrada, status, usuario")
+        .eq("status", "deu entrada")
+        .gte("data_entrada", dataInicioBuscaPendentes.toISOString())
+        .lt("data_entrada", dataFimBuscaPendentes.toISOString());
 
-      // Calcular NFs pendentes (carros em embalagem)
-      const nfsPendentesHoje = carrosHojeFiltrados.filter(c => c.status_carro === 'embalando' || c.status_carro === 'aguardando_lancamento').length;
-      const nfsPendentesOntem = carrosOntemFiltrados.filter(c => c.status_carro === 'embalando' || c.status_carro === 'aguardando_lancamento').length;
+      if (errorPendentes) {
+        console.error("Erro ao buscar notas pendentes:", errorPendentes);
+      }
+
+      // Filtrar notas pendentes de hoje (status "deu entrada" e data_entrada = hoje)
+      const notasPendentesHojeFiltradas = (todasNotasPendentes || []).filter((nota) => {
+        const ts = nota.data_entrada as string | Date | null | undefined;
+        if (!ts) return false;
+        try {
+          const dataHora = ts instanceof Date ? ts : new Date(ts);
+          if (isNaN(dataHora.getTime())) return false;
+          
+          // Extrair a data no formato YYYY-MM-DD usando o timezone local
+          const ano = dataHora.getFullYear();
+          const mes = String(dataHora.getMonth() + 1).padStart(2, '0');
+          const dia = String(dataHora.getDate()).padStart(2, '0');
+          const dataStr = `${ano}-${mes}-${dia}`;
+          
+          return dataStr === hojeStr;
+        } catch {
+          return false;
+        }
+      });
+
+      // Filtrar notas pendentes de ontem (status "deu entrada" e data_entrada = ontem)
+      const notasPendentesOntemFiltradas = (todasNotasPendentes || []).filter((nota) => {
+        const ts = nota.data_entrada as string | Date | null | undefined;
+        if (!ts) return false;
+        try {
+          const dataHora = ts instanceof Date ? ts : new Date(ts);
+          if (isNaN(dataHora.getTime())) return false;
+          
+          // Extrair a data no formato YYYY-MM-DD usando o timezone local
+          const ano = dataHora.getFullYear();
+          const mes = String(dataHora.getMonth() + 1).padStart(2, '0');
+          const dia = String(dataHora.getDate()).padStart(2, '0');
+          const dataStr = `${ano}-${mes}-${dia}`;
+          
+          return dataStr === ontemStr;
+        } catch {
+          return false;
+        }
+      });
+
+      const nfsPendentesHoje = notasPendentesHojeFiltradas.length;
+      const nfsPendentesOntem = notasPendentesOntemFiltradas.length;
       const nfsPendentesDiff = nfsPendentesHoje - nfsPendentesOntem;
 
       // Calcular eficiência operacional (baseada em carros finalizados)
@@ -296,6 +727,7 @@ export default function CRDKPage() {
       const eficienciaDiff = eficienciaHoje - eficienciaOntem;
 
       // Criar array de KPIs com dados reais
+      // Ordem: 1. NFs Recebidas, 2. NFs Pendentes, 3. Taxa de Divergências, 4. Volumes Processados
       const kpis: KPIData[] = [
         {
           id: "nfs-recebidas",
@@ -307,66 +739,6 @@ export default function CRDKPage() {
             isPositive: nfsDiff >= 0 
           },
           icon: <Truck className="h-6 w-6" />,
-          color: "text-blue-600",
-        },
-        {
-          id: "carros-produzidos",
-          title: "Carros Produzidos",
-          value: carrosHojeCount.toString(),
-          description: "hoje",
-          trend: { 
-            value: `${carrosDiff >= 0 ? '+' : ''}${carrosDiff} vs ontem`, 
-            isPositive: carrosDiff >= 0 
-          },
-          icon: <Package className="h-6 w-6" />,
-          color: "text-green-600",
-        },
-        {
-          id: "taxa-divergencias",
-          title: "Taxa de Divergências",
-          value: `${taxaDivergenciasHoje.toFixed(1)}%`,
-          description: "",
-          trend: { 
-            value: `${taxaDivergenciasDiff >= 0 ? '+' : ''}${taxaDivergenciasDiff.toFixed(1)}% vs ontem`, 
-            isPositive: taxaDivergenciasDiff < 0 
-          },
-          icon: <AlertTriangle className="h-6 w-6" />,
-          color: "text-yellow-600",
-        },
-        {
-          id: "sessoes-ativas",
-          title: "Sessões Ativas",
-          value: sessoesHoje.toString(),
-          description: "colaboradores",
-          trend: { 
-            value: `${sessoesDiff >= 0 ? '+' : ''}${sessoesDiff} vs ontem`, 
-            isPositive: sessoesDiff >= 0 
-          },
-          icon: <Users className="h-6 w-6" />,
-          color: "text-purple-600",
-        },
-        {
-          id: "volumes-processados",
-          title: "Volumes Processados",
-          value: volumesHoje.toLocaleString('pt-BR'),
-          description: "hoje",
-          trend: { 
-            value: `${volumesDiff >= 0 ? '+' : ''}${volumesDiff} vs ontem`, 
-            isPositive: volumesDiff >= 0 
-          },
-          icon: <Warehouse className="h-6 w-6" />,
-          color: "text-orange-600",
-        },
-        {
-          id: "tempo-medio-processo",
-          title: "Tempo Médio Processo",
-          value: `${tempoMedioHoje.toFixed(1)}h`,
-          description: "",
-          trend: { 
-            value: `${tempoMedioDiff >= 0 ? '+' : ''}${tempoMedioDiff.toFixed(1)}h vs ontem`, 
-            isPositive: tempoMedioDiff < 0 
-          },
-          icon: <Clock className="h-6 w-6" />,
           color: "text-blue-600",
         },
         {
@@ -382,6 +754,54 @@ export default function CRDKPage() {
           color: "text-red-600",
         },
         {
+          id: "taxa-divergencias",
+          title: "Taxa de Divergências",
+          value: `${taxaDivergenciasHoje.toFixed(1)}%`,
+          description: "",
+          trend: { 
+            value: `${taxaDivergenciasDiff >= 0 ? '+' : ''}${taxaDivergenciasDiff.toFixed(1)}% vs ontem`, 
+            isPositive: taxaDivergenciasDiff < 0 
+          },
+          icon: <AlertTriangle className="h-6 w-6" />,
+          color: "text-yellow-600",
+        },
+        {
+          id: "volumes-processados",
+          title: "Volumes Processados",
+          value: volumesHoje.toLocaleString('pt-BR'),
+          description: "hoje",
+          trend: { 
+            value: `${volumesDiff >= 0 ? '+' : ''}${volumesDiff} vs ontem`, 
+            isPositive: volumesDiff >= 0 
+          },
+          icon: <Warehouse className="h-6 w-6" />,
+          color: "text-orange-600",
+        },
+        {
+          id: "carros-produzidos",
+          title: "Carros Produzidos",
+          value: carrosHojeCount.toString(),
+          description: "hoje",
+          trend: { 
+            value: `${carrosDiff >= 0 ? '+' : ''}${carrosDiff} vs ontem`, 
+            isPositive: carrosDiff >= 0 
+          },
+          icon: <Package className="h-6 w-6" />,
+          color: "text-green-600",
+        },
+        {
+          id: "volumes-bipados",
+          title: "Volumes Bipados",
+          value: volumesBipadosHoje.toLocaleString('pt-BR'),
+          description: "hoje",
+          trend: { 
+            value: `${volumesBipadosDiff >= 0 ? '+' : ''}${volumesBipadosDiff.toLocaleString('pt-BR')} vs ontem`, 
+            isPositive: volumesBipadosDiff >= 0 
+          },
+          icon: <Package className="h-6 w-6" />,
+          color: "text-blue-600",
+        },
+        {
           id: "eficiencia-operacional",
           title: "Eficiência Operacional",
           value: `${eficienciaHoje.toFixed(1)}%`,
@@ -393,6 +813,19 @@ export default function CRDKPage() {
           icon: <BarChart3 className="h-6 w-6" />,
           color: "text-green-600",
         },
+        {
+          id: "sessoes-ativas",
+          title: "Sessões Ativas",
+          value: sessoesHoje.toString(),
+          description: "colaboradores",
+          trend: { 
+            value: `${sessoesDiff >= 0 ? '+' : ''}${sessoesDiff} vs ontem`, 
+            isPositive: sessoesDiff >= 0 
+          },
+          icon: <Users className="h-6 w-6" />,
+          color: "text-purple-600",
+        },
+
       ];
 
       setKpiDataReal(kpis);
@@ -406,6 +839,7 @@ export default function CRDKPage() {
   };
 
   // Dados dos KPIs - Dashboard Central ProFlow (fallback)
+  // Ordem: 1. NFs Recebidas, 2. NFs Pendentes, 3. Taxa de Divergências, 4. Volumes Processados
   const kpiData: KPIData[] = kpiDataReal.length > 0 ? kpiDataReal : [
     {
       id: "nfs-recebidas",
@@ -417,13 +851,13 @@ export default function CRDKPage() {
       color: "text-blue-600",
     },
     {
-      id: "carros-produzidos",
-      title: "Carros Produzidos",
+      id: "nfs-pendentes",
+      title: "NFs Pendentes",
       value: "0",
-      description: "hoje",
-      trend: { value: "Carregando...", isPositive: true },
-      icon: <Package className="h-6 w-6" />,
-      color: "text-green-600",
+      description: "",
+      trend: { value: "Carregando...", isPositive: false },
+      icon: <AlertTriangle className="h-6 w-6" />,
+      color: "text-red-600",
     },
     {
       id: "taxa-divergencias",
@@ -435,15 +869,6 @@ export default function CRDKPage() {
       color: "text-yellow-600",
     },
     {
-      id: "sessoes-ativas",
-      title: "Sessões Ativas",
-      value: "0",
-      description: "colaboradores",
-      trend: { value: "Carregando...", isPositive: true },
-      icon: <Users className="h-6 w-6" />,
-      color: "text-purple-600",
-    },
-    {
       id: "volumes-processados",
       title: "Volumes Processados",
       value: "0",
@@ -453,22 +878,31 @@ export default function CRDKPage() {
       color: "text-orange-600",
     },
     {
-      id: "tempo-medio-processo",
-      title: "Tempo Médio Processo",
-      value: "0h",
-      description: "",
-      trend: { value: "Carregando...", isPositive: false },
-      icon: <Clock className="h-6 w-6" />,
-      color: "text-blue-600",
+      id: "carros-produzidos",
+      title: "Carros Produzidos",
+      value: "0",
+      description: "hoje",
+      trend: { value: "Carregando...", isPositive: true },
+      icon: <Package className="h-6 w-6" />,
+      color: "text-green-600",
     },
     {
-      id: "nfs-pendentes",
-      title: "NFs Pendentes",
+      id: "sessoes-ativas",
+      title: "Sessões Ativas",
       value: "0",
-      description: "",
-      trend: { value: "Carregando...", isPositive: false },
-      icon: <AlertTriangle className="h-6 w-6" />,
-      color: "text-red-600",
+      description: "colaboradores",
+      trend: { value: "Carregando...", isPositive: true },
+      icon: <Users className="h-6 w-6" />,
+      color: "text-purple-600",
+    },
+    {
+      id: "volumes-bipados",
+      title: "Volumes Bipados",
+      value: "0",
+      description: "hoje",
+      trend: { value: "Carregando...", isPositive: true },
+      icon: <Package className="h-6 w-6" />,
+      color: "text-blue-600",
     },
     {
       id: "eficiencia-operacional",
@@ -1085,8 +1519,8 @@ export default function CRDKPage() {
     verificarSessao();
     carregarKPIs();
     
-    // Atualizar KPIs a cada 30 segundos
-    const interval = setInterval(carregarKPIs, 30000);
+    // Atualizar KPIs a cada 60 segundos (1 minuto)
+    const interval = setInterval(carregarKPIs, 60000);
     return () => clearInterval(interval);
   }, [router, getSession]);
 
@@ -1176,7 +1610,7 @@ export default function CRDKPage() {
             {/* Controles e Menu */}
             <div className="flex items-center space-x-2 sm:space-x-4">
               {/* Filtros de Período e CD */}
-              <div className="hidden sm:flex items-center space-x-2">
+              <div className="hidden sm:flex items-center space-x-2"> 
                 <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                   <SelectTrigger className="w-40">
                     <Calendar className="h-4 w-4 mr-2" />
