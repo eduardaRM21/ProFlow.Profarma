@@ -1,17 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -89,6 +84,7 @@ export default function CRDKPage() {
   const [sessionData, setSessionData] = useState<any>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isFiltersDropdownOpen, setIsFiltersDropdownOpen] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState("30");
   const [selectedCD, setSelectedCD] = useState("todos");
   const [activeTab, setActiveTab] = useState("visao-geral");
@@ -96,6 +92,37 @@ export default function CRDKPage() {
   const [loadingKPIs, setLoadingKPIs] = useState(true);
   const router = useRouter();
   const { getSession } = useSession();
+  
+  // Filtros de período (similar ao Dashboard de Produção)
+  const [periodoSelecionado, setPeriodoSelecionado] = useState<"hoje" | "semana" | "mes" | "personalizado">("hoje");
+  const [dataAtual, setDataAtual] = useState(() => {
+    const hoje = new Date();
+    return hoje.toISOString().split('T')[0];
+  });
+  const [dataFim, setDataFim] = useState(() => {
+    const hoje = new Date();
+    return hoje.toISOString().split('T')[0];
+  });
+  
+  // Ref para rastrear se é a primeira renderização
+  const isFirstRender = useRef(true);
+  
+  // Handler para mudar a data
+  const handleDataChange = (novaData: string) => {
+    setDataAtual(novaData);
+  };
+  
+  // Recarregar dados quando a data, período ou CD mudarem (mas não na primeira renderização)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return; // Deixa o outro useEffect fazer o carregamento inicial
+    }
+    if (dataAtual) {
+      carregarKPIs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataAtual, dataFim, periodoSelecionado, selectedPeriod, selectedCD]);
   
   // Fallback seguro para o tema durante build estático
   let theme: 'light' | 'dark' | 'system' = 'system';
@@ -131,22 +158,107 @@ export default function CRDKPage() {
       const supabase = getSupabase();
       if (!supabase) throw new Error("Cliente Supabase não inicializado");
 
-      const hoje = new Date();
-      const hojeStr = hoje.toISOString().split("T")[0];
-      
-      // Calcular data de ontem
-      const ontem = new Date(hoje);
-      ontem.setDate(ontem.getDate() - 1);
-      const ontemStr = ontem.toISOString().split("T")[0];
+      // Calcular período baseado no filtro selecionado (hoje, semana, mês, personalizado)
+      let dataInicioBusca: Date;
+      let dataFimBusca: Date;
+      let hojeStr: string;
+      let ontemStr: string;
 
-      // Buscar TODAS as notas recebidas (status = "recebida") dos últimos 2 dias
-      // Usar UTC para garantir que capturamos todas as notas do dia
-      // Implementar paginação para evitar limite de 1000 registros
-      const dataInicioBusca = new Date(ontem);
-      dataInicioBusca.setUTCHours(0, 0, 0, 0);
-      const dataFimBusca = new Date(hoje);
-      dataFimBusca.setDate(dataFimBusca.getDate() + 1);
-      dataFimBusca.setUTCHours(0, 0, 0, 0);
+      const hoje = new Date();
+      const hojeStrAtual = hoje.toISOString().split("T")[0];
+
+      switch (periodoSelecionado) {
+        case "hoje":
+          // Parsear a data selecionada
+          const [ano, mes, dia] = dataAtual.split('-').map(Number);
+          const dataSelecionada = new Date(Date.UTC(ano, mes - 1, dia, 0, 0, 0));
+          hojeStr = dataAtual;
+          
+          // Buscar do dia anterior para comparação até 1 dia após a data selecionada
+          dataInicioBusca = new Date(dataSelecionada);
+          dataInicioBusca.setUTCDate(dataInicioBusca.getUTCDate() - 1);
+          dataInicioBusca.setUTCHours(0, 0, 0, 0);
+          
+          dataFimBusca = new Date(dataSelecionada);
+          dataFimBusca.setUTCDate(dataFimBusca.getUTCDate() + 1);
+          dataFimBusca.setUTCHours(0, 0, 0, 0);
+          
+          const ontem = new Date(dataSelecionada);
+          ontem.setUTCDate(ontem.getUTCDate() - 1);
+          ontemStr = ontem.toISOString().split("T")[0];
+          break;
+
+        case "semana":
+          // Últimos 7 dias
+          dataFimBusca = new Date(hoje);
+          dataFimBusca.setUTCDate(dataFimBusca.getUTCDate() + 1);
+          dataFimBusca.setUTCHours(0, 0, 0, 0);
+          
+          dataInicioBusca = new Date(hoje);
+          dataInicioBusca.setUTCDate(dataInicioBusca.getUTCDate() - 7);
+          dataInicioBusca.setUTCHours(0, 0, 0, 0);
+          
+          hojeStr = hojeStrAtual;
+          const ontemSemana = new Date(hoje);
+          ontemSemana.setUTCDate(ontemSemana.getUTCDate() - 1);
+          ontemStr = ontemSemana.toISOString().split("T")[0];
+          break;
+
+        case "mes":
+          // Últimos 30 dias
+          dataFimBusca = new Date(hoje);
+          dataFimBusca.setUTCDate(dataFimBusca.getUTCDate() + 1);
+          dataFimBusca.setUTCHours(0, 0, 0, 0);
+          
+          dataInicioBusca = new Date(hoje);
+          dataInicioBusca.setUTCDate(dataInicioBusca.getUTCDate() - 30);
+          dataInicioBusca.setUTCHours(0, 0, 0, 0);
+          
+          hojeStr = hojeStrAtual;
+          const ontemMes = new Date(hoje);
+          ontemMes.setUTCDate(ontemMes.getUTCDate() - 1);
+          ontemStr = ontemMes.toISOString().split("T")[0];
+          break;
+
+        case "personalizado":
+          // Período personalizado (dataAtual até dataFim)
+          const [anoInicio, mesInicio, diaInicio] = dataAtual.split('-').map(Number);
+          const dataInicio = new Date(Date.UTC(anoInicio, mesInicio - 1, diaInicio, 0, 0, 0));
+          
+          const [anoFim, mesFim, diaFim] = dataFim.split('-').map(Number);
+          const dataFimDate = new Date(Date.UTC(anoFim, mesFim - 1, diaFim, 0, 0, 0));
+          
+          dataInicioBusca = new Date(dataInicio);
+          dataInicioBusca.setUTCHours(0, 0, 0, 0);
+          
+          dataFimBusca = new Date(dataFimDate);
+          dataFimBusca.setUTCDate(dataFimBusca.getUTCDate() + 1);
+          dataFimBusca.setUTCHours(0, 0, 0, 0);
+          
+          hojeStr = dataFim; // Usar data fim como referência
+          const ontemPersonalizado = new Date(dataFimDate);
+          ontemPersonalizado.setUTCDate(ontemPersonalizado.getUTCDate() - 1);
+          ontemStr = ontemPersonalizado.toISOString().split("T")[0];
+          break;
+
+        default:
+          // Fallback para hoje
+          const [anoDefault, mesDefault, diaDefault] = dataAtual.split('-').map(Number);
+          const dataSelecionadaDefault = new Date(Date.UTC(anoDefault, mesDefault - 1, diaDefault, 0, 0, 0));
+          hojeStr = dataAtual;
+          
+          dataInicioBusca = new Date(dataSelecionadaDefault);
+          dataInicioBusca.setUTCDate(dataInicioBusca.getUTCDate() - 1);
+          dataInicioBusca.setUTCHours(0, 0, 0, 0);
+          
+          dataFimBusca = new Date(dataSelecionadaDefault);
+          dataFimBusca.setUTCDate(dataFimBusca.getUTCDate() + 1);
+          dataFimBusca.setUTCHours(0, 0, 0, 0);
+          
+          const ontemDefault = new Date(dataSelecionadaDefault);
+          ontemDefault.setUTCDate(ontemDefault.getUTCDate() - 1);
+          ontemStr = ontemDefault.toISOString().split("T")[0];
+      }
       
       const pageSizeNotasRecebidas = 1000;
       let offsetNotasRecebidas = 0;
@@ -154,12 +266,14 @@ export default function CRDKPage() {
       const todasNotasRecebidasArray: any[] = [];
       
       while (hasMoreNotasRecebidas) {
-        const { data: notasPage, error: errorNotasPage } = await supabase
+        let query = supabase
           .from("notas_consolidado")
-          .select("id, volumes, data_entrada, status, usuario")
+          .select("id, volumes, data_entrada, status, usuario, destino, cliente_destino")
           .eq("status", "recebida")
           .gte("data_entrada", dataInicioBusca.toISOString())
-          .lt("data_entrada", dataFimBusca.toISOString())
+          .lt("data_entrada", dataFimBusca.toISOString());
+        
+        const { data: notasPage, error: errorNotasPage } = await query
           .range(offsetNotasRecebidas, offsetNotasRecebidas + pageSizeNotasRecebidas - 1)
           .order("data_entrada", { ascending: true });
         
@@ -177,10 +291,27 @@ export default function CRDKPage() {
         }
       }
       
-      const todasNotasRecebidas = todasNotasRecebidasArray;
+      let todasNotasRecebidas = todasNotasRecebidasArray;
 
-      // Filtrar notas de hoje - verificar se a data de entrada é exatamente hoje
-      // Usar UTC para extrair a data e garantir consistência
+      // Aplicar filtro de CD se não for "todos"
+      if (selectedCD !== "todos") {
+        todasNotasRecebidas = todasNotasRecebidas.filter((nota: any) => {
+          const destino = (nota.destino || "").toUpperCase();
+          const clienteDestino = (nota.cliente_destino || "").toUpperCase();
+          
+          if (selectedCD === "crdk-es") {
+            return destino.includes("ES") || destino.includes("ESPÍRITO SANTO") || 
+                   clienteDestino.includes("ES") || clienteDestino.includes("ESPÍRITO SANTO");
+          } else if (selectedCD === "crdk-sp") {
+            return destino.includes("SP") || destino.includes("SÃO PAULO") || destino.includes("SAO PAULO") ||
+                   clienteDestino.includes("SP") || clienteDestino.includes("SÃO PAULO") || clienteDestino.includes("SAO PAULO");
+          }
+          return true;
+        });
+      }
+
+      // Filtrar notas da data selecionada - verificar se a data de entrada corresponde à data selecionada
+      // Comparar usando tanto UTC quanto local para garantir que funciona em qualquer timezone
       const notasHojeFiltradas = (todasNotasRecebidas || []).filter((nota) => {
         const ts = nota.data_entrada as string | Date | null | undefined;
         if (!ts) return false;
@@ -188,19 +319,28 @@ export default function CRDKPage() {
           const dataHora = ts instanceof Date ? ts : new Date(ts);
           if (isNaN(dataHora.getTime())) return false;
           
-          // Extrair a data no formato YYYY-MM-DD usando UTC
-          const ano = dataHora.getUTCFullYear();
-          const mes = String(dataHora.getUTCMonth() + 1).padStart(2, '0');
-          const dia = String(dataHora.getUTCDate()).padStart(2, '0');
-          const dataStr = `${ano}-${mes}-${dia}`;
+          // Extrair a data no formato YYYY-MM-DD (tentar UTC primeiro, depois local)
+          let ano, mes, dia;
+          // Tentar UTC primeiro
+          ano = dataHora.getUTCFullYear();
+          mes = String(dataHora.getUTCMonth() + 1).padStart(2, '0');
+          dia = String(dataHora.getUTCDate()).padStart(2, '0');
+          let dataStrUTC = `${ano}-${mes}-${dia}`;
           
-          return dataStr === hojeStr;
+          // Também tentar local
+          ano = dataHora.getFullYear();
+          mes = String(dataHora.getMonth() + 1).padStart(2, '0');
+          dia = String(dataHora.getDate()).padStart(2, '0');
+          let dataStrLocal = `${ano}-${mes}-${dia}`;
+          
+          // Comparar com a data selecionada (pode ser UTC ou local)
+          return dataStrUTC === hojeStr || dataStrLocal === hojeStr;
         } catch {
           return false;
         }
       });
 
-      // Filtrar notas de ontem - verificar se a data de entrada é exatamente ontem
+      // Filtrar notas do dia anterior à data selecionada (para comparação)
       const notasOntemFiltradas = (todasNotasRecebidas || []).filter((nota) => {
         const ts = nota.data_entrada as string | Date | null | undefined;
         if (!ts) return false;
@@ -208,29 +348,38 @@ export default function CRDKPage() {
           const dataHora = ts instanceof Date ? ts : new Date(ts);
           if (isNaN(dataHora.getTime())) return false;
           
-          // Extrair a data no formato YYYY-MM-DD usando UTC
-          const ano = dataHora.getUTCFullYear();
-          const mes = String(dataHora.getUTCMonth() + 1).padStart(2, '0');
-          const dia = String(dataHora.getUTCDate()).padStart(2, '0');
-          const dataStr = `${ano}-${mes}-${dia}`;
+          // Extrair a data no formato YYYY-MM-DD (tentar UTC primeiro, depois local)
+          let ano, mes, dia;
+          // Tentar UTC primeiro
+          ano = dataHora.getUTCFullYear();
+          mes = String(dataHora.getUTCMonth() + 1).padStart(2, '0');
+          dia = String(dataHora.getUTCDate()).padStart(2, '0');
+          let dataStrUTC = `${ano}-${mes}-${dia}`;
           
-          return dataStr === ontemStr;
+          // Também tentar local
+          ano = dataHora.getFullYear();
+          mes = String(dataHora.getMonth() + 1).padStart(2, '0');
+          dia = String(dataHora.getDate()).padStart(2, '0');
+          let dataStrLocal = `${ano}-${mes}-${dia}`;
+          
+          // Comparar com a data de ontem (pode ser UTC ou local)
+          return dataStrUTC === ontemStr || dataStrLocal === ontemStr;
         } catch {
           return false;
         }
       });
 
-      // Buscar carros de hoje
-      const dataFimBuscaCarros = new Date(hoje);
-      dataFimBuscaCarros.setDate(dataFimBuscaCarros.getDate() + 1);
-      dataFimBuscaCarros.setHours(0, 0, 0, 0);
+      // Buscar carros do período selecionado
+      const dataFimBuscaCarros = new Date(dataFimBusca);
+      dataFimBuscaCarros.setUTCHours(0, 0, 0, 0);
       const dataFimBuscaCarrosStr = dataFimBuscaCarros.toISOString().split("T")[0];
       
+      // Buscar carros da data selecionada (usar range amplo para capturar todos)
       const { data: carrosHoje } = await supabase
         .from("carros_status")
         .select("id, created_at, data, status_carro")
-        .gte("created_at", `${hojeStr}T00:00:00`)
-        .lte("created_at", `${dataFimBuscaCarrosStr}T23:59:59`);
+        .gte("created_at", `${hojeStr}T00:00:00Z`)
+        .lt("created_at", `${dataFimBuscaCarrosStr}T00:00:00Z`);
 
       // Filtrar carros de hoje pela regra de 06:00
       const carrosHojeFiltrados = (carrosHoje || []).filter((carro) => {
@@ -250,12 +399,12 @@ export default function CRDKPage() {
         }
       });
 
-      // Buscar carros de ontem
+      // Buscar carros do dia anterior à data selecionada
       const { data: carrosOntem } = await supabase
         .from("carros_status")
         .select("id, created_at, data, status_carro")
-        .gte("created_at", `${ontemStr}T00:00:00`)
-        .lte("created_at", `${hojeStr}T23:59:59`);
+        .gte("created_at", `${ontemStr}T00:00:00Z`)
+        .lt("created_at", `${hojeStr}T00:00:00Z`);
 
       // Filtrar carros de ontem pela regra de 06:00
       const carrosOntemFiltrados = (carrosOntem || []).filter((carro) => {
@@ -285,13 +434,16 @@ export default function CRDKPage() {
 
       // Debug: Log para verificar contagem
       console.log('📊 Debug NFs Recebidas:', {
+        periodo_selecionado: periodoSelecionado,
+        data_atual_selecionada: dataAtual,
+        data_fim: dataFim,
+        hoje_str: hojeStr,
+        ontem_str: ontemStr,
         total_buscado: todasNotasRecebidas?.length || 0,
         notas_hoje_filtradas: notasHojeFiltradas.length,
         notas_hoje_unicas: notasHojeUnicas.length,
         notas_ontem_filtradas: notasOntemFiltradas.length,
         notas_ontem_unicas: notasOntemUnicas.length,
-        hoje_str: hojeStr,
-        ontem_str: ontemStr,
         exemplo_data_entrada: notasHojeUnicas[0]?.data_entrada,
         data_inicio_busca: dataInicioBusca.toISOString(),
         data_fim_busca: dataFimBusca.toISOString()
@@ -330,13 +482,12 @@ export default function CRDKPage() {
       const sessoesDiff = sessoesHoje - sessoesOntem;
 
       // Calcular volumes bipados (notas bipadas na embalagem)
-      // Buscar todas as notas bipadas dos últimos 2 dias
+      // Buscar todas as notas bipadas do período selecionado
       // Usar range amplo no campo data para garantir que capturamos todas
-      const dataInicioBuscaBipadas = new Date(ontem);
-      dataInicioBuscaBipadas.setHours(0, 0, 0, 0);
-      const dataFimBuscaBipadas = new Date(hoje);
-      dataFimBuscaBipadas.setDate(dataFimBuscaBipadas.getDate() + 1);
-      dataFimBuscaBipadas.setHours(0, 0, 0, 0);
+      const dataInicioBuscaBipadas = new Date(dataInicioBusca);
+      dataInicioBuscaBipadas.setUTCHours(0, 0, 0, 0);
+      const dataFimBuscaBipadas = new Date(dataFimBusca);
+      dataFimBuscaBipadas.setUTCHours(0, 0, 0, 0);
       
       // Buscar por data (campo data da tabela) com range ampliado
       const { data: todasNotasBipadas, error: errorBipadas } = await supabase
@@ -582,11 +733,10 @@ export default function CRDKPage() {
         }
       }
       
-      // Buscar divergências dos últimos 2 dias
-      const dataInicioBuscaDivergencias = new Date(ontem);
+      // Buscar divergências do período selecionado
+      const dataInicioBuscaDivergencias = new Date(dataInicioBusca);
       dataInicioBuscaDivergencias.setUTCHours(0, 0, 0, 0);
-      const dataFimBuscaDivergencias = new Date(hoje);
-      dataFimBuscaDivergencias.setDate(dataFimBuscaDivergencias.getDate() + 1);
+      const dataFimBuscaDivergencias = new Date(dataFimBusca);
       dataFimBuscaDivergencias.setUTCHours(0, 0, 0, 0);
       
       // Buscar divergências com paginação
@@ -657,12 +807,11 @@ export default function CRDKPage() {
       });
 
       // Calcular NFs pendentes (notas com status "deu entrada")
-      // Buscar todas as notas com status "deu entrada" dos últimos 2 dias
-      const dataInicioBuscaPendentes = new Date(ontem);
-      dataInicioBuscaPendentes.setHours(0, 0, 0, 0);
-      const dataFimBuscaPendentes = new Date(hoje);
-      dataFimBuscaPendentes.setDate(dataFimBuscaPendentes.getDate() + 1);
-      dataFimBuscaPendentes.setHours(0, 0, 0, 0);
+      // Buscar todas as notas com status "deu entrada" do período selecionado
+      const dataInicioBuscaPendentes = new Date(dataInicioBusca);
+      dataInicioBuscaPendentes.setUTCHours(0, 0, 0, 0);
+      const dataFimBuscaPendentes = new Date(dataFimBusca);
+      dataFimBuscaPendentes.setUTCHours(0, 0, 0, 0);
       
       const { data: todasNotasPendentes, error: errorPendentes } = await supabase
         .from("notas_consolidado")
@@ -1590,7 +1739,7 @@ export default function CRDKPage() {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-14 sm:h-16">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 py-3 sm:py-0 sm:h-16 min-h-[4rem] sm:min-h-0">
             {/* Logo e Título */}
             <div className="flex items-center space-x-2 sm:space-x-3">
               <div className="p-1.5 sm:p-2 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-lg">
@@ -1608,35 +1757,320 @@ export default function CRDKPage() {
             </div>
 
             {/* Controles e Menu */}
-            <div className="flex items-center space-x-2 sm:space-x-4">
-              {/* Filtros de Período e CD */}
-              <div className="hidden sm:flex items-center space-x-2"> 
-                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                  <SelectTrigger className="w-40">
-                    <Calendar className="h-4 w-4 mr-2" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="7">Últimos 7 dias</SelectItem>
-                    <SelectItem value="30">Últimos 30 dias</SelectItem>
-                    <SelectItem value="90">Últimos 90 dias</SelectItem>
-                  </SelectContent>
-                </Select>
- 
-                <Button variant="outline" size="sm">
-                  <Filter className="h-4 w-4 mr-2" />
-                  Filtros
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-2 lg:gap-3 flex-wrap">
+              {/* Filtros de Período - Desktop */}
+              <div className="hidden sm:flex items-center space-x-2 flex-wrap gap-2">
+                <Button
+                  variant={periodoSelecionado === "hoje" ? "default" : "outline"}
+                  onClick={() => {
+                    setPeriodoSelecionado("hoje");
+                    const hoje = new Date().toISOString().split("T")[0];
+                    setDataAtual(hoje);
+                  }}
+                  size="sm"
+                  className="text-xs sm:text-sm whitespace-nowrap"
+                >
+                  Hoje
+                </Button>
+                <Button
+                  variant={periodoSelecionado === "semana" ? "default" : "outline"}
+                  onClick={() => setPeriodoSelecionado("semana")}
+                  size="sm"
+                  className="text-xs sm:text-sm whitespace-nowrap"
+                >
+                  Semana
+                </Button>
+                <Button
+                  variant={periodoSelecionado === "mes" ? "default" : "outline"}
+                  onClick={() => setPeriodoSelecionado("mes")}
+                  size="sm"
+                  className="text-xs sm:text-sm whitespace-nowrap"
+                >
+                  Mês
+                </Button>
+                <Button
+                  variant={periodoSelecionado === "personalizado" ? "default" : "outline"}
+                  onClick={() => setPeriodoSelecionado("personalizado")}
+                  size="sm"
+                  className="text-xs sm:text-sm whitespace-nowrap"
+                >
+                  Personalizado
                 </Button>
 
-                <Button variant="outline" size="sm">
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Atualizar
+                {periodoSelecionado === "hoje" && (
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="data-filtro-crdk" className="text-xs sm:text-sm whitespace-nowrap">
+                      Data:
+                    </Label>
+                    <Input
+                      id="data-filtro-crdk"
+                      type="date"
+                      value={dataAtual}
+                      onChange={(e) => setDataAtual(e.target.value)}
+                      className="h-8 sm:h-9 text-xs sm:text-sm w-32 sm:w-40"
+                      max={new Date().toISOString().split("T")[0]}
+                    />
+                  </div>
+                )}
+
+                {periodoSelecionado === "personalizado" && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="data-inicio-crdk" className="text-xs sm:text-sm whitespace-nowrap">
+                        De:
+                      </Label>
+                      <Input
+                        id="data-inicio-crdk"
+                        type="date"
+                        value={dataAtual}
+                        onChange={(e) => {
+                          setDataAtual(e.target.value);
+                          if (e.target.value > dataFim) {
+                            setDataFim(e.target.value);
+                          }
+                        }}
+                        className="h-8 sm:h-9 text-xs sm:text-sm w-32 sm:w-40"
+                        max={new Date().toISOString().split("T")[0]}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="data-fim-crdk" className="text-xs sm:text-sm whitespace-nowrap">
+                        Até:
+                      </Label>
+                      <Input
+                        id="data-fim-crdk"
+                        type="date"
+                        value={dataFim}
+                        onChange={(e) => setDataFim(e.target.value)}
+                        className="h-8 sm:h-9 text-xs sm:text-sm w-32 sm:w-40"
+                        min={dataAtual}
+                        max={new Date().toISOString().split("T")[0]}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Botões de Ação - Desktop e Mobile */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <DropdownMenu open={isFiltersDropdownOpen} onOpenChange={setIsFiltersDropdownOpen}>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className={`whitespace-nowrap ${selectedPeriod !== "30" || selectedCD !== "todos" ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : ""}`}
+                    >
+                      <Filter className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Filtros</span>
+                      {(selectedPeriod !== "30" || selectedCD !== "todos") && (
+                        <span className="ml-1 sm:ml-2 h-2 w-2 rounded-full bg-blue-600"></span>
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                    <DropdownMenuLabel className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Período
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedPeriod("7");
+                        setIsFiltersDropdownOpen(false);
+                      }}
+                      className="flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <span>Últimos 7 dias</span>
+                      {selectedPeriod === "7" && <span className="text-blue-600">✓</span>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedPeriod("15");
+                        setIsFiltersDropdownOpen(false);
+                      }}
+                      className="flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <span>Últimos 15 dias</span>
+                      {selectedPeriod === "15" && <span className="text-blue-600">✓</span>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedPeriod("30");
+                        setIsFiltersDropdownOpen(false);
+                      }}
+                      className="flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <span>Últimos 30 dias</span>
+                      {selectedPeriod === "30" && <span className="text-blue-600">✓</span>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedPeriod("60");
+                        setIsFiltersDropdownOpen(false);
+                      }}
+                      className="flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <span>Últimos 60 dias</span>
+                      {selectedPeriod === "60" && <span className="text-blue-600">✓</span>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedPeriod("90");
+                        setIsFiltersDropdownOpen(false);
+                      }}
+                      className="flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <span>Últimos 90 dias</span>
+                      {selectedPeriod === "90" && <span className="text-blue-600">✓</span>}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                      Centro de Distribuição
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedCD("todos");
+                        setIsFiltersDropdownOpen(false);
+                      }}
+                      className="flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <span>Todos</span>
+                      {selectedCD === "todos" && <span className="text-blue-600">✓</span>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedCD("crdk-es");
+                        setIsFiltersDropdownOpen(false);
+                      }}
+                      className="flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <span>CRDK ES</span>
+                      {selectedCD === "crdk-es" && <span className="text-blue-600">✓</span>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setSelectedCD("crdk-sp");
+                        setIsFiltersDropdownOpen(false);
+                      }}
+                      className="flex items-center justify-between cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <span>CRDK SP</span>
+                      {selectedCD === "crdk-sp" && <span className="text-blue-600">✓</span>}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={carregarKPIs}
+                  className="whitespace-nowrap"
+                >
+                  <RefreshCw className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Atualizar</span>
                 </Button>
 
-                <Button variant="outline" size="sm">
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="whitespace-nowrap"
+                >
+                  <Download className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Exportar</span>
                 </Button>
+              </div>
+              
+              {/* Filtros de Período - Mobile */}
+              <div className="sm:hidden flex flex-col gap-2 w-full">
+                <div className="flex items-center space-x-2 flex-wrap">
+                  <Button
+                    variant={periodoSelecionado === "hoje" ? "default" : "outline"}
+                    onClick={() => {
+                      setPeriodoSelecionado("hoje");
+                      const hoje = new Date().toISOString().split("T")[0];
+                      setDataAtual(hoje);
+                    }}
+                    size="sm"
+                    className="text-xs"
+                  >
+                    Hoje
+                  </Button>
+                  <Button
+                    variant={periodoSelecionado === "semana" ? "default" : "outline"}
+                    onClick={() => setPeriodoSelecionado("semana")}
+                    size="sm"
+                    className="text-xs"
+                  >
+                    Semana
+                  </Button>
+                  <Button
+                    variant={periodoSelecionado === "mes" ? "default" : "outline"}
+                    onClick={() => setPeriodoSelecionado("mes")}
+                    size="sm"
+                    className="text-xs"
+                  >
+                    Mês
+                  </Button>
+                  <Button
+                    variant={periodoSelecionado === "personalizado" ? "default" : "outline"}
+                    onClick={() => setPeriodoSelecionado("personalizado")}
+                    size="sm"
+                    className="text-xs"
+                  >
+                    Personalizado
+                  </Button>
+                </div>
+
+                {periodoSelecionado === "hoje" && (
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="data-filtro-crdk-mobile" className="text-xs whitespace-nowrap">
+                      Data:
+                    </Label>
+                    <Input
+                      id="data-filtro-crdk-mobile"
+                      type="date"
+                      value={dataAtual}
+                      onChange={(e) => setDataAtual(e.target.value)}
+                      className="h-8 text-xs w-32"
+                      max={new Date().toISOString().split("T")[0]}
+                    />
+                  </div>
+                )}
+
+                {periodoSelecionado === "personalizado" && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="data-inicio-crdk-mobile" className="text-xs whitespace-nowrap">
+                        De:
+                      </Label>
+                      <Input
+                        id="data-inicio-crdk-mobile"
+                        type="date"
+                        value={dataAtual}
+                        onChange={(e) => {
+                          setDataAtual(e.target.value);
+                          if (e.target.value > dataFim) {
+                            setDataFim(e.target.value);
+                          }
+                        }}
+                        className="h-8 text-xs w-28"
+                        max={new Date().toISOString().split("T")[0]}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="data-fim-crdk-mobile" className="text-xs whitespace-nowrap">
+                        Até:
+                      </Label>
+                      <Input
+                        id="data-fim-crdk-mobile"
+                        type="date"
+                        value={dataFim}
+                        onChange={(e) => setDataFim(e.target.value)}
+                        className="h-8 text-xs w-28"
+                        min={dataAtual}
+                        max={new Date().toISOString().split("T")[0]}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Menu Dropdown do Usuário */}
@@ -1687,6 +2121,21 @@ export default function CRDKPage() {
                     <KeyRound className="h-4 w-4" />
                     <span>Alterar Senha</span>
                   </DropdownMenuItem>
+
+                  <DropdownMenuSeparator />
+
+                  {/* Filtros Ativos */}
+                  <DropdownMenuLabel className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Filtros Ativos
+                  </DropdownMenuLabel>
+                  <div className="px-2 py-1.5">
+                    <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                      <span className="font-medium">Período:</span> {selectedPeriod === "7" ? "7 dias" : selectedPeriod === "15" ? "15 dias" : selectedPeriod === "30" ? "30 dias" : selectedPeriod === "60" ? "60 dias" : selectedPeriod === "90" ? "90 dias" : "30 dias"}
+                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                      <span className="font-medium">CD:</span> {selectedCD === "todos" ? "Todos" : selectedCD === "crdk-es" ? "CRDK ES" : selectedCD === "crdk-sp" ? "CRDK SP" : "Todos"}
+                    </div>
+                  </div>
 
                   <DropdownMenuSeparator />
 
@@ -1851,8 +2300,7 @@ export default function CRDKPage() {
                 <span>Central ProFlow</span>
               </h2>
               <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
-                Monitoramento em tempo real do fluxo operacional - Recebimento, Embalagem, Custos e Inventário
-              </p>
+                Monitoramento em tempo real do fluxo operacional</p>
             </div>
 
             {/* Cards de KPIs */}

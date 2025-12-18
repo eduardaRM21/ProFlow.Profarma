@@ -42,27 +42,34 @@ export default function PesquisaNotasSection() {
       }
 
       // Buscar a nota na tabela embalagem_notas_bipadas
-      const { data: notaData, error: notaError } = await supabase
+      // Usar .limit(1) ao invés de .single() para evitar erro 406 quando há múltiplas notas
+      const { data: notaDataArray, error: notaError } = await supabase
         .from('embalagem_notas_bipadas')
         .select('*')
         .eq('numero_nf', pesquisaNota.trim())
-        .single()
+        .order('timestamp_bipagem', { ascending: false })
+        .limit(1)
 
       if (notaError) {
-        if (notaError.code === 'PGRST116') {
-          // Nenhum resultado encontrado
+        console.error('❌ Erro ao buscar nota:', notaError)
+        // Tratar erro 406 especificamente
+        if (notaError.code === '406' || notaError.message?.includes('406')) {
+          setErroPesquisaNota("Erro ao processar a pesquisa. Tente novamente ou verifique o número da nota fiscal.")
+        } else if (notaError.code === 'PGRST116') {
           setErroPesquisaNota("Nenhuma nota encontrada com o número informado")
         } else {
-          console.error('❌ Erro ao buscar nota:', notaError)
           setErroPesquisaNota(`Erro ao buscar nota: ${notaError.message}`)
         }
         return
       }
 
-      if (!notaData) {
+      if (!notaDataArray || notaDataArray.length === 0) {
         setErroPesquisaNota("Nenhuma nota encontrada com o número informado")
         return
       }
+
+      // Pegar o primeiro resultado (mais recente)
+      const notaData = notaDataArray[0]
 
       console.log('✅ Nota encontrada:', notaData)
       setResultadoPesquisaNota(notaData)

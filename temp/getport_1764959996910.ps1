@@ -1,1 +1,0 @@
-Get-Printer -Name 'ZDesigner ZT411-300dpi ZPL' | Select-Object -ExpandProperty PortName

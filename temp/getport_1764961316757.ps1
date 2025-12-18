@@ -1,1 +1,0 @@
-Get-Printer -Name 'Impressora Embalagem' | Select-Object -ExpandProperty PortName

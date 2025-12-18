@@ -23,6 +23,7 @@ import {
   Minus,
   Truck,
   Package,
+  Download,
 } from "lucide-react"
 import { useEstatisticas } from "@/hooks/use-estatisticas"
 import { getSupabase } from "@/lib/supabase-client"
@@ -73,6 +74,7 @@ export default function DashboardEstatisticas() {
   const [dashboardData, setDashboardData] = useState<EstatisticasDashboard | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [exportando, setExportando] = useState(false)
   const [periodoSelecionado, setPeriodoSelecionado] = useState<"hoje" | "semana" | "mes" | "personalizado">("hoje")
   const [dataSelecionada, setDataSelecionada] = useState(new Date().toISOString().split("T")[0])
   const [dataFim, setDataFim] = useState(new Date().toISOString().split("T")[0])
@@ -1269,6 +1271,279 @@ export default function DashboardEstatisticas() {
     return <Minus className="h-4 w-4 text-gray-500 dark:text-gray-400" />
   }
 
+  // Função para exportar dados dos carros processados em CSV
+  const exportarDadosDashboard = async () => {
+    try {
+      setExportando(true)
+      
+      const supabase = getSupabase()
+      if (!supabase) {
+        alert("Erro ao conectar com o banco de dados.")
+        return
+      }
+
+      // Calcular período de busca (mesma lógica do carregamento)
+      let dataInicio: string
+      let dataFimCalculada: string
+
+      switch (periodoSelecionado) {
+        case "hoje":
+          dataInicio = dataSelecionada
+          dataFimCalculada = dataSelecionada
+          break
+        case "semana": {
+          const d = new Date()
+          const fim = new Date()
+          d.setDate(d.getDate() - 6) // últimos 7 dias
+          dataInicio = d.toISOString().split("T")[0]
+          dataFimCalculada = fim.toISOString().split("T")[0]
+          break
+        }
+        case "mes": {
+          const d = new Date()
+          const fim = new Date()
+          d.setDate(d.getDate() - 29) // últimos 30 dias
+          dataInicio = d.toISOString().split("T")[0]
+          dataFimCalculada = fim.toISOString().split("T")[0]
+          break
+        }
+        case "personalizado":
+          dataInicio = dataSelecionada
+          dataFimCalculada = dataFim
+          break
+        default:
+          dataInicio = dataSelecionada
+          dataFimCalculada = dataSelecionada
+      }
+
+      // Buscar todas as notas do período com paginação (mesma lógica do dashboard)
+      const dataFimBusca = new Date(dataFimCalculada)
+      dataFimBusca.setDate(dataFimBusca.getDate() + 1)
+      const dataFimBuscaStr = dataFimBusca.toISOString().split("T")[0]
+      const dataInicioBusca = dataInicio
+
+      const pageSize = 1000
+      let offset = 0
+      let hasMore = true
+      const todasNotasArray: any[] = []
+
+      while (hasMore) {
+        const { data: notasPage, error: errorNotas } = await supabase
+          .from("embalagem_notas_bipadas")
+          .select("id, numero_nf, volumes, data, timestamp_bipagem, turno, colaboradores, destino, fornecedor, cliente_destino, tipo_carga, carro_id, codigo_completo, status, observacoes")
+          .gte("data", dataInicioBusca)
+          .lte("data", dataFimBuscaStr)
+          .range(offset, offset + pageSize - 1)
+          .order("data", { ascending: true })
+
+        if (errorNotas) {
+          throw errorNotas
+        }
+
+        if (notasPage && notasPage.length > 0) {
+          todasNotasArray.push(...notasPage)
+          offset += pageSize
+          hasMore = notasPage.length === pageSize
+        } else {
+          hasMore = false
+        }
+      }
+
+      // Aplicar o mesmo filtro usado no dashboard (regra de 06:00)
+      const isPeriodoUnicoDia = periodoSelecionado === 'hoje' || (periodoSelecionado === 'personalizado' && dataSelecionada === dataFim)
+
+      const notasFiltradas = todasNotasArray.filter((nota) => {
+        const ts = (nota.timestamp_bipagem || nota.data) as string | Date | null | undefined
+        const notaData = nota.data as string
+        if (!notaData) return false
+
+        if (isPeriodoUnicoDia) {
+          // Para período único dia, aplicar regra de 06:00
+          // REGRA: Dia X = notas bipadas das 06:00 de X até 05:59 de X+1
+          if (!ts || ts === notaData) {
+            // Sem timestamp válido, usar campo data
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+            return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
+          }
+          
+          try {
+            const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+            if (isNaN(dataHora.getTime())) {
+              const dataDiaSeguinte = new Date(dataSelecionada)
+              dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+              const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+              return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
+            }
+            
+            const dataStr = dataHora.toISOString().split('T')[0]
+            const hora = dataHora.getUTCHours()
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+            
+            // REGRA: Dia X = notas bipadas das 06:00 de X até 05:59 de X+1
+            return (dataStr === dataSelecionada && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6)
+          } catch {
+            const dataDiaSeguinte = new Date(dataSelecionada)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+            return notaData === dataSelecionada || notaData === dataDiaSeguinteStr
+          }
+        }
+
+        // Para períodos maiores, aplicar regra de 06:00
+        if (!ts || ts === notaData) {
+          // Sem timestamp válido, usar apenas a data
+          return notaData >= dataInicio && notaData <= dataFimCalculada
+        }
+
+        try {
+          const dataHora = ts instanceof Date ? new Date(ts) : new Date(ts)
+          if (isNaN(dataHora.getTime())) {
+            return notaData >= dataInicio && notaData <= dataFimCalculada
+          }
+
+          const dataStr = dataHora.toISOString().split('T')[0]
+          const hora = dataHora.getUTCHours()
+
+          // Para períodos de múltiplos dias, aplicar regra de 06:00 para cada dia do range
+          for (let d = new Date(dataInicio); d <= new Date(dataFimCalculada); d.setDate(d.getDate() + 1)) {
+            const dataDia = d.toISOString().split('T')[0]
+            const dataDiaSeguinte = new Date(dataDia)
+            dataDiaSeguinte.setDate(dataDiaSeguinte.getDate() + 1)
+            const dataDiaSeguinteStr = dataDiaSeguinte.toISOString().split('T')[0]
+
+            // Verificar se a nota pertence a este dia (06:00 até 05:59 do dia seguinte)
+            if ((dataStr === dataDia && hora >= 6) || (dataStr === dataDiaSeguinteStr && hora < 6)) {
+              return true
+            }
+          }
+          
+          return false
+        } catch {
+          return notaData >= dataInicio && notaData <= dataFimCalculada
+        }
+      })
+
+      // Remover duplicatas por ID (mesma lógica do dashboard)
+      const notasUnicas = Array.from(
+        new Map(notasFiltradas.map((nota: any) => [nota.id, nota])).values()
+      )
+
+      if (notasUnicas.length === 0) {
+        alert("Nenhum dado encontrado para o período selecionado.")
+        return
+      }
+
+      // Formatar dados para CSV
+      const formatarDataExport = (data: string | Date | null | undefined) => {
+        if (!data) return ""
+        try {
+          const dataObj = data instanceof Date ? data : new Date(data)
+          if (isNaN(dataObj.getTime())) return String(data)
+          return dataObj.toLocaleString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        } catch {
+          return String(data)
+        }
+      }
+
+      const formatarColaboradores = (colaboradores: any) => {
+        if (!colaboradores) return ""
+        if (Array.isArray(colaboradores)) {
+          return colaboradores.join("; ")
+        }
+        if (typeof colaboradores === "string") {
+          try {
+            const parsed = JSON.parse(colaboradores)
+            if (Array.isArray(parsed)) {
+              return parsed.join("; ")
+            }
+          } catch {
+            return colaboradores
+          }
+        }
+        return String(colaboradores)
+      }
+
+      // Criar cabeçalho CSV
+      const cabecalho = [
+        "Número NF",
+        "Código Completo",
+        "Carro ID",
+        "Data",
+        "Turno",
+        "Volumes",
+        "Destino",
+        "Fornecedor",
+        "Cliente Destino",
+        "Tipo Carga",
+        "Colaboradores",
+        "Status",
+        "Data/Hora Bipagem",
+        "Observações",
+      ].join(",")
+
+      // Criar linhas de dados
+      const linhas = notasUnicas.map((nota) => {
+        return [
+          `"${nota.numero_nf || ""}"`,
+          `"${nota.codigo_completo || ""}"`,
+          `"${nota.carro_id || ""}"`,
+          `"${nota.data || ""}"`,
+          `"${nota.turno || ""}"`,
+          nota.volumes || 0,
+          `"${(nota.destino || "").replace(/"/g, '""')}"`,
+          `"${(nota.fornecedor || "").replace(/"/g, '""')}"`,
+          `"${(nota.cliente_destino || "").replace(/"/g, '""')}"`,
+          `"${(nota.tipo_carga || "").replace(/"/g, '""')}"`,
+          `"${formatarColaboradores(nota.colaboradores).replace(/"/g, '""')}"`,
+          `"${nota.status || ""}"`,
+          `"${formatarDataExport(nota.timestamp_bipagem)}"`,
+          `"${(nota.observacoes || "").replace(/"/g, '""')}"`,
+        ].join(",")
+      })
+
+      // Combinar cabeçalho e dados
+      const csvContent = [cabecalho, ...linhas].join("\n")
+
+      // Criar e baixar arquivo
+      const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" })
+      const link = document.createElement("a")
+      const url = URL.createObjectURL(blob)
+
+      const periodoTexto = periodoSelecionado === "hoje"
+        ? dataSelecionada
+        : periodoSelecionado === "semana"
+        ? "semana"
+        : periodoSelecionado === "mes"
+        ? "mes"
+        : `${dataSelecionada}_${dataFim}`
+
+      const nomeArquivo = `carros_processados_${periodoTexto}_${new Date().toISOString().split("T")[0]}.csv`
+
+      link.setAttribute("href", url)
+      link.setAttribute("download", nomeArquivo)
+      link.style.visibility = "hidden"
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error("Erro ao exportar dados:", error)
+      alert(`Erro ao exportar dados: ${error instanceof Error ? error.message : "Erro desconhecido"}`)
+    } finally {
+      setExportando(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -1313,10 +1588,10 @@ export default function DashboardEstatisticas() {
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center space-y-4 sm:space-y-0">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
-            Dashboard de Estatísticas
+            Dashboard de Produção
           </h1>
           <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
-            Visão geral da produtividade e performance do sistema
+            Visão geral da produtividade e performance da operação
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
@@ -1357,6 +1632,26 @@ export default function DashboardEstatisticas() {
               Personalizado
             </Button>
           </div>
+
+          <Button
+            onClick={exportarDadosDashboard}
+            variant="outline"
+            size="sm"
+            className="text-xs sm:text-sm"
+            disabled={exportando || loading}
+          >
+            {exportando ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                Exportando...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Exportar CSV
+              </>
+            )}
+          </Button>
 
           {periodoSelecionado === "hoje" && (
             <div className="flex items-center gap-2">
